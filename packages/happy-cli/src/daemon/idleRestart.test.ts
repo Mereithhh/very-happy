@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createIdleRestart, type IdleRestartDeps, type IdleRestartPersisted, type IdleRestartSessionFacts } from './idleRestart';
+import { createIdleRestart, idleRestartSessionRefusal, ownerRestartRequest, type IdleRestartDeps, type IdleRestartPersisted, type IdleRestartSessionFacts } from './idleRestart';
 import { AGENT_RESTART_COOLDOWN_MS, AGENT_RESTART_PENDING_TTL_MS } from '@/update/idleRestartPolicy';
 
 const QUIET = 30_000;
@@ -189,5 +189,85 @@ describe('B-911 idle restart queue', () => {
         await pass;
         expect(onSettled).toHaveBeenCalledWith('lead', expect.anything(), { ok: false, error: 'restart-precheck:cwd-missing' });
         expect(queue.status('lead')).toBeUndefined();
+    });
+});
+
+// B-919: the main agent's session_restart (owner request) — the same guards as the B-911 queue.
+describe('owner restart for the main agent (B-919)', () => {
+    const live = { live: true, wrapperVersion: '0.2.211', flavor: 'claude', variant: null, startedBy: 'daemon' };
+    const make = (over: Partial<Parameters<typeof ownerRestartRequest>[1]> = {}) => {
+        const calls: string[] = [];
+        const deps: Parameters<typeof ownerRestartRequest>[1] = {
+            queue: async (id) => { calls.push(`queue:${id}`); return { ok: true, state: 'queued', requestedAt: 1 }; },
+            facts: () => live,
+            queued: () => false,
+            activity: () => ({ turnActive: false, backgroundTasks: 0, automationRunning: false, upgradePending: null, lastTurnEventAt: 1_000 }),
+            quietMs: 30_000,
+            now: () => 100_000,
+            watchingSince: 0,
+            minObserveMs: 65_000,
+            restartIfIdle: async (id) => { calls.push(`restart:${id}`); return { ok: true }; },
+            version: '0.2.212',
+            ...over,
+        };
+        return { deps, calls };
+    };
+    it('idle → the owner queue (its refusals pass through)', async () => {
+        const { deps, calls } = make();
+        expect(await ownerRestartRequest({ sessionId: 's', when: 'idle' }, deps)).toEqual({ ok: true, state: 'queued', targetVersion: '0.2.212' });
+        expect(calls).toEqual(['queue:s']);
+        const refused = make({ queue: async () => ({ ok: false, code: 'local-terminal' }) });
+        expect(await ownerRestartRequest({ sessionId: 's', when: 'idle' }, refused.deps)).toEqual({ ok: false, code: 'local-terminal' });
+    });
+    it('now → never restarts a terminal / assistant / old / dead / already-queued / not-yet-idle session; the ifIdle restart re-checks', async () => {
+        for (const [facts, code] of [
+            [{ ...live, startedBy: 'terminal' }, 'local-terminal'],
+            [{ ...live, variant: 'assistant' }, 'assistant'],
+            [{ ...live, wrapperVersion: '0.2.100' }, 'no-turn-reports'],
+            [null, 'not-live'],
+        ] as const) {
+            const { deps, calls } = make({ facts: () => facts });
+            expect(await ownerRestartRequest({ sessionId: 's', when: 'now' }, deps)).toEqual({ ok: false, code });
+            expect(calls).toEqual([]);
+        }
+        const queued = make({ queued: () => true });
+        expect(await ownerRestartRequest({ sessionId: 's', when: 'now' }, queued.deps)).toEqual({ ok: false, code: 'already-queued' });
+        expect(queued.calls).toEqual([]);
+        // QA P2-2: the owner's `now` is as strict as the queue — a turn that just ended and a running automation are refused, nothing is stopped.
+        const idleActivity = { turnActive: false, backgroundTasks: 0, automationRunning: false, upgradePending: null, lastTurnEventAt: 1_000 };
+        for (const [activity, error] of [
+            [{ ...idleActivity, lastTurnEventAt: 100_000 - 5_000 }, 'busy:quiet'],
+            [{ ...idleActivity, automationRunning: true }, 'busy:automation-run'],
+            [{ ...idleActivity, turnActive: true }, 'busy:turn-active'],
+            [{ ...idleActivity, backgroundTasks: 2 }, 'busy:background-tasks'],
+            [{ ...idleActivity, upgradePending: '0.2.300' }, 'busy:upgrade-pending'],
+        ] as const) {
+            const refused = make({ activity: () => activity });
+            expect(await ownerRestartRequest({ sessionId: 's', when: 'now' }, refused.deps)).toEqual({ ok: false, code: 'busy', error });
+            expect(refused.calls).toEqual([]);
+        }
+        // QA round 3: right after a daemon start / handover nothing is known yet (turnActive=false, no tasks, no turn edge) → observing, not idle.
+        for (const watchingSince of [100_000, 100_000 - 64_999]) {
+            const fresh = make({ watchingSince, activity: () => ({ turnActive: false, backgroundTasks: 0, automationRunning: false, upgradePending: null, lastTurnEventAt: null }) });
+            expect(await ownerRestartRequest({ sessionId: 's', when: 'now' }, fresh.deps)).toEqual({ ok: false, code: 'busy', error: 'busy:observing' });
+            expect(fresh.calls).toEqual([]);
+        }
+        const watched = make({ watchingSince: 100_000 - 65_000, activity: () => ({ ...idleActivity, lastTurnEventAt: null }) });
+        expect(await ownerRestartRequest({ sessionId: 's', when: 'now' }, watched.deps)).toMatchObject({ ok: true, state: 'restarted' });
+        // `idle` is unaffected: the queue has its own observation window.
+        const freshIdle = make({ watchingSince: 100_000 });
+        expect(await ownerRestartRequest({ sessionId: 's', when: 'idle' }, freshIdle.deps)).toMatchObject({ ok: true, state: 'queued' });
+        // Quiet for longer than quietMs (or never seen a turn edge) → allowed.
+        const quiet = make({ activity: () => ({ ...idleActivity, lastTurnEventAt: 100_000 - 30_000 }) });
+        expect(await ownerRestartRequest({ sessionId: 's', when: 'now' }, quiet.deps)).toMatchObject({ ok: true, state: 'restarted' });
+        const busy = make({ restartIfIdle: async () => ({ ok: false, error: 'busy:turn-active' }) });
+        expect(await ownerRestartRequest({ sessionId: 's', when: 'now' }, busy.deps)).toEqual({ ok: false, code: 'busy', error: 'busy:turn-active' });
+        const { deps, calls } = make();
+        expect(await ownerRestartRequest({ sessionId: 's', when: 'now' }, deps)).toEqual({ ok: true, state: 'restarted', targetVersion: '0.2.212' });
+        expect(calls).toEqual(['restart:s']);
+    });
+    it('the session guards are the queue\'s own', () => {
+        expect(idleRestartSessionRefusal(live)).toBeNull();
+        expect(idleRestartSessionRefusal({ ...live, flavor: 'gemini' })).toBe('unsupported-flavor');
     });
 });

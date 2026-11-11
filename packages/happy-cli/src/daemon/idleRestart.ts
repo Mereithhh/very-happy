@@ -74,6 +74,22 @@ export interface IdleRestartDeps {
 
 const RESTARTABLE_FLAVORS = new Set(['claude', 'codex', 'acp']);
 
+/**
+ * The session guards of every owner/agent restart request (B-911): a live
+ * daemon-managed wrapper of a restartable flavor that reports its turns.
+ * A local-terminal session (the owner's own terminal) and an assistant
+ * variant are never restarted by the daemon. Also the main agent's
+ * `session_restart(when=now)` (B-919) checks these before an immediate restart.
+ */
+export function idleRestartSessionRefusal(facts: IdleRestartSessionFacts | null): Extract<IdleRestartRefusalCode, 'not-live' | 'local-terminal' | 'assistant' | 'unsupported-flavor' | 'no-turn-reports'> | null {
+    if (!facts?.live) return 'not-live';
+    if (facts.startedBy === 'terminal') return 'local-terminal';
+    if (facts.variant) return 'assistant';
+    if (!RESTARTABLE_FLAVORS.has(facts.flavor ?? 'claude')) return 'unsupported-flavor';
+    if (!wrapperReportsTurns(facts.wrapperVersion)) return 'no-turn-reports';
+    return null;
+}
+
 export function createIdleRestart(deps: IdleRestartDeps) {
     const now = () => (deps.now ?? Date.now)();
     const loaded = deps.load?.() ?? null;
@@ -133,12 +149,8 @@ export function createIdleRestart(deps: IdleRestartDeps) {
 
     async function request(input: { sessionId: string; source: IdleRestartSource; target?: string | null }): Promise<IdleRestartRequestResult> {
         const { sessionId, source } = input;
-        const facts = deps.session(sessionId);
-        if (!facts?.live) return { ok: false, code: 'not-live' };
-        if (facts.startedBy === 'terminal') return { ok: false, code: 'local-terminal' };
-        if (facts.variant) return { ok: false, code: 'assistant' };
-        if (!RESTARTABLE_FLAVORS.has(facts.flavor ?? 'claude')) return { ok: false, code: 'unsupported-flavor' };
-        if (!wrapperReportsTurns(facts.wrapperVersion)) return { ok: false, code: 'no-turn-reports' };
+        const refusal = idleRestartSessionRefusal(deps.session(sessionId));
+        if (refusal) return { ok: false, code: refusal };
         const existing = pending.get(sessionId);
         if (existing) {
             // The owner's button on top of the agent's own request makes it the owner's (no TTL).
@@ -234,6 +246,61 @@ export function createIdleRestart(deps: IdleRestartDeps) {
             return { ...entry, ...(waits.get(sessionId) ? { wait: waits.get(sessionId) } : {}), ...(running === sessionId ? { restarting: true as const } : {}) };
         },
         pendingIds(): string[] { return [...pending.keys()]; },
+        /** B-919: the last turn edge this daemon saw for a session (null = none) — the owner's `now` quiet check. */
+        lastTurnEventAt(sessionId: string): number | null { return lastTurnEventAt.get(sessionId) ?? null; },
     };
 }
 export type IdleRestart = ReturnType<typeof createIdleRestart>;
+
+export type OwnerRestartResult =
+    | { ok: true; state: 'queued' | 'already-queued' | 'restarted'; targetVersion?: string }
+    | { ok: false; code: string; error?: string };
+
+/**
+ * B-919: the main agent's `session_restart` on behalf of the owner. `idle`
+ * is the owner's 「本轮结束后重启」 (the queue above); `now` restarts at once
+ * only a session that passes the same guards, has nothing queued and is idle
+ * by the queue's own rule (`idleRestartReady`: no turn, background task,
+ * automation run or pending upgrade, and quiet since its last turn edge —
+ * the per-request observation window is left out, since nothing is waiting)
+ * and only once this daemon has watched for a full lease (`busy:observing`
+ * right after a daemon start / handover, when "no turn" only means unknown).
+ * `restartIfIdle` then runs with B-894 `ifIdle`, which re-checks turn and
+ * background tasks at the moment of the stop. Refusals are `busy` with the
+ * reason in `error` (`busy:<wait>`).
+ */
+export async function ownerRestartRequest(
+    input: { sessionId: string; when: 'idle' | 'now' },
+    deps: {
+        queue: (sessionId: string) => Promise<IdleRestartRequestResult>;
+        facts: (sessionId: string) => IdleRestartSessionFacts | null;
+        queued: (sessionId: string) => boolean;
+        activity: (sessionId: string) => { turnActive: boolean; backgroundTasks: number; automationRunning: boolean; upgradePending: string | null; lastTurnEventAt: number | null };
+        quietMs: number;
+        now: () => number;
+        /** When this daemon started watching turns and background tasks (its start): before one lease has passed it cannot know a session is busy. */
+        watchingSince: number;
+        /** At least one lease (IDLE_RESTART_MIN_OBSERVE_MS). */
+        minObserveMs: number;
+        restartIfIdle: (sessionId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+        version: string;
+    },
+): Promise<OwnerRestartResult> {
+    const { sessionId } = input;
+    if (input.when === 'idle') {
+        const result = await deps.queue(sessionId);
+        return result.ok ? { ok: true, state: result.state, targetVersion: deps.version } : { ok: false, code: result.code };
+    }
+    const refusal = idleRestartSessionRefusal(deps.facts(sessionId));
+    if (refusal) return { ok: false, code: refusal };
+    if (deps.queued(sessionId)) return { ok: false, code: 'already-queued' };
+    const t = deps.now();
+    const verdict = idleRestartReady({ ...deps.activity(sessionId), now: t, requestedAt: t, lastTurnEndedAt: null, quietMs: deps.quietMs, observeMs: 0 });
+    if (!verdict.ready) return { ok: false, code: 'busy', error: `busy:${verdict.wait}` };
+    // A daemon that just started (handover / restart) has not seen the session's next lease renewal yet:
+    // turnActive=false / backgroundTasks=0 / no turn edge means "unknown", not idle (same reason as `watchingSince` above).
+    if (t - deps.watchingSince < deps.minObserveMs) return { ok: false, code: 'busy', error: 'busy:observing' };
+    const result = await deps.restartIfIdle(sessionId);
+    if (result.ok) return { ok: true, state: 'restarted', targetVersion: deps.version };
+    return { ok: false, code: result.error.startsWith('busy:') ? 'busy' : 'restart-failed', error: result.error };
+}

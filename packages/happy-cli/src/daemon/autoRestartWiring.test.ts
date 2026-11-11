@@ -106,6 +106,16 @@ describe('B-911 idle restart wiring', () => {
         expect(control).toContain("typed.post('/session-restart-request'");
         expect(bridge).toContain('callTool({ name: IDLE_RESTART_TOOL_NAME, arguments: {} })');
     });
+    it('B-919: the main agent\'s restart is a new control route on the owner queue / the ifIdle restart', () => {
+        expect(control).toContain("typed.post('/session-restart-owner'");
+        expect(run).toContain("queue: (sessionId) => idleRestart!.request({ sessionId, source: 'owner', target: autoRestartScheduler.statuses()[sessionId]?.target ?? null }),");
+        expect(run).toContain("const result = await restartSession(sessionId, { keepPublishedPermissionMode: true, ifIdle: true });");
+        expect(run).toContain('      requestOwnerRestart,');
+        // QA P2-2: the owner's `now` sees the queue's own inputs (automation runs, the last turn edge, the quiet period).
+        expect(run).toContain('automationRunning: automationRunner?.hasSession(sessionId) === true,\n        upgradePending: upgradePending(),\n        lastTurnEventAt: idleRestart!.lastTurnEventAt(sessionId),');
+        expect(run).toContain('      quietMs: idleRestartTiming.quietMs,');
+        expect(run).toContain('      watchingSince: idleRestartWatchingSince,\n      minObserveMs: IDLE_RESTART_MIN_OBSERVE_MS,');
+    });
     it('turn edges and wrapper exits reach the queue', () => {
         expect(run).toContain('turnActivity.onEvent((sessionId, event) => idleRestart?.noteTurn(sessionId, event));');
         expect(run).toContain('if (session?.happySessionId) idleRestart?.forget(session.happySessionId);');

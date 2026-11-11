@@ -500,7 +500,7 @@ export function formatBuiltinResults(results: readonly BuiltinRequestResult[], u
     return results.flatMap((r) => r.state === 'error'
         ? [`${r.sessionId} ${chalk.red('error')}: ${r.error ?? 'failed'}`]
         : [
-            `${r.sessionId} ${r.state === 'queued' ? 'queued' : 'running (already in progress, nothing sent)'}`,
+            `${r.sessionId} ${r.deduped ? `${r.state} (this request id was already sent, nothing sent again)` : r.state === 'queued' ? 'queued' : 'running (already in progress, nothing sent)'}`,
             // B-915c: an older wrapper (no `wrapup-v1`) gets the turn but posts no card — the Web toast's hint.
             ...(r.state === 'queued' && upgradeNeeded.includes(r.sessionId) ? [`  ${chalk.yellow('hint')}: ${WRAPUP_UPGRADE_HINT}`] : []),
         ])

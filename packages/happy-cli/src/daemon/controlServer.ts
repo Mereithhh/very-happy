@@ -6,6 +6,7 @@
 import { AgentProfilesStateSchema, type AgentProfilesState } from '@slopus/happy-wire';
 import fastify, { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import type { OwnerRestartResult } from './idleRestart';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { logger } from '@/ui/logger';
 import { Metadata } from '@/api/types';
@@ -75,6 +76,8 @@ const AutoRestartStatusSchema = z.object({
 export type IdleRestartReply =
   | { ok: true; state: 'queued' | 'already-queued'; requestedAt: number }
   | { ok: false; code: string; retryAfterMs?: number };
+/** B-919: the main agent's `session_restart` (`/session-restart-owner`). */
+export type OwnerRestartReply = OwnerRestartResult;
 const IdleRestartListStatusSchema = z.object({
   source: z.string(),
   requestedAt: z.number(),
@@ -133,6 +136,7 @@ export function startDaemonControlServer({
   onHibernateCheck,
   requestIdleRestart,
   getIdleRestartStatus,
+  requestOwnerRestart,
   getAgentProfiles
 }: {
   /** Fresh per-process bearer token persisted in the private daemon state. */
@@ -209,6 +213,13 @@ export function startDaemonControlServer({
   requestIdleRestart?: (body: { sessionId: string; pid: number }) => Promise<IdleRestartReply>;
   /** B-911: the queued idle restart of a session, for `daemon list`. */
   getIdleRestartStatus?: (sessionId: string) => IdleRestartListStatus | undefined;
+  /**
+   * B-919: the main agent restarts a session the owner named — `idle` queues
+   * it like the owner's 「本轮结束后重启」, `now` restarts only a session that
+   * is idle right now. Absent → 404 (the tool says the daemon is too old;
+   * a new route, so an old daemon can never take it as an immediate restart).
+   */
+  requestOwnerRestart?: (body: { sessionId: string; when: 'idle' | 'now' }) => Promise<OwnerRestartReply>;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
     const app = fastify({
@@ -355,6 +366,24 @@ export function startDaemonControlServer({
           return await requestIdleRestart(request.body);
         } catch (error) {
           logger.debug('[CONTROL SERVER] idle restart request failed:', error);
+          return { ok: false, code: 'error' };
+        }
+      });
+    }
+
+    if (requestOwnerRestart) {
+      typed.post('/session-restart-owner', {
+        schema: {
+          body: z.object({ sessionId: z.string().min(1).max(128), when: z.enum(['idle', 'now']) }),
+          response: {
+            200: z.object({ ok: z.boolean(), state: z.string().optional(), targetVersion: z.string().optional(), code: z.string().optional(), error: z.string().optional() }),
+          },
+        },
+      }, async (request) => {
+        try {
+          return await requestOwnerRestart(request.body);
+        } catch (error) {
+          logger.debug('[CONTROL SERVER] owner restart request failed:', error);
           return { ok: false, code: 'error' };
         }
       });

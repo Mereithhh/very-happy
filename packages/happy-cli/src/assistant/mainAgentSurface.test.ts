@@ -28,7 +28,7 @@ const HUGE = 'x'.repeat(60_000);
 /** Per-item filler for long lists (hundreds of items × MID is still megabytes of JSON). */
 const MID = 'm'.repeat(1_500);
 const many = <T>(n: number, f: (i: number) => T) => Array.from({ length: n }, (_, i) => f(i));
-const state = vi.hoisted(() => ({ spawnCalls: [] as any[], order: [] as string[], boardPosts: [] as any[] }));
+const state = vi.hoisted(() => ({ spawnCalls: [] as any[], order: [] as string[], boardPosts: [] as any[], lifecycle: [] as string[] }));
 
 vi.mock('@/attention/client', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/attention/client')>();
@@ -87,10 +87,17 @@ vi.mock('@/assistant/mainAgentDeps', () => {
                 : { id: 'u1', key: 'VH-1', title: 'T'.repeat(500), status: command.action === 'complete' ? 'done' : 'open', version: 2 },
             machineId: async () => 'm1',
             sessionId,
-            restartNow: async () => ({ success: true }),
         }),
     };
 });
+// B-919: the backends startHappyServer installs (their own logic: mainAgentLifecycle.test.ts).
+vi.mock('@/assistant/mainAgentLifecycle', () => ({
+    createLiveMainAgentLifecycle: (selfId: () => string) => ({
+        wrapup: async ({ sessionId }: any) => { state.lifecycle.push(`wrapup:${sessionId}:${selfId()}`); return { ok: true, sessionId, state: 'queued' }; },
+        handoff: async ({ from, to }: any) => { state.lifecycle.push(`handoff:${from}->${to}`); return { ok: true, from, to: to === 'new' ? 'fresh' : to, state: 'queued' }; },
+        restart: async ({ sessionId, when }: any) => { state.lifecycle.push(`restart:${sessionId}:${when}`); return { ok: true, sessionId, scheduled: when }; },
+    }),
+}));
 vi.mock('@/sessions/sessionOps', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/sessions/sessionOps')>();
     const summary = (i: number) => ({ id: `sess-${i}`, live: true, title: `Session ${i} ${'t'.repeat(300)}`, cwd: `/repo/${'d'.repeat(100)}`, flavor: 'claude', url: `https://example.test/s/${i}` });
@@ -197,7 +204,7 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
     afterEach(async () => {
         await mcp?.close(); mcp = undefined;
         happy?.stop(); happy = undefined;
-        state.spawnCalls = []; state.order = []; state.boardPosts = [];
+        state.spawnCalls = []; state.order = []; state.boardPosts = []; state.lifecycle = [];
         delete process.env.VH_TEAM_SCOPE_FILE;
     });
 
@@ -226,6 +233,26 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
         expect(normal).not.toContain('lead_delegate');
         expect(normal).not.toContain('owner_board_post');
         expect(normal).toContain('issue_list');
+    });
+
+    it('B-919: session_wrapup / session_handoff registered once each and wired to the installed backends; a normal session keeps the B-915 tools', async () => {
+        const tools = await connect({ assistant: true, mainAgent: testMainAgent() });
+        const names = tools.map(t => t.name);
+        for (const name of ['session_wrapup', 'session_handoff', 'session_restart', 'wrapup_report', 'handoff_send']) expect(names.filter(n => n === name), name).toHaveLength(1);
+        // The main agent's own contract (one sessionId), not the B-915 batch shape.
+        expect(Object.keys((tools.find(t => t.name === 'session_wrapup')!.inputSchema as any).properties)).toEqual(['sessionId', 'requestId']);
+        const wrap = await mcp!.callTool({ name: 'session_wrapup', arguments: { sessionId: 'sess-9' } });
+        expect(wrap.isError).toBe(false);
+        expect(JSON.parse(textOf(wrap))).toEqual({ ok: true, sessionId: 'sess-9', state: 'queued' });
+        expect(JSON.parse(textOf(await mcp!.callTool({ name: 'session_handoff', arguments: { from: 'sess-9' } })))).toEqual({ ok: true, from: 'sess-9', to: 'fresh', state: 'queued' });
+        expect(state.lifecycle).toEqual(['wrapup:sess-9:main-agent', 'handoff:sess-9->new']);
+        await mcp!.close(); happy!.stop(); mcp = undefined; happy = undefined;
+
+        const normal = await connect({}, 'normal-session');
+        const normalNames = normal.map(t => t.name);
+        for (const name of ['session_wrapup', 'session_handoff', 'wrapup_report', 'handoff_send']) expect(normalNames.filter(n => n === name), name).toHaveLength(1);
+        expect(normalNames).not.toContain('session_restart');
+        expect(Object.keys((normal.find(t => t.name === 'session_wrapup')!.inputSchema as any).properties)).toEqual(expect.arrayContaining(['session_ids', 'session_id']));
     });
 
     it('QA77 #6: an assistant without the gate runtime (pi / ACP) gets only the legacy B-051 tools', async () => {

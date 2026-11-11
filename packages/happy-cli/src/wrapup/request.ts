@@ -40,16 +40,22 @@ import { isValidSessionId } from '@/assistant/ids'
 import { deliverToSession, type DeliveryResult } from '@/commands/sessionDelivery'
 import { sendUserMessage } from '@/commands/sessionMessage'
 import { sendRemoteMessage } from '@/sessions/remoteSessionClient'
-import { readSessionMetadata, readSessionState, type SessionServerState } from '@/sessions/sessionOps'
+import { readSessionMetadata, readSessionState, sessionHasLocalId, type SessionServerState } from '@/sessions/sessionOps'
 import { AttentionUnsupportedError, sharedAttentionClient } from '@/attention/client'
 import type { BuiltinMode } from './report'
 
-export type BuiltinRequestState = 'queued' | 'running' | 'error'
+export type BuiltinRequestState = 'queued' | 'running' | 'done' | 'error'
 
 export interface BuiltinRequestResult {
     sessionId: string
     state: BuiltinRequestState
     error?: string
+    /**
+     * B-919: this requestId was already delivered (its localId is in the
+     * session): nothing was sent again. `state` is that request's card when
+     * the board shows it (running / done), otherwise `queued`.
+     */
+    deduped?: true
 }
 
 /** `meta.sentFrom` of these turns: not the owner typing (no owner question item). */
@@ -70,6 +76,8 @@ export interface BuiltinRequestDeps {
     deliverRemote: (sessionId: string, text: string, options: DeliverOptions) => Promise<DeliveryResult>
     now: () => number
     nonce: () => string
+    /** B-919: a message with this localId is among the session's newest (a retried requestId). Unknown → false (the server dedupes the POST anyway). */
+    localIdExists: (sessionId: string, localId: string) => Promise<boolean>
     /** B-915c: the session's live wrapper capabilities (server metadata, local key); null when this machine cannot read them. */
     readCapabilities: (sessionId: string, persisted: PersistedSession | undefined) => Promise<readonly string[] | null>
 }
@@ -111,6 +119,7 @@ export function defaultBuiltinRequestDeps(): BuiltinRequestDeps {
         deliverRemote: (sessionId, text, options) => sendRemoteMessage(sessionId, text, { sentFrom: SENT_FROM, localId: options.localId, displayText: options.displayText, resume: options.resume }),
         now: Date.now,
         nonce: () => randomUUID(),
+        localIdExists: (sessionId, localId) => sessionHasLocalId(sessionId, localId).catch(() => false),
         readCapabilities: async (sessionId, persisted) => {
             if (!persisted) return null
             try {
@@ -138,11 +147,21 @@ async function inProgress(deps: BuiltinRequestDeps, sessionId: string, mode: Bui
     return items.some((item) => item.key === key && wrapupInProgress(item, mode, deps.now()))
 }
 
+/** The card of an already-delivered request (its `payload.localId`): running / done; otherwise queued (not picked up yet, or no board). */
+async function dedupedState(deps: BuiltinRequestDeps, sessionId: string, mode: BuiltinMode, localId: string): Promise<'queued' | 'running' | 'done'> {
+    const key = mode === 'wrapup' ? WRAPUP_ITEM_KEY : HANDOFF_ITEM_KEY
+    const card = (await deps.openItems(sessionId).catch(() => [])).find((item) => item.key === key && (item.payload as { localId?: unknown } | null)?.localId === localId)
+    const status = (card?.payload as { status?: unknown } | null | undefined)?.status
+    return status === 'running' ? 'running' : status === 'done' ? 'done' : 'queued'
+}
+
 /** Send one built-in turn; never throws (a refusal is a receipt with `error`). */
 async function sendTurn(deps: BuiltinRequestDeps, sessionId: string, mode: BuiltinMode, text: string, displayText: string, requestId: string | undefined): Promise<BuiltinRequestResult> {
     const nonce = builtinNonce(requestId, mode, sessionId, deps.nonce)
     const localId = mode === 'wrapup' ? wrapupLocalId(nonce) : handoffLocalId(nonce)
     try {
+        // B-919: a retried requestId reuses its localId; the server keeps one message per localId, so say so instead of "queued".
+        if (requestId && await deps.localIdExists(sessionId, localId)) return { sessionId, state: await dedupedState(deps, sessionId, mode, localId), deduped: true }
         if (await inProgress(deps, sessionId, mode)) return { sessionId, state: 'running' }
         const state = await deps.readState(sessionId)
         if (!state.found) return { sessionId, state: 'error', error: `Session ${sessionId} was not found on this account` }

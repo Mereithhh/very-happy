@@ -6,10 +6,16 @@
  * scripts/dev/mutation-check.mjs.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { WRAPUP_TOOL_NAMES } from '@slopus/happy-wire'
 import { executeWrapupTool, registerWrapupTools } from './tools'
 
+function sourceFiles(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap(entry => entry.isDirectory()
+        ? sourceFiles(join(dir, entry.name))
+        : entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts') ? [join(dir, entry.name)] : [])
+}
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8').replace(/^\s*\/\/.*$/gm, '')
 
 describe('wrap-up tool surface', () => {
@@ -25,6 +31,24 @@ describe('wrap-up tool surface', () => {
         const source = read('../codex/happyMcpStdioBridge.ts')
         expect(source).toContain('registerWrapupTools(server, (name, args) => forwardTeam(name, args as Record<string, unknown>));')
         expect(source.match(/registerTool\(/g)).toHaveLength(3)
+        // B-919: the bridge never carries the main agent's own lifecycle tools (no second session_wrapup):
+        // the main agent surface exists only with the Claude runner's gate runtime.
+        expect(source).not.toContain('MAIN_AGENT')
+        expect(source).not.toContain('registerMainAgentTools')
+        expect(read('../claude/utils/startHappyServer.ts')).toContain('return options?.assistant === true && !env.VH_TEAM_SCOPE_FILE && options.mainAgent !== undefined;')
+        expect(read('../codex/runCodex.ts')).not.toMatch(/mainAgent/)
+    })
+    it('B-919: the main agent gets its lifecycle backends from startHappyServer, and no code calls them on a timer', () => {
+        const source = read('../claude/utils/startHappyServer.ts')
+        expect(source).toContain('if (mainAgentLifecycle) installSessionLifecycle(createLiveMainAgentLifecycle(() => client.sessionId));')
+        expect(source).toContain('if (mainAgentLifecycle) installSessionLifecycle(null);')
+        // Every caller of the wrap-up request is a user-facing entry (owner's CLI, an agent's tool on the owner's
+        // word): a new caller (a scheduler, the daemon, an automation) must be reviewed against the
+        // "no automatic wrap-up" decision first.
+        const callers = sourceFiles(new URL('..', import.meta.url).pathname).filter(file => /requestWrapup\b|lifecycle\.wrapup\b/.test(readFileSync(file, 'utf8')))
+        expect(callers.map(file => file.slice(file.lastIndexOf('/src/') + 5)).sort()).toEqual([
+            'assistant/mainAgentLifecycle.ts', 'assistant/mainAgentTools.ts', 'commands/sessions.ts', 'wrapup/request.ts', 'wrapup/tools.ts',
+        ])
     })
     it('every runner signals the end of a turn with ready (the archive trigger outside Claude)', () => {
         expect(read('../api/apiSession.ts')).toContain("if (event.type === 'ready') {")

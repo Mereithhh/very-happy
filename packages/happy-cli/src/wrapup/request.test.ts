@@ -17,6 +17,7 @@ function deps(over: Partial<BuiltinRequestDeps> = {}) {
         deliverRemote: async (sessionId, text, o) => { sent.push({ via: 'remote', sessionId, text, ...o }); return live(sessionId) },
         now: () => 10_000,
         nonce: () => 'rnd',
+        localIdExists: async () => false,
         ...over,
     }
     return { d, sent }
@@ -51,6 +52,28 @@ describe('B-915 session_wrapup / sessions wrapup', () => {
         expect(sent[0].localId).toBe(`wrapup-${builtinNonce('req-1', 'wrapup', 'local1', () => 'x')}`)
         expect(builtinNonce('req-1', 'wrapup', 'local1', () => 'x')).toBe(builtinNonce('req-1', 'wrapup', 'local1', () => 'y'))
         expect(builtinNonce('req-1', 'wrapup', 'local1', () => 'x')).not.toBe(builtinNonce('req-1', 'handoff', 'local1', () => 'x'))
+    })
+
+    it('B-919: a retried request id whose localId is already in the session sends nothing and says deduped (state from its card)', async () => {
+        const localId = `wrapup-${builtinNonce('req-9', 'wrapup', 'local1', () => 'x')}`
+        const seen: string[] = []
+        const card = (status: string) => ({ kind: 'wrapup', key: 'wrapup', state: 'open', updatedAt: 9_000, payload: { v: 1, mode: 'wrapup', status, localId, startedAt: 9_000 } })
+        for (const [items, state] of [[[], 'queued'], [[card('running')], 'running'], [[card('done')], 'done']] as const) {
+            const { d, sent } = deps({ localIdExists: async (_s, id) => { seen.push(id); return true }, openItems: async () => items as never })
+            expect(await requestWrapup(['local1'], { requestId: 'req-9' }, d)).toEqual([{ sessionId: 'local1', state, deduped: true }])
+            expect(sent).toEqual([])
+        }
+        expect(new Set(seen)).toEqual(new Set([localId]))
+        // Without a request id the nonce is random: nothing to look up.
+        const lookup = vi.fn(async () => true)
+        const { d, sent } = deps({ localIdExists: lookup })
+        expect(await requestWrapup(['local1'], {}, d)).toEqual([{ sessionId: 'local1', state: 'queued' }])
+        expect(lookup).not.toHaveBeenCalled()
+        expect(sent).toHaveLength(1)
+        // Handoff to an existing session: same rule.
+        const h = deps({ localIdExists: async () => true })
+        expect(await requestHandoff({ from: 'local1', to: 'local2', requestId: 'req-9' }, h.d)).toEqual({ sessionId: 'local1', state: 'queued', deduped: true })
+        expect(h.sent).toEqual([])
     })
 
     it('a session that is not live is an error receipt, never a throw', async () => {

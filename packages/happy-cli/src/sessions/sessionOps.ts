@@ -438,6 +438,30 @@ export async function readSessionLog(sessionId: string, persisted: PersistedSess
 }
 
 /**
+ * B-919: whether one of the session's newest `window` messages carries
+ * `localId` (plaintext column — no key needed, any session of the account).
+ * A request id retried long after (beyond the window) is not seen here; the
+ * server still stores only one message per localId.
+ */
+export async function sessionHasLocalId(sessionId: string, localId: string, window = 500): Promise<boolean> {
+    const token = await bearerToken()
+    const response = await axios.get(
+        `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(sessionId)}/messages`,
+        {
+            params: { before_seq: 2147483647, limit: window },
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'X-Happy-Client': `${SESSION_OPS_CLIENT}/${configuration.currentCliVersion}`,
+            },
+            timeout: 15_000,
+            validateStatus: (status) => (status >= 200 && status < 300) || status === 404,
+        },
+    )
+    const messages: Array<{ localId?: unknown }> = Array.isArray(response.data?.messages) ? response.data.messages : []
+    return messages.some((message) => message.localId === localId)
+}
+
+/**
  * How many messages turn analysis looks at. The server caps a page at 500; a
  * single turn longer than that (hundreds of tool calls) falls back to the last
  * turn marker — see analyzeLatestTurn.
