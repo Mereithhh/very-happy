@@ -15,13 +15,15 @@
  *    `memory_update` / `journal_append` are MCP tools that write in the wrapper.
  *
  * Paths are resolved (`~`, relative to the call's cwd, `..`, symlinks through
- * the nearest existing ancestor) before the check. In every preset. The wrapper
+ * the nearest existing ancestor, dangling symlinks too) before the check; hard
+ * links cannot be told apart from the file (needs a shell to create: same limit
+ * as Bash on). In every preset. The wrapper
  * and the daemon read and write these files directly, not through these tools.
  * With Bash on the agent can read them anyway: stated in the Web toggle and
  * spec §4.3; server-side hardening is B-927.
  */
 
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, readlinkSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
@@ -42,11 +44,27 @@ function expand(path: string, cwd: string, home: string): string {
     return isAbsolute(p) ? resolve(p) : resolve(cwd, p)
 }
 
-/** Resolve symlinks through the nearest existing ancestor (the leaf may not exist yet). */
-function real(path: string): string {
+/** A symlink whose target does not exist (yet): existsSync says false, lstat says link. */
+function danglingLinkTarget(path: string): string | null {
+    try {
+        if (!lstatSync(path).isSymbolicLink()) return null
+        const target = readlinkSync(path)
+        return isAbsolute(target) ? resolve(target) : resolve(dirname(path), target)
+    } catch { return null }
+}
+
+/**
+ * Resolve symlinks through the nearest existing ancestor (the leaf may not exist yet).
+ * A dangling symlink on the way is followed too (QA-U r2 P3-3: `/tmp/x.json` →
+ * `~/.happy/.../forged.json` before the target exists), up to `hops` links.
+ * Hard links have no target to follow: a known limit (spec §4.3).
+ */
+function real(path: string, hops = 8): string {
     let cur = path
     const rest: string[] = []
     while (!existsSync(cur)) {
+        const target = hops > 0 ? danglingLinkTarget(cur) : null
+        if (target !== null) return real(join(target, ...rest), hops - 1)
         const parent = dirname(cur)
         if (parent === cur) return path
         rest.unshift(basename(cur))

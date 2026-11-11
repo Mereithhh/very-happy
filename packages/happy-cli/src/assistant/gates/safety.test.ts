@@ -433,6 +433,26 @@ describe('QA P2-2: HAPPY_HOME is closed to the main agent file tools (read allow
         expect(p.check('Write', { file_path: join(root, 'notes.md') }, cwd)).toBeNull()
     })
 
+    it('QA-U r2 P3-3: a dangling symlink into HAPPY_HOME is followed (target not created yet), chains too', async () => {
+        const { symlink } = await import('node:fs/promises')
+        const { root, hh, cwd } = await happyHome()
+        const p = protectedPathsFor(hh, { home: root })
+        const forged = join(hh, 'main-agent-approvals', 'pending-tool', 'forged.json')
+        await symlink(forged, join(root, 'x.json'))                         // absolute, target missing
+        await symlink(join('.happy', 'assistant', 'nope', 'y.json'), join(root, 'rel.json')) // relative, missing parent dir too
+        await symlink(join(root, 'x.json'), join(root, 'chain.json'))      // link → dangling link
+        await symlink(join(hh, 'main-agent-approvals', 'pending-tool'), join(root, 'dir-link'))
+        for (const fp of [join(root, 'x.json'), join(root, 'rel.json'), join(root, 'chain.json'), join(root, 'dir-link', 'new.json')]) {
+            expect(p.check('Write', { file_path: fp }, cwd), fp).toBe(PROTECTED_PATH_REASON)
+            expect(p.check('Read', { file_path: fp }, cwd), fp).toBe(PROTECTED_PATH_REASON)
+        }
+        // a dangling link pointing outside HAPPY_HOME stays allowed; a self-loop does not hang
+        await symlink(join(root, 'missing', 'z.md'), join(root, 'out.md'))
+        await symlink(join(root, 'loop.md'), join(root, 'loop.md'))
+        expect(p.check('Write', { file_path: join(root, 'out.md') }, cwd)).toBeNull()
+        expect(p.check('Write', { file_path: join(root, 'loop.md') }, cwd)).toBeNull()
+    })
+
     it('search: Grep / Glob only inside the allowlist; anything covering HAPPY_HOME is refused', async () => {
         const { root, hh, cwd } = await happyHome()
         const p = protectedPathsFor(hh, { home: root })
