@@ -53,7 +53,7 @@ describe('sticky head and foot (CSS contract)', () => {
     const teams = strip(read('../screens/teams/teams.css'));
     // top level (line start), not inside a media query
     expect(teams).toMatch(/\n\.teams-dialog > form > button:last-child \{[^}]*position: sticky;/);
-    expect(teams).toMatch(/\n\.teams-dialog > form > button:last-child \{[^}]*box-shadow: 0 0 0 100vmax var\(--bg-1\);[^}]*clip-path: inset\(/);
+    expect(teams).toMatch(/\n\.teams-dialog > form > button:last-child \{[^}]*box-shadow: 0 0 0 100vmax var\(--bg-1\);[^}]*clip-path: inset\(calc\(-1 \* var\(--sp-3\)\) -100vw calc\(-1 \* var\(--teams-submit-gap\)\)\);/);
     // a disabled submit stays opaque (opacity would show the body through the strip)
     expect(teams).toMatch(/\.teams-dialog > form > \.teams-primary:last-child:disabled \{[^}]*opacity: 1;/);
   });

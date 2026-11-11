@@ -89,8 +89,11 @@ describe('four-sided safe area', () => {
 
     it('the phone bottom sheet and its sticky footer pad the side insets', () => {
         const dialog = read('styles/dialog.css');
-        expect(dialog).toContain('padding: var(--sp-4) calc(var(--sp-4) + var(--sa-r)) 0 calc(var(--sp-4) + var(--sa-l));');
-        expect(dialog).toContain('padding: var(--sp-3) calc(var(--sp-4) + var(--sa-r)) max(var(--sp-3), var(--sa-b)) calc(var(--sp-4) + var(--sa-l));');
+        // B-928: the card padding is --vh-dialog-p* (the sticky head/foot bleed over it)
+        expect(dialog).toContain('--vh-dialog-pr: calc(var(--sp-4) + var(--sa-r));');
+        expect(dialog).toContain('--vh-dialog-pl: calc(var(--sp-4) + var(--sa-l));');
+        expect(dialog).toContain('padding: var(--vh-dialog-pt) var(--vh-dialog-pr) var(--vh-dialog-pb) var(--vh-dialog-pl);');
+        expect(dialog).toContain('padding: var(--sp-3) var(--vh-dialog-pr) max(var(--sp-3), var(--sa-b)) var(--vh-dialog-pl);');
     });
 
     it('toasts centre between the side insets', () => {
