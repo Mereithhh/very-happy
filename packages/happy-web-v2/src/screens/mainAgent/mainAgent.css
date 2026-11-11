@@ -1,21 +1,51 @@
-/* Main agent (B-916a) — drawer (desktop) and full-screen page (phone).
- * Tokens only. The drawer is a non-modal side layer (no scrim): the page
- * behind stays usable, like the notes dock. The page variant fills --app-h,
- * which B-797 shrinks to the visual viewport when the soft keyboard opens,
- * so the composer stays above the keyboard. */
+/* Main agent (B-916a, B-923) — the desktop column and the full-screen page (phone).
+ * Tokens only. The column is a flex item at the right end of the shell's main
+ * row (detail | notes | main agent): it squeezes the session area instead of
+ * floating over it; widths are clamped in mainAgentDock.ts. The page variant
+ * fills --app-h, which B-797 shrinks to the visual viewport when the soft
+ * keyboard opens, so the composer stays above the keyboard. */
 
-.ma-drawer {
-  position: fixed;
-  /* follows the visual viewport (B-797 vars) so a touch keyboard never covers the composer */
-  top: calc(var(--vv-top, 0px) + var(--sa-t));
-  right: 0;
-  height: calc(var(--vv-h, var(--app-h)) - var(--sa-t));
-  z-index: 1500; /* below the palette / notification shelf (1600), above chrome */
-  width: min(440px, 100vw);
+.ma-dock-slot {
+  display: contents;
+}
+.ma-dock {
+  flex: none;
   display: flex;
+  min-width: 0;
+  min-height: 0;
   background: var(--bg-1);
-  border-left: 1px solid var(--line);
-  box-shadow: var(--shadow-pop);
+  transition: opacity var(--motion-fast);
+}
+.ma-dock:focus {
+  outline: none;
+}
+.ma-dock:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.ma-dock.ma-dock--collapse-armed {
+  opacity: 0.45;
+}
+/* the separator's 1px line is the seam (visuals from .app-resize-handle, layout.css) */
+.app-resize-handle.ma-dock-handle {
+  flex: none;
+  width: 6px;
+  background: var(--bg-0);
+  touch-action: none;
+}
+.ma-dock-handle:focus {
+  outline: none;
+}
+.ma-dock-handle:focus-visible::after {
+  width: 2px;
+  background: var(--accent);
+}
+.ma-dock-handle[data-collapse='armed']::after {
+  background: var(--text-faint);
+}
+/* the notes dock shares the row: it leaves the column + 320px of content */
+.app-main-row[data-ma-dock='open'] > .notes-dock {
+  max-width: calc(100% - var(--ma-dock-w, 0px) - 320px);
 }
 
 .ma-page {

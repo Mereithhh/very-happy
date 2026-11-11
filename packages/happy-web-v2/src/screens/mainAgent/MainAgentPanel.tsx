@@ -1,6 +1,6 @@
 /**
  * MainAgentPanel — the text view of THE main agent (B-916a), shared by the
- * desktop drawer and the phone's /main-agent page. Text only (Owner 11-11: no
+ * desktop column (B-923) and the phone's /main-agent page. Text only (Owner 11-11: no
  * voice in phase 1 — /assistant keeps its voice form).
  *
  * States come from resolveMainAgent: enable (pick a machine; recommended =
@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Bot, ExternalLink, RotateCcw, SendHorizontal, Settings, X } from 'lucide-react';
+import { ArrowLeft, Bot, ExternalLink, PanelRightClose, RotateCcw, SendHorizontal, Settings } from 'lucide-react';
 import { Button, Spinner, StatusDot } from '@/ui';
 import { Summary } from '@/ui/Summary';
 import { Modal } from '@/modal';
@@ -27,15 +27,20 @@ import { mainAgentCopy, type MainAgentCopy } from '@/assistant/mainAgentCopy';
 import { useMainAgentActions } from '@/assistant/useMainAgent';
 import { useMainAgentStore } from '@/assistant/mainAgentStore';
 import type { Machine } from '@/sync/storageTypes';
+import { mainAgentToolView } from './toolCards/mainAgentToolView';
+import { MainAgentToolCard } from './toolCards/MainAgentToolCard';
+import { mainAgentToolCopy } from './toolCards/mainAgentToolCopy';
+import { MAIN_AGENT_CHORD_HINT } from '@/screens/command/mainAgentPalette';
 import './mainAgent.css';
 
 export function MainAgentPanel({ state, variant, onClose }: {
     state: MainAgentState;
-    variant: 'drawer' | 'page';
+    variant: 'dock' | 'page';
     onClose: () => void;
 }) {
     const { lang } = useTranslation();
     const copy = mainAgentCopy(lang);
+    const toolCopy = mainAgentToolCopy(lang);
     const navigate = useNavigate();
     const actions = useMainAgentActions();
     const dot = mainAgentDot(state);
@@ -87,8 +92,8 @@ export function MainAgentPanel({ state, variant, onClose }: {
                         <button type="button" className="ma-icon-btn" onClick={() => navigate(`/session/${session.id}`)} aria-label={copy.openSession} title={copy.openSession}><ExternalLink size={16} /></button>
                     )}
                     <button type="button" className="ma-icon-btn" onClick={() => navigate('/settings/main-agent')} aria-label={copy.openSettings} title={copy.openSettings}><Settings size={16} /></button>
-                    {variant === 'drawer' && (
-                        <button type="button" className="ma-icon-btn" onClick={onClose} aria-label={copy.close} title={copy.close}><X size={17} /></button>
+                    {variant === 'dock' && (
+                        <button type="button" className="ma-icon-btn" onClick={onClose} aria-label={toolCopy.dockCollapse} title={`${toolCopy.dockCollapse} · ${MAIN_AGENT_CHORD_HINT}`}><PanelRightClose size={17} /></button>
                     )}
                 </div>
             </header>
@@ -180,7 +185,7 @@ function MainAgentConversation({ sessionId, gates, offlineMachine, copy }: { ses
     useEffect(() => { sync.onSessionEnter(sessionId); }, [sessionId]);
     const session = useSession(sessionId);
     const { messages, isLoaded } = useSessionMessages(sessionId);
-    const transcript = useMemo(() => deriveTranscript(messages, { keepOptions: true }), [messages]);
+    const transcript = useMemo(() => deriveTranscript(messages, { keepOptions: true, withTool: true }), [messages]);
     const pending = useMemo(() => derivePendingPermission(session?.agentState), [session?.agentState]);
 
     const [draft, setDraft] = useState('');
@@ -239,6 +244,9 @@ function MainAgentConversation({ sessionId, gates, offlineMachine, copy }: { ses
                 {transcript.map((e) => {
                     if (e.role === 'thinking') return null;
                     if (e.role === 'tool') {
+                        // B-923: main agent tools render as semantic cards; anything else keeps the generic row
+                        const card = e.tool ? mainAgentToolView(e.tool) : null;
+                        if (card) return <MainAgentToolCard key={e.id} view={card} mainAgentSessionId={sessionId} />;
                         return e.detail ? (
                             <details key={e.id} className="ma-tool">
                                 <Summary className="ma-tool-summary"><span className="mono">{e.toolName}</span>{e.toolState && e.toolState !== 'completed' && <span className="ma-tool-state">· {e.toolState}</span>}</Summary>

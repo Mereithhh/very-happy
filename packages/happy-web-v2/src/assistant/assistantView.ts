@@ -10,7 +10,7 @@
 
 import { extractOptions } from '@/screens/session/optionsBlock';
 import { stripAttachedFiles } from '@/screens/session/attachedFiles';
-import type { Message, AgentTextMessage } from '@/sync/typesMessage';
+import type { Message, AgentTextMessage, ToolCall } from '@/sync/typesMessage';
 import type { AgentState } from '@/sync/storageTypes';
 import { compareMessagesNewestFirst } from '@/sync/messageOrder';
 import { parseTaskNotification } from '@/screens/session/harness';
@@ -142,6 +142,8 @@ export interface TranscriptEntry {
      *  friendly label + icon while `text` stays the raw fallback */
     toolName?: string;
     toolState?: 'running' | 'completed' | 'error';
+    /** tool rows only (B-923): the whole call, so the main agent can render a semantic card from input + result */
+    tool?: ToolCall;
 }
 
 const TOOL_DETAIL_MAX_CHARS = 600;
@@ -153,7 +155,8 @@ const TOOL_DETAIL_MAX_CHARS = 600;
  * assistant reply's <options> block is flattened to visible "▸ …" lines.
  */
 /** `keepOptions` (B-916a main agent drawer): keep the raw `<options>` block so `<Markdown onOption>` renders tappable answers. */
-export function deriveTranscript(messages: Message[], opts?: { keepOptions?: boolean }): TranscriptEntry[] {
+/** `withTool` (B-923 main agent cards): tool rows carry the whole call. */
+export function deriveTranscript(messages: Message[], opts?: { keepOptions?: boolean; withTool?: boolean }): TranscriptEntry[] {
     const sorted = [...messages].sort(compareMessagesNewestFirst).reverse(); // oldest first
     const out: TranscriptEntry[] = [];
     for (const m of sorted) {
@@ -194,6 +197,7 @@ export function deriveTranscript(messages: Message[], opts?: { keepOptions?: boo
                 detail,
                 toolName: m.tool.name,
                 toolState: m.tool.state,
+                ...(opts?.withTool ? { tool: m.tool } : {}),
             });
         }
     }

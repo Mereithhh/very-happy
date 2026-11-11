@@ -1,0 +1,171 @@
+/* B-923 — main agent tool cards. Tokens only; one closed outline (.vh-panel),
+ * everything inside is borderless (fill steps + one hairline above the raw
+ * details). Sizes follow the conversation scale. */
+
+.ma-tc {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--sp-2) var(--sp-3);
+  min-width: 0;
+  font-size: var(--chat-fs-secondary);
+  color: var(--text);
+}
+.ma-tc-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.ma-tc-icon {
+  flex: none;
+  color: var(--text-dim);
+}
+.ma-tc[data-kind='blocked'] .ma-tc-icon,
+.ma-tc[data-status='failed'] .ma-tc-icon {
+  color: var(--danger);
+}
+.ma-tc[data-status='awaiting'] .ma-tc-icon {
+  color: var(--warn);
+}
+.ma-tc-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ma-tc-pill {
+  font-size: var(--chat-fs-badge);
+}
+.ma-tc-heading {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.ma-tc-reason {
+  margin: 0;
+  color: var(--text-dim);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.ma-tc[data-kind='blocked'] .ma-tc-reason,
+.ma-tc[data-status='failed'] .ma-tc-reason {
+  color: color-mix(in srgb, var(--danger) 75%, var(--text));
+}
+.ma-tc-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--sp-3);
+  margin: 0;
+  min-width: 0;
+}
+.ma-tc-field {
+  display: inline-flex;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.ma-tc-field dt {
+  flex: none;
+  color: var(--text-faint);
+}
+.ma-tc-field dd {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+.ma-tc-preview {
+  margin: 0;
+  padding: 6px var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--fill-soft);
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ma-tc-items ul {
+  margin: 0;
+  padding-left: 1.2em;
+  color: var(--text-dim);
+}
+.ma-tc-items li {
+  overflow-wrap: anywhere;
+}
+.ma-tc-items li.mono {
+  font-size: var(--chat-fs-code);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ma-tc-items-label,
+.ma-tc-more {
+  color: var(--text-faint);
+  font-size: var(--chat-fs-caption);
+}
+.ma-tc-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+}
+.ma-tc-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.ma-tc-link:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+@media (hover: hover) {
+  .ma-tc-link:hover {
+    color: var(--text-dim);
+  }
+}
+@media (pointer: coarse) {
+  .ma-tc-link {
+    position: relative;
+  }
+  .ma-tc-link::after {
+    content: '';
+    position: absolute;
+    inset: -12px -6px;
+  }
+}
+.ma-tc-raw {
+  border-top: var(--hairline) solid var(--line);
+  padding-top: 4px;
+  color: var(--text-faint);
+  font-size: var(--chat-fs-caption);
+}
+.ma-tc-raw-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+.ma-tc-raw-label {
+  color: var(--text-faint);
+}
+.ma-tc-raw pre {
+  margin: 0;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--chat-fs-code);
+  color: var(--text-dim);
+}
