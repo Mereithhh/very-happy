@@ -66,4 +66,10 @@ export const LAZY_MODULES: ReadonlyArray<readonly [name: string, load: () => Pro
     ['expo-server-sdk', () => import('expo-server-sdk')],
     ['ink', () => import('ink')],
     ['react', () => import('react')],
+    // B-916c main agent runtime (runClaude prepareMainAgentForSession)
+    ['assistant/gates/setup', () => import('@/assistant/gates/setup')],
+    ['assistant/dispatcherTools', () => import('@/assistant/dispatcherTools')],
+    ['attention/client', () => import('@/attention/client')],
+    ['claude/utils/titleGenerator', () => import('@/claude/utils/titleGenerator')],
+    ['commands/sessionMessage', () => import('@/commands/sessionMessage')],
 ];

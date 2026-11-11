@@ -17,10 +17,10 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 describe('session peer tool surface across runners', () => {
     it('is registered in-process for managed Claude with the session identity and advertised in toolNames', () => {
         const source = read('../claude/utils/startHappyServer.ts');
-        expect(source).toContain('if (client) registerSessionPeerTools(mcp, createSessionPeerToolExecutor(client));');
+        expect(source).toContain('if (client) registerSessionPeerTools(dispatchRegistrar, createSessionPeerToolExecutor(client));');
         expect(source).toContain('...SESSION_PEER_TOOL_NAMES,');
         expect(source).toContain('createMcpServer(handlers, options, client.sessionId, client)');
-        expect(source.indexOf('registerSessionPeerTools(mcp')).toBeLessThan(source.indexOf("mcp.registerTool('change_title'"));
+        expect(source.indexOf('registerSessionPeerTools(dispatchRegistrar')).toBeLessThan(source.indexOf("mcp.registerTool('change_title'"));
     });
     it('is forwarded by the Codex stdio bridge without new literal registrations', () => {
         const source = read('../codex/happyMcpStdioBridge.ts');

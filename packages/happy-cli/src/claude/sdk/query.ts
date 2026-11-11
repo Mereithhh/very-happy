@@ -43,6 +43,7 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
             ?? opts?.permissionMode === 'bypassPermissions',
         allowedTools: opts?.allowedTools,
         disallowedTools: opts?.disallowedTools,
+        hooks: opts?.hooks,
         mcpServers: opts?.mcpServers as Options['mcpServers'],
         systemPrompt,
         settings: opts?.settingsPath,

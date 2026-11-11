@@ -43,6 +43,8 @@ import { ATTENTION_SESSION_CAPABILITY } from "@slopus/happy-wire";
 import { sharedAttentionClient } from "@/attention/client";
 import { attachLeadBoard, createLeadBoard, resolveTeamLead } from "@/attention/leadBoard";
 import { OWNER_BOARD_TOOL_NAMES, registerOwnerBoardTools } from "@/attention/tools";
+import { DISPATCH_APPROVED_TOOL } from "@/assistant/gates/dispatchGate";
+import type { MainAgentRuntime } from "@/assistant/gates/setup";
 import { withToolOutputCaps } from "@/assistant/toolCaps";
 import { MAIN_AGENT_LIST_VIEWS } from "@/assistant/listViews";
 import { MAIN_AGENT_REPLACES, MAIN_AGENT_TOOL_NAMES, registerMainAgentTools } from "@/assistant/mainAgentTools";
@@ -76,6 +78,12 @@ export interface StartHappyServerOptions {
      * Normal sessions keep exactly the stock two tools.
      */
     assistant?: boolean;
+    /**
+     * B-916c: main agent runtime (assistant variant, no team scope). Its gate
+     * wraps the registrar so dispatch tools take `risk` and park non-none
+     * calls on the decision board; `dispatch_approved` runs them.
+     */
+    mainAgent?: MainAgentRuntime;
     /** B-510: push client for `request_human` (absent → the tool only marks the board). */
     push?: { sendAttention: (input: { sessionId: string; reason: string; url: string; sessionTitle?: string }) => Promise<{ sent: boolean; kind?: string; error?: string }> };
 }
@@ -97,7 +105,14 @@ function assistantTexts(body: unknown): string[] {
  * B-051 condition). Only it gets the account-level tools and the output caps.
  */
 export function isMainAgentSession(options?: StartHappyServerOptions, env: NodeJS.ProcessEnv = process.env): boolean {
-    return options?.assistant === true && !env.VH_TEAM_SCOPE_FILE;
+    // B-916c (QA77 #6): only a runner that brings the gates (Claude: runClaude builds `mainAgent`)
+    // gets the account-level surface. A pi/ACP assistant keeps the plain B-051 tools.
+    return options?.assistant === true && !env.VH_TEAM_SCOPE_FILE && options.mainAgent !== undefined;
+}
+
+/** B-051 assistant without the main agent runtime (pi / ACP): legacy session tools only, no caps, no account tools. */
+function isLegacyAssistantSession(options?: StartHappyServerOptions, env: NodeJS.ProcessEnv = process.env): boolean {
+    return options?.assistant === true && !env.VH_TEAM_SCOPE_FILE && options.mainAgent === undefined;
 }
 
 function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions, sessionId?: string, client?: ApiSessionClient): McpServer {
@@ -111,11 +126,13 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     // The main agent's account-level versions replace these session-scoped ones (mainAgentTools.ts).
     const replaced = mainAgent ? MAIN_AGENT_REPLACES : [];
 
-    registerTeamsTools(mcp, sessionId);
+    // B-916c gate 2: the main agent's dispatch tools go through the gate (adds `risk`, parks non-none calls).
+    const dispatchRegistrar = mainAgent ? options!.mainAgent!.gate.wrap(mcp) : mcp;
+    registerTeamsTools(dispatchRegistrar, sessionId);
     // B-496: account-level automations, same trust level as the session itself.
-    registerAutomationTools(mcp);
+    registerAutomationTools(dispatchRegistrar);
     // B-497: message / list the other sessions on this machine (identity = this session).
-    if (client) registerSessionPeerTools(mcp, createSessionPeerToolExecutor(client));
+    if (client) registerSessionPeerTools(dispatchRegistrar, createSessionPeerToolExecutor(client));
     // B-645: project_context / project_note — always registered (a fixed tools prefix); "not in a project" otherwise.
     if (client) registerProjectTools(mcp, createProjectToolExecutor(() => client.sessionId), replaced);
     // B-874: issue_get / issue_update / issue_comment / issue_list — always registered; "issue_not_bound" outside an issue run.
@@ -251,9 +268,13 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     });
 
     if (mainAgent) {
-        registerAssistantTools(mcp);
+        registerAssistantTools(dispatchRegistrar);
         // B-916b: issues / todos / projects / Lead dispatch / lifecycle adapters (no shell on this surface).
-        if (client) registerMainAgentTools(mcp, createMainAgentDeps(() => client.sessionId));
+        // B-916c: through the gate, so lead_delegate / lead_message take `risk` too.
+        if (client) registerMainAgentTools(dispatchRegistrar, createMainAgentDeps(() => client.sessionId));
+        if (options?.mainAgent) options.mainAgent.gate.registerApprovedTool(mcp);
+    } else if (isLegacyAssistantSession(options)) {
+        registerAssistantTools(mcp);
     }
 
     return server;
@@ -448,7 +469,8 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         // B-916b: also the main agent (capped like the rest of its surface) once the server serves the board.
         if (isMainAgentSession(options)) {
             mainAgentBoard ||= leadBoard.supported();
-            if (mainAgentBoard) registerOwnerBoardTools(withToolOutputCaps(mcp, MAIN_AGENT_LIST_VIEWS), leadBoard);
+            // B-916c (QA77 #2): through the gate's registrar, which refuses writes to the gate's own decision cards.
+            if (mainAgentBoard) registerOwnerBoardTools(options!.mainAgent!.gate.wrap(withToolOutputCaps(mcp, MAIN_AGENT_LIST_VIEWS)), leadBoard);
         } else if (leadBoard.toolsExposed()) registerOwnerBoardTools(mcp, leadBoard);
         try {
             const transport = new StreamableHTTPServerTransport({
@@ -502,7 +524,8 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             ...IDLE_RESTART_TOOL_NAMES,
             // Auto-allow only; the tools themselves appear for a lead on a board server.
             ...OWNER_BOARD_TOOL_NAMES,
-            ...(isMainAgentSession(options) ? [...ASSISTANT_TOOL_NAMES, ...MAIN_AGENT_TOOL_NAMES] : []),
+            ...(isMainAgentSession(options) ? [...ASSISTANT_TOOL_NAMES, ...MAIN_AGENT_TOOL_NAMES, DISPATCH_APPROVED_TOOL] : []),
+            ...(isLegacyAssistantSession(options) ? ASSISTANT_TOOL_NAMES : []),
         ],
         leadBoard,
         stop: () => {

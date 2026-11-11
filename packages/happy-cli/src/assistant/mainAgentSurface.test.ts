@@ -2,6 +2,19 @@ import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createDispatchGate } from '@/assistant/gates/dispatchGate';
+import { compileOutboundDenylist, outboundPreToolUseHook } from '@/assistant/gates/outboundDenylist';
+import type { MainAgentRuntime } from '@/assistant/gates/setup';
+
+/** B-916c: the main agent surface exists only with the gate runtime (Claude path). */
+function testMainAgent(): MainAgentRuntime {
+    const denylist = compileOutboundDenylist();
+    return { config: { skillRoots: [], deniedTools: [], dropped: 0 }, denylist, preToolUse: outboundPreToolUseHook(denylist), extraDirectories: [],
+        gate: createDispatchGate({ pendingDir: join(mkdtempSync(join(tmpdir(), 'vh-surface-')), 'pending'), board: null, classify: null, approvalLink: (id) => id }) };
+}
 
 /**
  * B-916b through the real MCP transport (startHappyServer): the main agent
@@ -143,6 +156,7 @@ function fakeSession(id: string) {
 
 /** Arguments that take each tool down its success path (the backends above answer huge). */
 const ARGS: Record<string, Record<string, unknown>> = {
+    dispatch_approved: { approvalId: '00000000-0000-0000-0000-000000000000' },
     session_read: { sessionId: 'sess-1' }, session_send: { sessionId: 'sess-1', text: 'go' },
     session_spawn: { directory: '/tmp/b916b-surface', prompt: 'do Y', title: 'Do Y in X', agent: 'codex', projectId: 'p1' },
     session_kill: { sessionId: 'sess-1' }, session_archive: { sessionId: 'sess-1' },
@@ -185,7 +199,7 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
         delete process.env.VH_TEAM_SCOPE_FILE;
     });
 
-    async function connect(options: { assistant?: boolean }, id = 'main-agent') {
+    async function connect(options: { assistant?: boolean; mainAgent?: MainAgentRuntime }, id = 'main-agent') {
         happy = await startHappyServer(fakeSession(id) as any, options);
         mcp = new Client({ name: 'b916b-probe', version: '1' });
         await mcp.connect(new StreamableHTTPClientTransport(new URL(happy.url)));
@@ -193,7 +207,7 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
     }
 
     it('registers the main agent tools and owner_board_* only on the main agent', async () => {
-        const tools = await connect({ assistant: true });
+        const tools = await connect({ assistant: true, mainAgent: testMainAgent() });
         const names = tools.map(t => t.name);
         expect(names).toEqual(expect.arrayContaining([...ASSISTANT_TOOL_NAMES, ...MAIN_AGENT_TOOL_NAMES, 'owner_board_post', 'owner_board_list']));
         expect(new Set(names).size).toBe(names.length);
@@ -212,19 +226,26 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
         expect(normal).toContain('issue_list');
     });
 
+    it('QA77 #6: an assistant without the gate runtime (pi / ACP) gets only the legacy B-051 tools', async () => {
+        const names = (await connect({ assistant: true })).map(t => t.name);
+        expect(names).toContain('sessions_list');
+        for (const t of ['lead_delegate', 'teams_list', 'issue_create', 'todo_add', 'project_list', 'dispatch_approved', 'owner_board_post']) expect(names).not.toContain(t);
+    });
+
     it('a team-scoped assistant is not the main agent', async () => {
         process.env.VH_TEAM_SCOPE_FILE = '/nonexistent/scope.json';
-        const names = (await connect({ assistant: true })).map(t => t.name);
+        const names = (await connect({ assistant: true, mainAgent: testMainAgent() })).map(t => t.name);
         expect(names).not.toContain('lead_delegate');
         expect(names).not.toContain('sessions_list');
     });
 
     it('every tool on the main agent answers within its ceiling', async () => {
-        const tools = await connect({ assistant: true });
+        const tools = await connect({ assistant: true, mainAgent: testMainAgent() });
         const sizes: Record<string, number> = {};
         const texts: Record<string, string> = {};
         for (const tool of tools) {
-            const args = ARGS[tool.name] ?? {};
+            // B-916c: dispatch tools take a required `risk` on the main agent; `none` runs the tool itself.
+            const args = { ...(ARGS[tool.name] ?? {}), ...(Object.keys((tool.inputSchema as any)?.properties ?? {}).includes('risk') ? { risk: 'none' } : {}) };
             const result = await mcp!.callTool({ name: tool.name, arguments: args });
             const text = textOf(result);
             const cls = result.isError ? 'receipt' : capClassFor(tool.name, args, (tool.annotations as any)?.readOnlyHint === true);
@@ -243,14 +264,14 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
     });
 
     it('the main agent posts to the board as source agent', async () => {
-        await connect({ assistant: true });
+        await connect({ assistant: true, mainAgent: testMainAgent() });
         const r = await mcp!.callTool({ name: 'owner_board_post', arguments: { kind: 'report', title: 'Merged', request_id: 'r1' } });
         expect(r.isError).toBe(false);
         expect(state.boardPosts).toEqual([expect.objectContaining({ sessionId: 'main-agent', source: 'agent', kind: 'report', title: 'Merged' })]);
     });
 
     it('a truncated list names a cursor that continues it', async () => {
-        await connect({ assistant: true });
+        await connect({ assistant: true, mainAgent: testMainAgent() });
         const first = textOf(await mcp!.callTool({ name: 'automation_list', arguments: {} }));
         const cursor = first.match(/cursor="(\d+)"/)?.[1];
         expect(cursor).toBeDefined();
@@ -262,8 +283,8 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
     });
 
     it('session_spawn carries title, agent and project; the project is joined before the first prompt', async () => {
-        await connect({ assistant: true });
-        const result = await mcp!.callTool({ name: 'session_spawn', arguments: ARGS.session_spawn });
+        await connect({ assistant: true, mainAgent: testMainAgent() });
+        const result = await mcp!.callTool({ name: 'session_spawn', arguments: { ...ARGS.session_spawn, risk: 'none' } });
         const text = textOf(result);
         expect(result.isError).toBe(false);
         expect(state.spawnCalls).toEqual([{ directory: '/tmp/b916b-surface', opts: { spawnedBy: 'assistant', agent: 'codex', title: 'Do Y in X' } }]);
