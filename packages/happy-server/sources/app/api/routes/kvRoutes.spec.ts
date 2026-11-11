@@ -261,6 +261,40 @@ describe('B-922 main agent safety: machine tokens may only tighten', () => {
         expect((await write(add(['mcp__chat__send_message']), 2)).statusCode).toBe(200);
     });
 
+    it('QA-U r2 P3-1: a human write that does not take the tool back leaves an older always card live', async () => {
+        const cfg = (tools: string[], extra: Record<string, unknown> = {}) => ({ v: 1, safety: { v: 1, preset: 'standard', allowedTools: tools }, ...extra });
+        expect((await write(cfg(['mcp__other__tool']), -1, true)).statusCode).toBe(200);
+        await new Promise((r) => setTimeout(r, 5));
+        const card = { id: 'card-q', accountId: 'user-1', key: 'main-agent-tool:0b8c2b5e-1111-4222-8333-944445555666:mcp__ext__deploy_service', state: 'resolved', resolvedBy: 'owner', ownerChoice: 'always', resolvedAt: new Date() };
+        state.attention.push(card);
+        await new Promise((r) => setTimeout(r, 5));
+        // the owner saves quiet hours, and removes a different tool, before the main agent retries
+        expect((await write(cfg(['mcp__other__tool'], { quietHours: { enabled: false, start: '01:00', end: '07:00', tz: null } }), 0, true)).statusCode).toBe(200);
+        expect((await write(cfg([], { quietHours: { enabled: false, start: '01:00', end: '07:00', tz: null } }), 1, true)).statusCode).toBe(200);
+        // the CLI persists the "always" grant: still accepted
+        expect((await write(cfg(['mcp__ext__deploy_service'], { quietHours: { enabled: false, start: '01:00', end: '07:00', tz: null } }), 2)).statusCode).toBe(200);
+    });
+
+    it('QA-U r2 P3-1: removing that tool, a stricter preset or a new deny entry still voids older cards', async () => {
+        const cfg = (preset: string, tools: string[], denied: string[] = []) => ({ v: 1, safety: { v: 1, preset, allowedTools: tools }, deniedTools: denied });
+        const tool = 'mcp__ext__deploy_service';
+        for (const [label, tighten] of [
+            ['tool removed', cfg('loose', [])],
+            ['stricter preset', cfg('standard', ['mcp__a__b'])],
+            ['new deny entry', cfg('loose', ['mcp__a__b'], ['mcp__*__*drop*'])],
+        ] as const) {
+            resetState();
+            expect((await write(cfg('loose', label === 'tool removed' ? [tool] : ['mcp__a__b']), -1, true)).statusCode, label).toBe(200);
+            await new Promise((r) => setTimeout(r, 5));
+            state.attention.push({ id: `card-${label}`, accountId: 'user-1', key: `main-agent-tool:0b8c2b5e-1111-4222-8333-944445555666:${tool}`, state: 'resolved', resolvedBy: 'owner', ownerChoice: 'always', resolvedAt: new Date() });
+            await new Promise((r) => setTimeout(r, 5));
+            expect((await write(tighten, 0, true)).statusCode, label).toBe(200);
+            const tools = [...(tighten.safety.allowedTools as readonly string[]), tool];
+            const res = await write({ ...tighten, safety: { ...tighten.safety, allowedTools: tools } }, 1);
+            expect(res.statusCode, label).toBe(422);
+        }
+    });
+
     it('the grants record is server-owned: no client token writes it', async () => {
         for (const human of [false, true]) {
             const res = await app.inject({ method: 'POST', url: '/v1/kv', headers: { 'x-user-id': 'user-1', ...(human ? { 'x-login': 'l' } : {}) },

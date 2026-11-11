@@ -118,7 +118,7 @@ export async function loadMainAgentConfig(input: { assistantHome: string; kvGet:
  * write is only accepted for such a tool. A section this CLI does not
  * understand is left alone (never rewritten into something looser or lost).
  */
-export async function persistAllowedTool(io: KvIo, toolName: string, now: () => number = Date.now): Promise<'written' | 'unchanged' | 'unsupported' | 'conflict' | 'unavailable'> {
+export async function persistAllowedTool(io: KvIo, toolName: string, now: () => number = Date.now): Promise<'written' | 'unchanged' | 'unsupported' | 'conflict' | 'refused' | 'unavailable'> {
     if (!isValidAllowedTool(toolName)) return 'unsupported'
     for (let attempt = 0; attempt < 2; attempt++) {
         let read: { value: string; version: number } | null
@@ -133,7 +133,8 @@ export async function persistAllowedTool(io: KvIo, toolName: string, now: () => 
         section.allowedTools = [...parsed.safety.allowedTools, toolName]
         const next = { ...base, v: 1, safety: section, updatedAt: now() }
         let result: 'ok' | 'conflict'
-        try { result = await io.set(MAIN_AGENT_CONFIG_KV_KEY, Buffer.from(JSON.stringify(next), 'utf8').toString('base64'), read ? read.version : -1) } catch { return 'unavailable' }
+        // 422 = the server holds no live "always" card for this tool (the owner took it back): 'refused', not a network failure
+        try { result = await io.set(MAIN_AGENT_CONFIG_KV_KEY, Buffer.from(JSON.stringify(next), 'utf8').toString('base64'), read ? read.version : -1) } catch (e) { return e instanceof Error && e.message === 'kv 422' ? 'refused' : 'unavailable' }
         if (result === 'ok') return 'written'
     }
     return 'conflict'

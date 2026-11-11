@@ -323,6 +323,13 @@ describe('B-922 persistAllowedTool', () => {
         expect(kv.writes).toBe(0)
         expect(await persistAllowedTool(kv, 'mcp__*__*')).toBe('unsupported')
     })
+
+    it('QA-U r2 P3-1: a server 422 (no live always card) is "refused", a network failure "unavailable"', async () => {
+        const failing = (message: string): KvIo => ({ async get() { return null }, async set() { throw new Error(message) } })
+        expect(await persistAllowedTool(failing('kv 422'), 'mcp__chat__send_message')).toBe('refused')
+        expect(await persistAllowedTool(failing('kv 503'), 'mcp__chat__send_message')).toBe('unavailable')
+        expect(await persistAllowedTool(failing('fetch failed'), 'mcp__chat__send_message')).toBe('unavailable')
+    })
 })
 
 it('B-922: local config file written by anyone cannot add allowedTools', async () => {
