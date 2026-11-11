@@ -3361,6 +3361,12 @@ export const en = {
                 skill: 'New `very-happy skill`: a capability map of sessions, terminals, projects, teams, automations, Issues and todos, accounts, machines, sharing, notifications, panels and settings, with one page per area (`very-happy skill automations`). Sessions get a single line pointing at it, so asking an agent “add a daily 9:00 automation to this project” gets the right command. A copy is kept in ~/.local/share/very-happy/skills/very-happy; files you edited are never overwritten.',
                 autoProject: '`very-happy auto create|edit --project <id>|current` attaches an automation to a project (`--no-project` detaches); before, only the Web could do this.',
             },
+            nov11t: {
+                title: 'Dialogs keep their title and × in reach, and close when you click outside',
+                summary: 'Long dialogs such as Task details no longer scroll their title and close button away, and a click outside closes them.',
+                pinned: 'In Task details, New team and the other dialogs only the content scrolls: the title and × stay at the top, and Create / Save stay at the bottom.',
+                outside: 'Click outside a dialog to close it. Once you have typed or chosen something in it, a click outside does nothing, so your input is never lost; selecting text and releasing outside the dialog does not close it either. Esc and × work as before.',
+            },
             nov11u: {
                 title: 'A new chat\'s first message can carry images',
                 summary: 'Paste, drop or pick images while a new chat is still starting; they go out with your text as one message.',
