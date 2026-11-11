@@ -48,6 +48,7 @@ import { automationsEntryVisible } from '@/sync/automationsPoll';
 import { useBoardFlip, type ColumnMap } from './boardFlip';
 import './board.css';
 import { DialogHead } from '@/ui/DialogHead';
+import { DialogBackdrop } from '@/ui/DialogBackdrop';
 
 function Column({
   label,
@@ -174,7 +175,7 @@ function TaskModal({ task, onClose }: { task?: BoardTask; onClose: () => void })
   }
 
   return (
-    <div className="bd-modal-backdrop vh-dialog-overlay" onClick={onClose}>
+    <DialogBackdrop className="bd-modal-backdrop vh-dialog-overlay" onClose={onClose}>
       <div className="bd-modal vh-dialog" role="dialog" aria-modal="true" aria-labelledby="bd-modal-title" onClick={(e) => e.stopPropagation()}>
         <DialogHead title={t(task ? 'board.editTask' : 'board.newTask')} titleId="bd-modal-title" onClose={onClose} />
         <input
@@ -203,7 +204,7 @@ function TaskModal({ task, onClose }: { task?: BoardTask; onClose: () => void })
           </button>
         </div>
       </div>
-    </div>
+    </DialogBackdrop>
   );
 }
 

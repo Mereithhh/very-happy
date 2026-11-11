@@ -10,8 +10,16 @@
  *  10-22 09:58Z (every lead / member execution as it actually was), then one
  *  task per derived state with its details head.
  *  `?case=solo` (B-759): a team with only its lead — 「成员由负责人按需创建」 and the ⓘ.
- *  `?case=start` (B-759): the 新建团队 dialog with its 「按需创建成员」 note (nothing is sent). */
-import { useEffect, useRef } from 'react';
+ *  `?case=start` (B-759): the 新建团队 dialog with its 「按需创建成员」 note (nothing is sent).
+ *  `?case=details` (B-928): a task-details dialog with a long result — the head and ×
+ *  stay put while the body scrolls; a click on the backdrop closes it (「重新打开」 reopens).
+ *  `?case=wrapper` (B-928): the same for a wrapper-family card (DialogBackdrop + DialogHead + foot). */
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Markdown } from '@/screens/session/Markdown';
+import { DialogBackdrop } from '@/ui/DialogBackdrop';
+import { Button } from '@/ui/Button';
+import { DialogHead } from '@/ui/DialogHead';
+import '@/screens/sessions/newsession.css';
 import type { TeamBot, TeamOperation, TeamState } from '@slopus/happy-wire';
 import { TeamListCard, TeamWorkspace } from '@/screens/teams/TeamWorkspace';
 import { TeamDialog } from '@/screens/teams/TeamDialog';
@@ -136,6 +144,19 @@ function TipAnchor() {
   return <button ref={ref} type="button" style={{ position: 'absolute', right: 16, top: 12 }}>📄</button>;
 }
 
+const LONG_RESULT = Array.from({ length: 14 }, (_, i) => `### Step ${i + 1}\n\nChecked the dialog with a long body: the head stays pinned while this text scrolls underneath. 第 ${i + 1} 段：只有正文滚动，标题和关闭按钮始终可见。`).join('\n\n');
+const DETAILS_TASK = { ...QA_TEAM.tasks[0], status: 'submitted' as const };
+
+/** B-928: closes for real, so a backdrop click is observable; a button brings it back. */
+function Reopen({ children }: { children: (close: () => void) => ReactNode }) {
+  const [open, setOpen] = useState(true);
+  const [closed, setClosed] = useState(0);
+  return <>
+    <p data-closed={closed}>closed ×{closed} <button type="button" data-reopen onClick={() => setOpen(true)}>重新打开 / Reopen</button></p>
+    {open && children(() => { setOpen(false); setClosed(n => n + 1); })}
+  </>;
+}
+
 export function TeamsQaHarness() {
   const view = new URLSearchParams(location.search).get('case') ?? 'teams';
   useEffect(() => { if (view === 'tip') resetFeatureTips(); }, [view]);
@@ -161,6 +182,25 @@ export function TeamsQaHarness() {
   if (view === 'start') return <main className="teams-screen">
     <TeamDialog title="新建团队" onClose={() => {}}><TeamStartForm intentScope="dev-qa" onStart={() => new Promise(() => {})} onStarted={() => {}} /></TeamDialog>
   </main>;
+  if (view === 'details') return <main className="teams-screen"><Reopen>{close =>
+    <TeamDialog title={document.documentElement.lang.startsWith('zh') ? '任务详情' : 'Task details'} onClose={close}>
+      <article className="teams-task">
+        <TeamTaskSummary team={QA_TEAM} task={DETAILS_TASK} />
+        <div className="teams-full-result"><h3>Result</h3><Markdown text={LONG_RESULT} /></div>
+        <form onSubmit={e => e.preventDefault()}><label className="teams-wide">Message<textarea name="body" /></label><button>Send</button></form>
+      </article>
+    </TeamDialog>}</Reopen></main>;
+  if (view === 'start-close') return <main className="teams-screen"><Reopen>{close =>
+    <TeamDialog title="新建团队" onClose={close}><TeamStartForm intentScope="dev-qa" onStart={() => new Promise(() => {})} onStarted={() => {}} /></TeamDialog>}</Reopen></main>;
+  if (view === 'wrapper') return <main><Reopen>{close =>
+    <DialogBackdrop className="ns-backdrop vh-dialog-overlay" onClose={close}>
+      <div className="ns-card vh-dialog vh-dialog--tall" role="dialog" aria-modal="true" aria-labelledby="qa-wrapper-title" onClick={e => e.stopPropagation()}>
+        <DialogHead titleId="qa-wrapper-title" title="Move to project" description="Wrapper-family dialog with a long body" onClose={close} />
+        {Array.from({ length: 30 }, (_, i) => <p key={i} style={{ margin: 0 }}>Row {i + 1} — 长列表第 {i + 1} 行</p>)}
+        <input className="ns-input" name="draft" placeholder="Type here to keep the dialog open" />
+        <div className="ns-actions vh-dialog-foot"><Button variant="ghost" onClick={close}>Cancel</Button><Button variant="primary">Save</Button></div>
+      </div>
+    </DialogBackdrop>}</Reopen></main>;
   if (view === 'solo') return <main className="teams-screen">
     <TeamWorkspace team={SOLO_TEAM} onTask={() => {}} now={NOW} />
   </main>;

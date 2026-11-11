@@ -24,6 +24,7 @@ import '@/screens/sessions/newsession.css';
 import '@/screens/sessions/worktree.css';
 import './mirror.css';
 import { DialogHead } from '@/ui/DialogHead';
+import { DialogBackdrop } from '@/ui/DialogBackdrop';
 
 const RUNNING_POLL_MS = 3_000;
 
@@ -183,7 +184,7 @@ export function WorktreeSetupDialog({ machineId, worktreePath, initial, mode, la
     };
 
     return (
-        <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+        <DialogBackdrop className="ns-backdrop vh-dialog-overlay" onClose={onClose}>
             <div ref={cardRef} tabIndex={-1} className="ns-card wts-card vh-dialog vh-dialog--tall" role="dialog" aria-modal="true" aria-labelledby="wts-title" onClick={(e) => e.stopPropagation()}>
                 <DialogHead title={mode === 'review' ? copy.approveTitle : copy.outputTitle} titleId="wts-title" onClose={onClose} />
                 {mode === 'review' && pending ? (
@@ -237,6 +238,6 @@ export function WorktreeSetupDialog({ machineId, worktreePath, initial, mode, la
                     )}
                 </div>
             </div>
-        </div>
+        </DialogBackdrop>
     );
 }

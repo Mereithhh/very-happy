@@ -13,6 +13,7 @@ import type { ModalConfig, ModalContextValue } from './types';
 import { useImeGuard, isImeGuardedEvent } from '@/utils/ime';
 import { OVERLAY_PRIORITY, useOverlayTurn } from '@/app/overlayQueue';
 import './modal.css';
+import { DialogBackdrop } from '@/ui/DialogBackdrop';
 
 /**
  * Dismissal (backdrop click / Escape) must RESOLVE the pending promise, not
@@ -157,7 +158,7 @@ function ModalCard({
   };
 
   return (
-    <div className={`vh-modal-backdrop vh-dialog-overlay${config.type === 'prompt' ? ' is-prompt' : ''}`} onClick={onDismiss}>
+    <DialogBackdrop className={`vh-modal-backdrop vh-dialog-overlay${config.type === 'prompt' ? ' is-prompt' : ''}`} onClose={onDismiss}>
       <div
         className="vh-modal-card vh-dialog"
         role="dialog"
@@ -252,6 +253,6 @@ function ModalCard({
           )}
         </div>
       </div>
-    </div>
+    </DialogBackdrop>
   );
 }

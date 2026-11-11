@@ -43,7 +43,7 @@
   border-color: var(--line-heavy);
   box-shadow: none;
 }
-.vh-modal-actions { margin-top: var(--sp-2); }
+.vh-modal-actions { margin-top: calc(var(--sp-2) - var(--sp-3)); } /* B-928: the sticky foot pads its own --sp-3 top */
 .vh-modal-btn {
   font-size: var(--fs-13);
   font-weight: 500;

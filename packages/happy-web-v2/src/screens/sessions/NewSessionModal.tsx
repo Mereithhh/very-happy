@@ -47,6 +47,7 @@ import { SpawnAccountPicker } from '@/components/accounts/SpawnAccountPicker';
 import { readMachineAgentProfiles, resolveSpawnAccount, spawnAgentProfileParam, type SpawnAccountChoice } from '@/sync/agentProfiles';
 import { accountSettingsHref } from '@/screens/session/sessionAccount';
 import { machineLabel as machineDisplayName } from '@/utils/machineUtils';
+import { DialogBackdrop } from '@/ui/DialogBackdrop';
 
 interface PathPreset {
   id: string;
@@ -299,7 +300,7 @@ export function NewSessionModal({
   }
 
   return (
-    <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+    <DialogBackdrop className="ns-backdrop vh-dialog-overlay" onClose={onClose}>
       <div className="ns-card vh-dialog vh-dialog--tall" role="dialog" aria-modal="true" aria-labelledby="ns-dialog-title" onClick={(e) => e.stopPropagation()}>
         <DialogHead title={t('newSessionModal.chatTitle')} titleId="ns-dialog-title" onClose={onClose} />
 
@@ -537,7 +538,7 @@ export function NewSessionModal({
           </Button>
         </div>
       </div>
-    </div>
+    </DialogBackdrop>
   );
 }
 

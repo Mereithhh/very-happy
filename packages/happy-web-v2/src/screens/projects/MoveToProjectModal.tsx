@@ -10,6 +10,7 @@ import { ProjectPicker } from './ProjectPicker';
 import { DialogHead } from '@/ui/DialogHead';
 import '@/screens/sessions/newsession.css';
 import './projects.css';
+import { DialogBackdrop } from '@/ui/DialogBackdrop';
 
 /**
  * B-649 「移到项目…」: pick a project (or 无项目) and, optionally, more sessions
@@ -53,7 +54,7 @@ export function MoveToProjectModal({ initialSessionId, candidates, onClose }: {
     }
   };
   return (
-    <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+    <DialogBackdrop className="ns-backdrop vh-dialog-overlay" onClose={onClose}>
       <div className="ns-card vh-dialog" role="dialog" aria-modal="true" aria-labelledby="mtp-dialog-title" onClick={(e) => e.stopPropagation()}>
         {/* B-728 (P2-03): a real title, and which session is moving */}
         <DialogHead title={zh ? '移到项目' : 'Move to project'} titleId="mtp-dialog-title" description={initialTitle} onClose={onClose} />
@@ -78,7 +79,7 @@ export function MoveToProjectModal({ initialSessionId, candidates, onClose }: {
           <Button variant="primary" disabled={busy || selected.size === 0} aria-busy={busy || undefined} onClick={() => void apply()}>{zh ? '移动' : 'Move'}</Button>
         </div>
       </div>
-    </div>
+    </DialogBackdrop>
   );
 }
 
@@ -108,7 +109,7 @@ export function MoveTerminalToProjectModal({ terminalId, onClose }: { terminalId
     onClose();
   };
   return (
-    <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+    <DialogBackdrop className="ns-backdrop vh-dialog-overlay" onClose={onClose}>
       <div className="ns-card vh-dialog" role="dialog" aria-modal="true" aria-labelledby="mtp-dialog-title" onClick={(e) => e.stopPropagation()}>
         <DialogHead title={zh ? '移到项目' : 'Move to project'} titleId="mtp-dialog-title" description={terminal?.title} onClose={onClose} />
         <label className="ns-label" htmlFor="mtp-project">{zh ? '项目' : 'Project'}</label>
@@ -119,6 +120,6 @@ export function MoveTerminalToProjectModal({ terminalId, onClose }: { terminalId
           <Button variant="primary" disabled={busy || !terminal} aria-busy={busy || undefined} onClick={() => void apply()}>{zh ? '移动' : 'Move'}</Button>
         </div>
       </div>
-    </div>
+    </DialogBackdrop>
   );
 }
