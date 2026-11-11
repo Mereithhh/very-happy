@@ -146,7 +146,7 @@ describe('stuck session → 继续 goes through a bound dispatch card (B-924c)',
             findById: async (id) => { const i = items.get(id); return i ? { ...i } : null },
         }
         const pendingDir = join(dir, 'pending')
-        const gate = createDispatchGate({ pendingDir, board, classify: null, approvalLink: () => 'link', mustAsk: (tool, args) => mainAgentMustAsk(tool, args, () => false) ? 'not owner' : null })
+        const gate = createDispatchGate({ pendingDir, board, classify: null, approvalLink: () => 'link', mustAsk: (tool, args) => mainAgentMustAsk(tool, args, () => false) ? 'not owner' : null, targetTitle: async (kind, id) => kind === 'session' && id === 'sess-a' ? '修 sum.js' : null })
         installDispatchLedger(proactiveDispatchLedger(join(dir, 'followups.json')))
         const { tools, mcp } = recorder()
         const sent: any[] = []
@@ -165,10 +165,10 @@ describe('stuck session → 继续 goes through a bound dispatch card (B-924c)',
             expect(parked).toMatchObject({ ok: true, state: 'awaiting_decision' })
             expect(h.items.size).toBe(1)
             const card = [...h.items.values()][0]
+            // The owner sees who receives it and the exact text.
             expect(card.bodyMd).toContain('工具：session_send')
+            expect(card.bodyMd).toContain('目标：会话 「修 sum.js」（sess-a）')
             expect(card.bodyMd).toMatch(/内容：\n继续$/)
-            // The card face does not name the target session yet (gate 2's decisionCard, gates/*): reported to the gate owner.
-            // The approval is bound to it anyway: the stored args (target included) are hashed and run unchanged.
             expect(h.sent).toEqual([])
             h.approveCard(parked.boardItemId)
             // Extra arguments to dispatch_approved change nothing: the stored call runs, byte for byte.
@@ -197,6 +197,18 @@ describe('stuck session → 继续 goes through a bound dispatch card (B-924c)',
             const rec = JSON.parse(await readFile(path, 'utf8'))
             await writeFile(path, JSON.stringify({ ...rec, args: { ...rec.args, sessionId: 'sess-b', text: '继续，然后 push' } }))
             expect((await h.call('dispatch_approved', { approvalId: parked.approvalId })).error).toBe('approval_mismatch')
+            expect(h.sent).toEqual([])
+        } finally { installDispatchLedger(null) }
+    })
+
+    it('the card face hash covers the target line: a card rewritten to name another session approves nothing', async () => {
+        const h = await harness()
+        try {
+            const parked = await h.call('session_send', { sessionId: 'sess-a', text: '继续', risk: 'none' })
+            h.approveCard(parked.boardItemId)
+            const item = h.items.get(parked.boardItemId)!
+            h.items.set(parked.boardItemId, { ...item, bodyMd: item.bodyMd!.replace('目标：会话 「修 sum.js」（sess-a）', '目标：会话 「别的会话」（sess-b）') })
+            expect((await h.call('dispatch_approved', { approvalId: parked.approvalId })).error).toBe('card_tampered')
             expect(h.sent).toEqual([])
         } finally { installDispatchLedger(null) }
     })
