@@ -29,8 +29,7 @@ import {
   UsersRound,
   ListTodo,
   Activity,
-  Zap,
-  Contact,
+  Ellipsis,
 } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type KeyboardEvent } from 'react';
 import { VeryHappyMark } from '@/ui/VeryHappyMark';
@@ -178,14 +177,13 @@ function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: {
             <button className="sb-nav-btn sb-new-main" type="button" disabled><Plus size={17}/><span>{zh?'新建会话':'New session'}</span></button>
             <button className="sb-nav-btn sb-new-more" type="button" disabled aria-label={zh ? '更多新建方式' : 'More ways to create'}><ChevronDown size={14}/></button>
           </div>
-          {/* B-896: same top as the app — 新建会话 ▾, then every entry as one icon strip. */}
-          <div className="sb-cap-strip" role="presentation">
-            <button className="sb-cap-cell" type="button" disabled aria-label="Issues" title="Issues"><ListTodo size={17}/></button>
-            <button className="sb-cap-cell" type="button" disabled aria-label={zh ? '运行中' : 'Running'} title={zh ? '运行中' : 'Running'}><Activity size={17}/></button>
-            <button className="sb-cap-cell" type="button" disabled aria-label={zh ? '项目' : 'Projects'} title={zh ? '项目' : 'Projects'}><FolderKanban size={17}/></button>
-            <button className="sb-cap-cell" type="button" disabled aria-label={zh ? '团队' : 'Teams'} title={zh ? '团队' : 'Teams'}><UsersRound size={17}/></button>
-            <button className="sb-cap-cell" type="button" disabled aria-label={zh ? '自动化' : 'Automations'} title={zh ? '自动化' : 'Automations'}><Zap size={17}/></button>
-            <button className="sb-cap-cell" type="button" disabled aria-label={zh ? '联系人' : 'Contacts'} title={zh ? '联系人' : 'Contacts'}><Contact size={17}/></button>
+          {/* B-926: same top as the app — 新建会话 ▾, then the labelled entry rows and 更多 ▾. */}
+          <div className="sb-cap-nav" role="presentation">
+            <button className="sb-cap-row" type="button" disabled><ListTodo size={16}/><span className="sb-cap-name">Issues</span></button>
+            <button className="sb-cap-row" type="button" disabled><Activity size={16}/><span className="sb-cap-name">{zh ? '运行看板' : 'Agent board'}</span></button>
+            <button className="sb-cap-row" type="button" disabled><FolderKanban size={16}/><span className="sb-cap-name">{zh ? '项目' : 'Projects'}</span></button>
+            <button className="sb-cap-row" type="button" disabled><UsersRound size={16}/><span className="sb-cap-name">{zh ? '团队' : 'Teams'}</span></button>
+            <button className="sb-cap-row sb-cap-more" type="button" disabled><Ellipsis size={16}/><span className="sb-cap-name">{zh ? '更多' : 'More'}</span><ChevronDown size={14} className="sb-cap-chevron"/></button>
           </div>
         </div>
         <div className="sb-list-controls"><div className="sb-filter vh-segmented" role="presentation"><button className="sb-filter-btn is-on is-active" type="button" disabled>{zh ? '列表' : 'List'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '状态' : 'Status'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '归档' : 'Archived'}</button></div><div className="sb-list-tools"><button className="sb-icon-btn sb-board-btn" type="button" aria-label={zh ? '打开任务看板' : 'Open task board'} aria-pressed={active === 'board'} onClick={onBoard}><LayoutGrid size={16} /><span className="sb-board-badge mono">1</span></button></div></div>

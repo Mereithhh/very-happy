@@ -1,8 +1,9 @@
 /**
  * B-641: the sidebar's capability entries (项目 / 团队 / 自动化 / 待办 / 联系人), in
- * priority order. B-896 (spec 2026-10-sidebar-header): desktop shows them all
- * as one icon strip under 新建会话 ▾; the phone folds them into the chip row's
- * 「更多 ▾」.
+ * priority order. B-926 (spec 2026-10-sidebar-header): desktop lists them as
+ * labelled rows under 新建会话 ▾ — the first DEFAULT_PINNED_COUNT stay, the
+ * rest fold into one 「更多 ▾」 row, and the user can change which stay
+ * (`splitNavEntries`); the phone folds them into the chip row's 「更多 ▾」.
  * 帮助 lives in the sidebar footer. Visibility gates and attention counts are
  * computed here once. B-756: 项目 (the /projects list) leads once the projects
  * API answered — same gate as 新建项目.
@@ -16,8 +17,8 @@ export interface SidebarNavEntry {
   attention: number;
   /** B-762: 项目 carries the tree's 需要你 total in the tree's warn tone (the others stay danger) */
   tone?: 'warn';
-  /** B-836: only in the phone's 「更多 ▾」 — desktop reaches it from the always-visible 帮助 footer and Settings, so it never takes a row */
-  phoneOnly?: boolean;
+  /** B-836/B-926: rarely used — never one of the default pinned rows; it sits in 「更多 ▾」 unless the user pins it */
+  foldedByDefault?: boolean;
 }
 
 export function sidebarNavEntries(input: {
@@ -44,7 +45,7 @@ export function sidebarNavEntries(input: {
   if (input.automationsVisible) entries.push({ key: 'automations', path: '/automations', attention: Math.max(0, input.automationAttention) });
   if (!input.issuesVisible) entries.push({ key: 'todos', path: '/todos', attention: 0 });
   entries.push({ key: 'people', path: '/people', attention: Math.max(0, input.incomingPeople) });
-  entries.push({ key: 'feedback', path: '/settings/feedback', attention: 0, phoneOnly: true });
+  entries.push({ key: 'feedback', path: '/settings/feedback', attention: 0, foldedByDefault: true });
   return entries;
 }
 
@@ -63,7 +64,7 @@ export function navMenuLabel(name: string, attention: number): string {
  * 2026-10-sidebar-header). No ⋯ in the header. Desktop (and the touch drawer,
  * which renders the desktop sidebar): header 🔍 · collapse, then 新建会话 ▾
  * (main click = new chat, ▾ = every create type incl. 项目 / 团队) and the
- * capability icon strip. B-896: 新建项目 / 新建团队 stay as labelled rows only
+ * capability rows (B-926: labelled, 4 pinned + 更多 ▾). B-896: 新建项目 / 新建团队 stay as labelled rows only
  * until the account has one (`projectCount` / `teamCount` 0; unknown = no row,
  * so existing accounts never see them flash in). Phone: header 🔍 · ＋ (B-641's
  * create menu, one tap) and one compact chip row 项目 · 团队 · 更多 ▾ (B-756:
@@ -93,14 +94,15 @@ export function sidebarTopModel(input: { isDesktop: boolean; projectsReady: bool
 export const NEW_TEAM_PATH = '/teams?new=1';
 
 /**
- * B-896: the desktop capability strip is one Tab stop (roving tabindex). ←/→
- * wrap, Home/End jump; any other key is not the strip's (null).
+ * B-896/B-926: the desktop entry rows are one Tab stop (roving tabindex).
+ * ↓/↑ (and →/← as before) wrap, Home/End jump; any other key is not the
+ * group's (null).
  */
 export function stripFocusTarget(key: string, index: number, count: number): number | null {
   if (count <= 0) return null;
   const last = count - 1;
-  if (key === 'ArrowRight') return index >= last ? 0 : index + 1;
-  if (key === 'ArrowLeft') return index <= 0 ? last : index - 1;
+  if (key === 'ArrowDown' || key === 'ArrowRight') return index >= last ? 0 : index + 1;
+  if (key === 'ArrowUp' || key === 'ArrowLeft') return index <= 0 ? last : index - 1;
   if (key === 'Home') return 0;
   if (key === 'End') return last;
   return null;
@@ -120,4 +122,33 @@ export function moreMenuEntries<T extends { key: string }>(entries: readonly T[]
 export function orderCreateMenu<T extends { key: string }>(items: readonly T[]): T[] {
   const rank = (k: string) => (k === 'chat' ? 0 : k === 'project' ? 1 : 2);
   return items.map((item, i) => ({ item, i })).sort((a, b) => rank(a.item.key) - rank(b.item.key) || a.i - b.i).map((x) => x.item);
+}
+
+/**
+ * B-926: how many entry rows the desktop sidebar keeps by default. Four 28px
+ * rows + 「更多」 keep the session list at 86% of its B-896 height at 1080p
+ * (81% at 1440×900); the
+ * default four (Issues · 运行中 · 项目 · 团队, or 项目 · 团队 · 自动化 · 待办
+ * without Issues) are the daily destinations, the rest are setup-like pages.
+ */
+export const DEFAULT_PINNED_COUNT = 4;
+
+/**
+ * B-926: split the desktop entries into the pinned rows and the 「更多 ▾」
+ * menu, both in priority order. `pinned` is the user's choice (keys, any
+ * order; unknown / currently invisible keys are ignored); null = default.
+ */
+export function splitNavEntries<T extends { key: string; foldedByDefault?: boolean }>(entries: readonly T[], pinned: readonly string[] | null): { pinned: T[]; more: T[] } {
+  const keep = pinned ? new Set(pinned) : new Set(entries.filter((e) => !e.foldedByDefault).slice(0, DEFAULT_PINNED_COUNT).map((e) => e.key));
+  return { pinned: entries.filter((e) => keep.has(e.key)), more: entries.filter((e) => !keep.has(e.key)) };
+}
+
+/**
+ * B-926: pin / unpin one entry. The result is the explicit pinned key list
+ * (the default materialised first), keeping keys of entries that are hidden
+ * right now (e.g. Issues while its API is down) so they come back pinned.
+ */
+export function togglePinnedEntry(entries: readonly { key: string; foldedByDefault?: boolean }[], pinned: readonly string[] | null, key: string): string[] {
+  const current = pinned ? [...pinned] : splitNavEntries(entries, null).pinned.map((e) => e.key);
+  return current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
 }

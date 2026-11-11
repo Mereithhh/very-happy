@@ -2530,6 +2530,11 @@ export const zhHans: TranslationStructure = {
         newTeam: '新建团队',
         capabilities: '能力',
         moreCapabilities: '更多能力',
+        // B-926: 更多 ▾ → choose which entry rows stay in the desktop sidebar
+        editEntries: '调整入口',
+        pinnedEntries: '常驻入口',
+        editDone: '完成',
+        resetEntries: '恢复默认',
         chipProject: '项目',
         chipTeam: '团队',
         filterAll: '全部',
@@ -3480,6 +3485,12 @@ export const zhHans: TranslationStructure = {
                 summary: '任何会话都能查到 Very Happy 能做什么、怎么操作，提示词不变长。',
                 skill: '新增 `very-happy skill`：能力地图覆盖会话、终端、项目、团队、自动化、Issues 与待办、账号、机器、分享、通知、面板和设置，每块一页（如 `very-happy skill automations`）。会话里只多一行指向它，问 agent「给这个项目加一个每天 9 点的自动化」就能拿到正确命令。本机副本在 ~/.local/share/very-happy/skills/very-happy，你改过的文件不会被覆盖。',
                 autoProject: '`very-happy auto create|edit --project <id>|current` 可把自动化挂到项目上（`--no-project` 取消）；以前只能在 Web 上设。',
+            },
+            nov11s: {
+                title: '侧栏入口带上了名字',
+                summary: '「新建会话」下面那排图标改成了一列带文字的入口，不用悬停也知道是什么。',
+                labels: 'Issues、运行看板（所有正在跑的 agent，原「运行中」）、项目、团队一行一个，计数在行尾；自动化、联系人、反馈收进「更多 ▾」，「更多」上显示它们的计数合计。',
+                pinned: '「更多 ▾ → 调整入口」可以选哪些入口常驻侧栏（按设备记住），「恢复默认」回到默认 4 个。',
             },
             nov11p: {
                 title: '主 agent 改成布局里的一栏，工具调用变成卡片',

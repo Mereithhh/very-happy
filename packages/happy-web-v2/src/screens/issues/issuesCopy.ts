@@ -47,7 +47,8 @@ const zh = {
     // palette
     paletteGroup: 'Issues', paletteNew: (q: string) => `新建 issue：${q}`, paletteNewEmpty: '新建 issue',
     // sidebar / project
-    sidebarRunning: '运行中', projectSection: 'Issues', projectEmpty: '这个项目还没有未关闭的 issue', quickAddPh: '快速新建 issue，回车创建', viewAll: '查看全部',
+    // B-926 (QA P3-2): 「运行中」 alone did not say what runs — the page shows every agent at work
+    sidebarRunning: '运行看板', sidebarRunningHint: '所有正在跑的 agent', projectSection: 'Issues', projectEmpty: '这个项目还没有未关闭的 issue', quickAddPh: '快速新建 issue，回车创建', viewAll: '查看全部',
     disabled: '这个服务器没有开启 Issues',
     // B-896: nothing-open guide, shortcuts, remembered assignee
     guideTitle: '写下要做的事，指派给 agent，它就开工',
@@ -101,7 +102,7 @@ const en: IssuesCopy = {
     rejectPh: 'What is still missing (optional)', reviewTitle: (key, title) => `${key} in review · ${title}`, blockedTitle: (key, title) => `${key} blocked · ${title}`, failedTitle: (key) => `${key} run failed`,
     accepted: 'Done', rejected: 'Returned', failed: 'Something went wrong',
     paletteGroup: 'Issues', paletteNew: (q) => `New issue: ${q}`, paletteNewEmpty: 'New issue',
-    sidebarRunning: 'Running', projectSection: 'Issues', projectEmpty: 'No open issues in this project', quickAddPh: 'Quick new issue, Enter to create', viewAll: 'View all',
+    sidebarRunning: 'Agent board', sidebarRunningHint: 'Every agent that is running', projectSection: 'Issues', projectEmpty: 'No open issues in this project', quickAddPh: 'Quick new issue, Enter to create', viewAll: 'View all',
     disabled: 'Issues are not enabled on this server',
     guideTitle: 'Write the task down, assign an agent, and it starts',
     guideSteps: ['Say what needs doing and how to tell it is done', 'Assign it to Claude, Codex or pi', 'The agent works in its own session, then waits for your review in Waiting on me'],

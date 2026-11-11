@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-11-sidebar-labelled-entries',
+    date: '2026-11-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov11s.title',
+    summaryKey: 'changelog.releases.nov11s.summary',
+    itemKeys: ['changelog.releases.nov11s.labels', 'changelog.releases.nov11s.pinned'],
+  },
+  {
     id: '2026-11-11-main-agent-column-tool-cards',
     date: '2026-11-11',
     buildVersion: __APP_VERSION__,

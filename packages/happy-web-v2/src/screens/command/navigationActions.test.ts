@@ -8,7 +8,7 @@ const find = (zh: boolean, q: string) => filterPaletteItems(rows(zh), q).map((h)
 
 describe('⌘K reaches every sidebar entry (B-896)', () => {
   it.each([
-    ['Issues', 'action:go-issues'], ['运行中', 'action:go-board'], ['项目', 'action:go-projects'], ['自动化', 'action:go-automations'],
+    ['Issues', 'action:go-issues'], ['运行看板', 'action:go-board'], ['运行中', 'action:go-board'], ['项目', 'action:go-projects'], ['自动化', 'action:go-automations'],
     ['联系人', 'action:go-people'], ['新建项目', 'action:go-new-project'], ['新建团队', 'action:go-new-team'],
     ['running', 'action:go-board'], ['projects', 'action:go-projects'], ['automations', 'action:go-automations'], ['contacts', 'action:go-people'], ['new project', 'action:go-new-project'], ['new team', 'action:go-new-team'],
   ])('%s → %s ranks first, in either UI language', (q, key) => {

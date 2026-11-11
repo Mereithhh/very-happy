@@ -2377,6 +2377,11 @@ export const en = {
         // B-713: capability rows (团队/自动化/待办/联系人) and the fold for the ones that don't fit
         capabilities: 'Features',
         moreCapabilities: 'More features',
+        // B-926: 更多 ▾ → choose which entry rows stay in the desktop sidebar
+        editEntries: 'Edit entries',
+        pinnedEntries: 'Pinned entries',
+        editDone: 'Done',
+        resetEntries: 'Reset',
         // phone chip row: short labels, the aria-label says 新建项目/新建团队
         chipProject: 'Project',
         chipTeam: 'Team',
@@ -3352,6 +3357,12 @@ export const en = {
                 summary: 'Any session can look up what Very Happy can do and how to operate it, without a longer prompt.',
                 skill: 'New `very-happy skill`: a capability map of sessions, terminals, projects, teams, automations, Issues and todos, accounts, machines, sharing, notifications, panels and settings, with one page per area (`very-happy skill automations`). Sessions get a single line pointing at it, so asking an agent “add a daily 9:00 automation to this project” gets the right command. A copy is kept in ~/.local/share/very-happy/skills/very-happy; files you edited are never overwritten.',
                 autoProject: '`very-happy auto create|edit --project <id>|current` attaches an automation to a project (`--no-project` detaches); before, only the Web could do this.',
+            },
+            nov11s: {
+                title: 'Sidebar entries have names',
+                summary: 'The row of icons under New session is now a short list you can read without hovering.',
+                labels: 'Issues, Agent board (every agent that is running, formerly Running), Projects and Teams are labelled rows with their counts; Automations, Contacts and Feedback are under More ▾, which shows their total count.',
+                pinned: 'More ▾ → Edit entries picks which rows stay in the sidebar on this device; Reset brings back the default four.',
             },
             nov11p: {
                 title: 'The main agent becomes a column; its tool calls become cards',

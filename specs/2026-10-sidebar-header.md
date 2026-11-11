@@ -218,6 +218,8 @@ Orca 允许逐行隐藏，但这需要新的设置字段、迁移和设置页 UI
 
 ## B-896 修订：新建合一 + 入口图标条（方案 A1，Owner 11-06 选定）
 
+> B-926 起本节的「入口图标条」被下文「B-926 修订」取代（新建合一、键盘、⌘K、触屏抽屉不变），保留作历史记录。
+
 > 依据：B-892 三方案对比（A1 图标条 / A2 常用 2 + 更多 / B 底部带字栏），Owner 选 A1。原型分支 `prototype/B-892-sidebar-top` 只参考，从 main 重做，去掉原型开关。
 
 ### 结构（桌面与触屏抽屉）
@@ -268,3 +270,62 @@ Orca 允许逐行隐藏，但这需要新的设置字段、迁移和设置页 UI
 
 - 中：侧栏顶部更紧凑：「新建会话 ▾」里能新建项目、团队、终端等一切；Issues、运行中、项目、团队、自动化、联系人收成一行图标，一下直达，⌘K 也能按名字搜到。Issues 页没有任务时有上手引导，按 C 新建、⌘↵ 创建；新建 issue 会记住上次的指派（机器、agent、目录、模型），条件不满足时回到「无」。
 - EN: The sidebar top is more compact: New session ▾ now creates projects, teams, terminals and everything else, and Issues, Running, Projects, Teams, Automations and Contacts sit in one icon row, one click each and searchable in ⌘K. The Issues page explains itself when empty, C opens a new issue and ⌘↵ creates it, and a new issue starts from your last assignee (machine, agent, directory, model), falling back to None when that can't run.
+
+## B-926 修订：入口带文字（Owner 11-11）
+
+> Owner 11-11：「侧边栏设计我觉得不太好，现在都是一堆 logo，我都不知道是干啥的，就不能用文字吗？」参考 Codex desktop、Claude desktop：新建下面是一列带文字的入口，不常用的收进「更多」。
+
+### 结构（桌面与触屏抽屉）
+
+| 位置 | 内容 |
+|---|---|
+| 品牌行 / 主 agent / 新建 | 不变（主 agent 一行在品牌行下、新建会话上，开关与样式归 B-923） |
+| 入口行 | 一行一个：图标 16px + 名字（13px、`--text-dim`，比新建行淡一档）+ 行尾计数，行高 28px（触屏 44px）。默认常驻前 4 个，最后一行「··· 更多 ▾」 |
+| 更多 ▾ | 菜单列出没常驻的入口（带「· N」计数），分隔线后是「调整入口」；「更多」行尾显示被收起入口的计数合计 |
+| 调整入口 | 入口区就地换成复选框列表（全部入口，勾选 = 常驻），头部「恢复默认」「完成」，Esc 退出；选择按设备存本机 `vh.sidebar.navPinned`（JSON key 列表，不同步，不进 settings） |
+| 手机 | 不变：chip 行「Issues · 项目 · 团队 · 更多 ▾」本来就带文字 |
+| 折叠 rail | 不变：只有展开按钮、通知、更新入口，均有 `title` + `aria-label` |
+
+文案（2–4 字 / 英文短词）：Issues、运行看板 Agent board（原「运行中」，QA：单看不知道是什么；tooltip 补一句「所有正在跑的 agent」，页面标题与 ⌘K 同名，⌘K 仍能搜「运行中」）、项目 Projects、团队 Teams、自动化 Automations、待办 Todos、联系人 People、反馈 Feedback（入口里用短词，页面标题仍是「发送反馈」）、更多 More、调整入口 Edit entries、常驻入口 Pinned entries、恢复默认 Reset、完成 Done。
+
+### 常驻与收起（`splitNavEntries`，纯函数）
+
+默认常驻优先级前 4 个（`DEFAULT_PINNED_COUNT`），`foldedByDefault` 的反馈不参与：
+
+| 账号 | 常驻 | 更多 | 理由 |
+|---|---|---|---|
+| 开了 Issues | Issues · 运行看板 · 项目 · 团队 | 自动化 · 联系人 · 反馈 | 前四个是每天进出的地方：Issues 是待办队列（带待处理计数）、运行中看全部 agent、项目树入口（带「需要你」计数）、团队；自动化和联系人更像配置页，打开频率低；自动化的待决定计数通过「更多」合计和通知中心仍然可见 |
+| 没开 Issues | 项目 · 团队 · 自动化 · 待办 | 联系人 · 反馈 | 同一优先级顺延 |
+
+- 用户的选择是 key 列表；按优先级排序展示，未知或当前不可见的 key 忽略，但保留（Issues 暂时不可用时取消/恢复不会丢掉它的常驻）。`togglePinnedEntry` 第一次改动时先把默认值落成显式列表。
+- 「更多」行始终存在（即使全部常驻），因为「调整入口」在它的菜单里。
+
+### 键盘与无障碍
+
+- 入口区 `role=toolbar` + `aria-orientation=vertical`，只占一个 Tab 位（roving tabindex）：↑/↓（以及原来的 ←/→）在入口间移动，Home/End 到两端，Enter / Space 打开。「更多」是最后一站：焦点在「更多」上按 ↓（或 Enter / Space）会打开它的菜单（Radix 菜单按钮的行为），不会绕回第一行；要回第一行按 Home 或 ↑ 到顶后继续。
+- 当前页 `aria-current=page` + `--fill-selected`；当前页被收进「更多」时 Tab 位落在「更多」（`.is-current` 文字加深）。
+- 行的 `aria-label` 是「名字 · 计数」，`title` 是名字（窄侧栏截断时可读全名）；计数徽标 `aria-hidden`。
+- 调整入口是原生复选框（`ui/Checkbox`），Space 切换；进入时焦点到「完成」，退出时回到「更多」。
+
+### 实测（vite dev + `/dev/device/session/dev-board#issues` 假数据，Chromium）
+
+| 视口 | 列表起始 y（前 → 后） | 列表高（前 → 后） | 比例 | 横向溢出 | pageerror |
+|---|---|---|---|---|---|
+| 1920×1080 亮/暗 · 中/英 | 216 → 328 | 773 → 661 | **86%** | 0 | 0 |
+| 1440×900 亮 中文 | 216 → 328 | 593 → 481 | 81% | 0 | 0 |
+| 1280×720 亮 中文 | 216 → 328 | 413 → 301 | 73% | 0 | 0 |
+| 1920×1080 没开 Issues | 216 → 328 | 773 → 661 | 86% | 0 | 0 |
+| 390×844 coarse（手机） | 228 → 228 | 512 → 512 | 100% | 0 | 0 |
+
+同条件对比（两边都等底部更新入口那一行 36px 出现后再量）。入口区从 34px 变成 146px（4 行 + 更多，各 28px），列表起点下移 112px；验收线是 1080p ≥ 80%。小屏代价更大，可在「调整入口」里减少常驻行。
+
+键盘实测：从新建 ▾ 按 Tab 落在 Issues，↓↓ End Home ↑ 依次为 运行中 / 项目 / 更多 / Issues / 更多，焦点环可见；Enter 打开「更多」菜单，Esc 关闭后焦点回到「更多」；菜单 End + Enter 进入调整，焦点在「完成」，Tab + Space 取消第一项后本机存 `["board","projects","teams"]`，Esc 退出后入口为 运行中 · 项目 · 团队 · 更多，刷新后保持。
+
+### 兼容与发布
+
+纯 Web；无协议、服务端存储、synced settings 变化。新增本机键 `vh.sidebar.navPinned`（缺失 / 坏值 = 默认）。随 server/Web 镜像发布，回滚即回滚镜像。
+
+### 用户可见变更
+
+- 中：侧栏入口带上了名字：「新建会话」下面那排图标改成一列带文字的入口（Issues、运行看板、项目、团队），其余的在「更多 ▾」，「更多 ▾ → 调整入口」可以选哪些常驻。
+- EN: Sidebar entries have names: the icon row under New session is now a labelled list (Issues, Agent board, Projects, Teams), the rest are under More ▾, and More ▾ → Edit entries picks which rows stay.

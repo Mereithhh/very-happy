@@ -81,5 +81,29 @@ describe('feature tips (B-588)', () => {
       const composer = { left: 0, top: 0, width: 390, height: 800 };
       expect(placeTip({ left: 20, top: 400, width: 80, height: 28 }, size, viewport, [composer])).toBeNull();
     });
+
+    describe('beside a container (B-926: the session-peek tip never covers the session list)', () => {
+      const desktop = { width: 1440, height: 900 };
+      const sidebar = { left: 0, top: 0, width: 260, height: 900 };
+      const row = { left: 8, top: 296, width: 244, height: 32 };
+      const intersectsBox = (a: { left: number; top: number; width: number; height: number }, b: typeof a) =>
+        a.left < b.left + b.width && b.left < a.left + a.width && a.top < b.top + b.height && b.top < a.top + a.height;
+      it('goes right of the sidebar, top-aligned with the row, and stays off the sidebar', () => {
+        const pos = placeTip(row, size, desktop, [], 8, 8, sidebar)!;
+        expect(pos).toEqual({ left: 268, top: 296, side: 'right' });
+        expect(intersectsBox({ ...pos, ...size }, sidebar)).toBe(false);
+      });
+      it('a row near the bottom: clamped up into the viewport, still beside', () => {
+        expect(placeTip({ ...row, top: 880 }, size, desktop, [], 8, 8, sidebar)).toEqual({ left: 268, top: 900 - 8 - 90, side: 'right' });
+      });
+      it('no room beside (a full-width phone list) or the composer in the way: not shown, never above / below the row', () => {
+        expect(placeTip(row, size, { width: 390, height: 844 }, [], 8, 8, { left: 0, top: 0, width: 390, height: 844 })).toBeNull();
+        expect(placeTip(row, size, desktop, [{ left: 260, top: 0, width: 1180, height: 900 }], 8, 8, sidebar)).toBeNull();
+      });
+      it('session-peek is the tip that sits beside the sidebar', () => {
+        expect(FEATURE_TIPS.find((d) => d.id === 'session-peek')?.beside).toBe('.app-sidebar, .sb');
+        expect(FEATURE_TIPS.filter((d) => d.beside).map((d) => d.id)).toEqual(['session-peek']);
+      });
+    });
   });
 });

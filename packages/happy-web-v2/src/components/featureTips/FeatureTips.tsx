@@ -140,6 +140,12 @@ function visibleAnchor(id: FeatureTipId): HTMLElement | null {
   return best?.el ?? null;
 }
 
+/** B-926: the container a `beside` tip sits next to (undefined = place above / below the anchor). */
+function besideBox(def: FeatureTipDef, anchor: HTMLElement): Box | undefined {
+  const container = def.beside ? anchor.closest<HTMLElement>(def.beside) : null;
+  return container ? toBox(container.getBoundingClientRect()) : undefined;
+}
+
 function avoidBoxes(): Box[] {
   return Array.from(document.querySelectorAll<HTMLElement>(AVOID_SELECTOR)).map((n) => toBox(n.getBoundingClientRect()));
 }
@@ -157,7 +163,7 @@ export function FeatureTipHost() {
   useSyncExternalStore(subscribe, () => version);
   const allSeenNow = allSeen();
   const [tick, setTick] = useState(0);
-  const [pos, setPos] = useState<{ left: number; top: number; side: 'top' | 'bottom' } | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; side: 'top' | 'bottom' | 'right' } | null>(null);
   const tipRef = useRef<HTMLDivElement | null>(null);
   const lastHeight = useRef(140);
 
@@ -198,7 +204,7 @@ export function FeatureTipHost() {
     for (const def of FEATURE_TIPS) {
       if (!pickTip([def], seenNow, new Set([def.id]))) continue;
       const el = visibleAnchor(def.id);
-      if (!el || !placeTip(toBox(el.getBoundingClientRect()), estimate, viewport, avoid)) continue;
+      if (!el || !placeTip(toBox(el.getBoundingClientRect()), estimate, viewport, avoid, undefined, undefined, besideBox(def, el))) continue;
       tip = def;
       anchor = el;
       break;
@@ -213,7 +219,7 @@ export function FeatureTipHost() {
     }
     const size = { width: el.offsetWidth, height: el.offsetHeight };
     lastHeight.current = size.height;
-    const next = placeTip(toBox(anchor.getBoundingClientRect()), size, tipViewport(), avoidBoxes());
+    const next = placeTip(toBox(anchor.getBoundingClientRect()), size, tipViewport(), avoidBoxes(), undefined, undefined, besideBox(tip, anchor));
     if (next?.left !== pos?.left || next?.top !== pos?.top || next?.side !== pos?.side) setPos(next);
   });
 

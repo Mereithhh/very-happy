@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { NEW_TEAM_PATH, isEntryCurrent, navAttentionTotal, navMenuLabel, orderCreateMenu, sidebarNavEntries, sidebarTopModel, stripFocusTarget } from './sidebarNavEntries';
+import { NEW_TEAM_PATH, isEntryCurrent, navAttentionTotal, navMenuLabel, orderCreateMenu, sidebarNavEntries, sidebarTopModel, splitNavEntries, stripFocusTarget, togglePinnedEntry } from './sidebarNavEntries';
 
 const all = { teamsVisible: true, automationsVisible: true, automationAttention: 0, incomingPeople: 0 };
 
@@ -13,8 +13,8 @@ describe('sidebarNavEntries (B-641)', () => {
       ['people', '/people'],
       ['feedback', '/settings/feedback'],
     ]);
-    // B-836: 反馈 is only in the phone's 更多 — never a desktop row
-    expect(sidebarNavEntries(all).filter((e) => e.phoneOnly).map((e) => e.key)).toEqual(['feedback']);
+    // B-836/B-926: 反馈 is never a default row — it sits in 更多 unless pinned
+    expect(sidebarNavEntries(all).filter((e) => e.foldedByDefault).map((e) => e.key)).toEqual(['feedback']);
   });
 
   it('B-756: 项目 leads the entries once the projects API answered, and opens the /projects list', () => {
@@ -89,8 +89,12 @@ describe('sidebar top model (B-676, B-713, B-896)', () => {
   });
 });
 
-describe('capability strip keyboard (B-896)', () => {
-  it('←/→ wrap, Home/End jump, other keys are not the strip\'s', () => {
+describe('capability rows keyboard (B-896, B-926)', () => {
+  it('↓/↑ and →/← wrap, Home/End jump, other keys are not the group\'s', () => {
+    expect(stripFocusTarget('ArrowDown', 0, 5)).toBe(1);
+    expect(stripFocusTarget('ArrowDown', 4, 5)).toBe(0);
+    expect(stripFocusTarget('ArrowUp', 0, 5)).toBe(4);
+    expect(stripFocusTarget('ArrowUp', 2, 5)).toBe(1);
     expect(stripFocusTarget('ArrowRight', 0, 6)).toBe(1);
     expect(stripFocusTarget('ArrowRight', 5, 6)).toBe(0);
     expect(stripFocusTarget('ArrowLeft', 0, 6)).toBe(5);
@@ -107,11 +111,29 @@ describe('capability strip keyboard (B-896)', () => {
     expect(isEntryCurrent('/projects', '/projectsx')).toBe(false);
     expect(isEntryCurrent('/board', '/')).toBe(false);
   });
-  it('with Issues on: 6 desktop cells; off: 5 (待办 instead of Issues + 运行中)', () => {
-    const on = sidebarNavEntries({ ...all, projectsVisible: true, issuesVisible: true }).filter((e) => !e.phoneOnly).map((e) => e.key);
-    const off = sidebarNavEntries({ ...all, projectsVisible: true }).filter((e) => !e.phoneOnly).map((e) => e.key);
-    expect(on).toEqual(['issues', 'board', 'projects', 'teams', 'automations', 'people']);
-    expect(off).toEqual(['projects', 'teams', 'automations', 'todos', 'people']);
+});
+
+describe('pinned rows vs 更多 (B-926)', () => {
+  const on = sidebarNavEntries({ ...all, projectsVisible: true, issuesVisible: true });
+  const off = sidebarNavEntries({ ...all, projectsVisible: true });
+  const keys = (xs: readonly { key: string }[]) => xs.map((e) => e.key);
+  it('default: the first four rows stay, the rest (and 反馈) fold into 更多, both in priority order', () => {
+    expect(keys(splitNavEntries(on, null).pinned)).toEqual(['issues', 'board', 'projects', 'teams']);
+    expect(keys(splitNavEntries(on, null).more)).toEqual(['automations', 'people', 'feedback']);
+    expect(keys(splitNavEntries(off, null).pinned)).toEqual(['projects', 'teams', 'automations', 'todos']);
+    expect(keys(splitNavEntries(off, null).more)).toEqual(['people', 'feedback']);
+  });
+  it('a user choice keeps priority order and ignores unknown / currently hidden keys', () => {
+    const split = splitNavEntries(off, ['people', 'issues', 'nope', 'projects']);
+    expect(keys(split.pinned)).toEqual(['projects', 'people']);
+    expect(keys(split.more)).toEqual(['teams', 'automations', 'todos', 'feedback']);
+    expect(keys(splitNavEntries(off, []).pinned)).toEqual([]);
+  });
+  it('toggling materialises the default first, then adds / removes one key; hidden pins survive', () => {
+    expect(togglePinnedEntry(on, null, 'teams')).toEqual(['issues', 'board', 'projects']);
+    expect(togglePinnedEntry(on, null, 'feedback')).toEqual(['issues', 'board', 'projects', 'teams', 'feedback']);
+    // Issues off right now: its pin is kept for when it comes back
+    expect(togglePinnedEntry(off, ['issues', 'projects'], 'people')).toEqual(['issues', 'projects', 'people']);
   });
 });
 

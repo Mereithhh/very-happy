@@ -22,6 +22,13 @@ export interface FeatureTipDef {
   id: FeatureTipId;
   /** bump to show a reworked feature's tip again */
   version: number;
+  /**
+   * B-926: the anchor sits inside a list (a sidebar row) — the tip goes BESIDE
+   * the closest container matching this selector, never above / below the
+   * anchor where it would cover the neighbouring rows. No room beside it
+   * (the phone's full-width list) → not shown.
+   */
+  beside?: string;
 }
 
 /** Display order: the first unseen tip with a visible anchor wins. */
@@ -29,7 +36,7 @@ export const FEATURE_TIPS: readonly FeatureTipDef[] = [
   { id: 'quick-open', version: 1 }, // B-576 ⌘P
   { id: 'prompt-rail', version: 1 }, // B-579
   { id: 'review-all', version: 1 }, // B-572
-  { id: 'session-peek', version: 1 }, // B-588
+  { id: 'session-peek', version: 1, beside: '.app-sidebar, .sb' }, // B-588; B-926: beside the sidebar
 ];
 
 export function tipToken(def: FeatureTipDef): string {
@@ -95,7 +102,9 @@ export function placeTip(
   avoid: readonly Box[],
   gap = 8,
   margin = 8,
-): { left: number; top: number; side: 'bottom' | 'top' } | null {
+  beside?: Box,
+): { left: number; top: number; side: 'bottom' | 'top' | 'right' } | null {
+  if (beside) return placeBeside(anchor, size, viewport, avoid, beside, gap, margin);
   const minLeft = (viewport.insetLeft ?? 0) + margin;
   const maxLeft = Math.max(minLeft, viewport.width - (viewport.insetRight ?? 0) - size.width - margin);
   const left = Math.min(Math.max(anchor.left, minLeft), maxLeft);
@@ -110,6 +119,31 @@ export function placeTip(
     return { left, top: c.top, side: c.side };
   }
   return null;
+}
+
+/**
+ * B-926: right of `container` (the sidebar), top-aligned with the anchor row
+ * and clamped into the viewport, so the list it points into stays readable.
+ * Only that side: no room (container reaches the viewport edge) or an `avoid`
+ * box in the way → null.
+ */
+function placeBeside(
+  anchor: Box,
+  size: { width: number; height: number },
+  viewport: { width: number; height: number; insetLeft?: number; insetRight?: number },
+  avoid: readonly Box[],
+  container: Box,
+  gap: number,
+  margin: number,
+): { left: number; top: number; side: 'right' } | null {
+  const left = container.left + container.width + gap;
+  if (left + size.width > viewport.width - (viewport.insetRight ?? 0) - margin) return null;
+  const maxTop = viewport.height - margin - size.height;
+  if (maxTop < margin) return null;
+  const top = Math.min(Math.max(anchor.top, margin), maxTop);
+  const box = { left, top, width: size.width, height: size.height };
+  if (avoid.some((a) => intersects(box, a))) return null;
+  return { left, top, side: 'right' };
 }
 
 export type FeatureTipTextKey =
