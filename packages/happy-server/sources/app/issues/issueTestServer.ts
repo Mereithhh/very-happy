@@ -29,7 +29,8 @@ export async function startIssueTestServer(name: string) {
     await startApi({ port, host: '127.0.0.1' });
     const base = `http://127.0.0.1:${port}`;
     const accountId = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
-    const token = await auth.createToken(accountId);
+    // A Web login: owner-respond requires one (B-921).
+    const token = (await auth.createLoginToken(accountId)).token;
 
     const call = async (method: string, path: string, body?: unknown, bearer: string | null = token) => {
         const res = await fetch(`${base}${path}`, {
@@ -42,7 +43,7 @@ export async function startIssueTestServer(name: string) {
     };
     const newAccount = async () => {
         const id = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
-        return { id, token: await auth.createToken(id) };
+        return { id, token: (await auth.createLoginToken(id)).token };
     };
     const newMachine = async (owner = accountId) => (await db.machine.create({ data: { id: crypto.randomUUID(), accountId: owner, metadata: 'm' } })).id;
     const newSession = async (owner = accountId) => (await db.session.create({ data: { accountId: owner, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;

@@ -38,10 +38,18 @@ function optimistic(item: AttentionItem, patch: Partial<AttentionItem>): void {
     useAttentionStore.getState().apply({ ...item, ...patch });
 }
 
+/** B-921: owner choices need a signed-in login; an old token is told to sign in again, never failed silently. */
+export function isReloginRequired(error: unknown): boolean {
+    // Read the fields (AttentionApiError shape), not instanceof: the check must hold wherever the error was built.
+    const e = error as { status?: unknown; code?: unknown } | null;
+    return !!e && typeof e === 'object' && e.status === 403 && e.code === 'owner_login_required';
+}
+
 /** Undo the optimistic change (same version, so it replaces), say so, and resync. */
-function failed(item: AttentionItem, copy: BoardCopy): void {
+function failed(item: AttentionItem, copy: BoardCopy, error?: unknown): void {
     useAttentionStore.getState().apply(item);
-    toast.error(copy.actionFailed);
+    if (isReloginRequired(error)) toast.action(copy.reloginRequired, () => { window.location.assign('/settings/account'); });
+    else toast.error(copy.actionFailed);
     void loadAttentionItems(item.sessionId);
 }
 
@@ -51,8 +59,8 @@ export async function chooseOption(item: AttentionItem, optionId: string, copy: 
     try {
         const { item: next } = await respondToAttentionItem(item.id, { action: 'choose', choice: optionId });
         useAttentionStore.getState().apply(next);
-    } catch {
-        failed(item, copy);
+    } catch (error) {
+        failed(item, copy, error);
         return;
     }
     try {
@@ -69,8 +77,8 @@ export async function resolveItem(item: AttentionItem, copy: BoardCopy): Promise
     try {
         const { item: next } = await respondToAttentionItem(item.id, { action: 'resolve' });
         useAttentionStore.getState().apply(next);
-    } catch {
-        failed(item, copy);
+    } catch (error) {
+        failed(item, copy, error);
     }
 }
 
@@ -80,8 +88,8 @@ export async function followUp(item: AttentionItem, copy: BoardCopy): Promise<vo
     try {
         const { item: next } = await respondToAttentionItem(item.id, { action: 'reopen' });
         useAttentionStore.getState().apply(next);
-    } catch {
-        failed(item, copy);
+    } catch (error) {
+        failed(item, copy, error);
     }
 }
 
@@ -96,9 +104,10 @@ export async function checkWrapupItem(item: AttentionItem, checkId: string, chec
     try {
         const { item: next } = await respondToAttentionItem(item.id, { action: 'check', checkId, checked });
         useAttentionStore.getState().apply(next);
-    } catch {
+    } catch (error) {
         useAttentionStore.getState().apply(item);
-        toast.error(copy.wrapup.checkFailed);
+        if (isReloginRequired(error)) toast.action(copy.reloginRequired, () => { window.location.assign('/settings/account'); });
+        else toast.error(copy.wrapup.checkFailed);
         void loadAttentionItems(item.sessionId);
     }
 }

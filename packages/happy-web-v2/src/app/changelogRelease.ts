@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-11-briefing-choices-need-sign-in',
+    date: '2026-11-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov11n.title',
+    summaryKey: 'changelog.releases.nov11n.summary',
+    itemKeys: ['changelog.releases.nov11n.owner', 'changelog.releases.nov11n.relogin'],
+  },
+  {
     id: '2026-11-11-cli-main-agent-wrapup-handoff-tools-0-2-212',
     cliVersion: '0.2.212',
     date: '2026-11-11',

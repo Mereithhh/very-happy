@@ -50,7 +50,7 @@ describe('attention REST + hooks through startApi (pglite)', () => {
     mkdirSync(parent, { recursive: true });
     const root = mkdtempSync(join(parent, 'api-'));
     let db: PrismaClient; let base: string;
-    let accountId: string; let token: string; let otherToken: string;
+    let accountId: string; let token: string; let otherToken: string; let machineTokens: Record<string, string>;
     const sockets: ClientSocket[] = [];
 
     const call = async (method: string, path: string, body?: unknown, bearer = token) => {
@@ -80,8 +80,15 @@ describe('attention REST + hooks through startApi (pglite)', () => {
         base = `http://127.0.0.1:${port}`;
         accountId = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
         const otherId = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
-        token = await auth.createToken(accountId);
-        otherToken = await auth.createToken(otherId);
+        // The owner's Web login (a login session) vs every machine token this account can hold (authRoutes / migrationRoutes).
+        token = (await auth.createLoginToken(accountId)).token;
+        otherToken = (await auth.createLoginToken(otherId)).token;
+        machineTokens = {
+            terminalPairing: await auth.createToken(accountId, { session: 'pairing-1' }),
+            accountDevicePairing: await auth.createToken(accountId),
+            legacyPublicKeyAuth: await auth.createToken(accountId),
+            daemonMigration: await auth.createToken(accountId),
+        };
     }, 60000);
     afterAll(async () => {
         for (const s of sockets) s.close();
@@ -94,6 +101,24 @@ describe('attention REST + hooks through startApi (pglite)', () => {
         expect(await call('GET', '/v1/attention-items')).toEqual({ status: 404, body: { error: 'owner_board_disabled' } });
         expect((await call('POST', '/v1/attention-items', { sessionId, source: 'agent', kind: 'blocked', title: 'x' })).body).toEqual({ error: 'owner_board_disabled' });
         process.env.VH_OWNER_BOARD_ENABLED = 'true';
+    });
+
+    it('B-921: only a signed-in login answers as the owner; machine tokens get owner_login_required', async () => {
+        const sessionId = await newSession();
+        for (const [kind, machine] of Object.entries(machineTokens)) {
+            const posted = await call('POST', '/v1/attention-items', { sessionId, source: 'agent', kind: 'decision', title: `approve? ${kind}`, options, key: `t:${kind}` }, machine);
+            expect(posted.status, kind).toBe(200);
+            const id = posted.body.item.id;
+            for (const body of [{ action: 'choose', choice: 'A' }, { action: 'resolve' }, { action: 'reopen' }]) {
+                expect(await call('POST', `/v1/attention-items/${id}/owner-respond`, body, machine), `${kind} ${body.action}`).toEqual({ status: 403, body: { error: 'owner_login_required' } });
+            }
+            // The agent-side close is the lead's, never the owner's; `by` cannot claim owner.
+            expect((await call('POST', `/v1/attention-items/${id}/resolve`, { outcome: 'done', by: 'owner' }, machine)).status).toBe(400);
+            expect((await call('POST', `/v1/attention-items/${id}/resolve`, { outcome: 'done' }, machine)).body.item).toMatchObject({ resolvedBy: 'lead', ownerChoice: null });
+            expect(await item(id)).toMatchObject({ resolvedBy: 'lead', ownerChoice: null });
+        }
+        const fresh = await call('POST', '/v1/attention-items', { sessionId, source: 'agent', kind: 'decision', title: 'approve?', options, key: 't:web' }, machineTokens.terminalPairing!);
+        expect((await call('POST', `/v1/attention-items/${fresh.body.item.id}/owner-respond`, { action: 'choose', choice: 'A' })).body.item).toMatchObject({ resolvedBy: 'owner', ownerChoice: 'A' });
     });
 
     it('POST upsert / PATCH / resolve / owner-respond / GET over HTTP, with validation and auth', async () => {
