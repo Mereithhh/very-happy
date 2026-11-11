@@ -13,11 +13,16 @@
  *  `?case=start` (B-759): the 新建团队 dialog with its 「按需创建成员」 note (nothing is sent).
  *  `?case=details` (B-928): a task-details dialog with a long result — the head and ×
  *  stay put while the body scrolls; a click on the backdrop closes it (「重新打开」 reopens).
- *  `?case=wrapper` (B-928): the same for a wrapper-family card (DialogBackdrop + DialogHead + foot). */
+ *  `?case=wrapper` (B-928): the same for a wrapper-family card (DialogBackdrop + DialogHead + foot).
+ *  `?case=radix` (B-928): the same for the Radix family (DialogContent). */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Markdown } from '@/screens/session/Markdown';
 import { DialogBackdrop } from '@/ui/DialogBackdrop';
 import { Button } from '@/ui/Button';
+import * as Dialog from '@radix-ui/react-dialog';
+import { X } from 'lucide-react';
+import { DialogContent } from '@/ui/DialogContent';
+import '@/screens/session/sessionOptionsDialog.css';
 import { DialogHead } from '@/ui/DialogHead';
 import '@/screens/sessions/newsession.css';
 import type { TeamBot, TeamOperation, TeamState } from '@slopus/happy-wire';
@@ -201,6 +206,15 @@ export function TeamsQaHarness() {
         <div className="ns-actions vh-dialog-foot"><Button variant="ghost" onClick={close}>Cancel</Button><Button variant="primary">Save</Button></div>
       </div>
     </DialogBackdrop>}</Reopen></main>;
+  if (view === 'radix') return <main><Reopen>{close =>
+    <Dialog.Root open onOpenChange={o => { if (!o) close(); }}><Dialog.Portal><Dialog.Overlay className="vh-dialog-overlay so-overlay" />
+      <DialogContent className="vh-dialog so-dialog" aria-describedby={undefined}>
+        <div className="vh-dialog-head so-head"><Dialog.Title className="vh-dialog-title">Commit changes</Dialog.Title><Dialog.Close className="vh-dialog-close" aria-label="Close"><X size={18} /></Dialog.Close></div>
+        {Array.from({ length: 60 }, (_, i) => <p key={i} style={{ margin: 0 }}>File {i + 1} — 文件 {i + 1}</p>)}
+        <textarea className="ns-input" name="message" placeholder="Commit message" />
+        <div className="vh-dialog-foot"><Button variant="ghost" onClick={close}>Cancel</Button><Button variant="primary">Commit</Button></div>
+      </DialogContent>
+    </Dialog.Portal></Dialog.Root>}</Reopen></main>;
   if (view === 'solo') return <main className="teams-screen">
     <TeamWorkspace team={SOLO_TEAM} onTask={() => {}} now={NOW} />
   </main>;
