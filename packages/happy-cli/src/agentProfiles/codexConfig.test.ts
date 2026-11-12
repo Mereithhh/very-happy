@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { accountProviderId, buildCodexProviderTable, parseCodexDefaultProvider, parseCodexProviders } from './codexConfig';
+import { parse } from 'smol-toml';
+import { accountProviderId, buildCodexProviderTable, codexProcessProviderArgs, parseCodexDefaultProvider, parseCodexProviders, tomlInlineValue } from './codexConfig';
 
 const TOML = `
 model = "gpt-5.6-sol"
@@ -44,5 +45,40 @@ describe('B-850b Codex config providers', () => {
         expect(parseCodexDefaultProvider(TOML)).toBe('llmhub');
         expect(parseCodexDefaultProvider('model = "x"')).toBe('openai');
         expect(parseCodexDefaultProvider('broken = [')).toBe('openai');
+    });
+});
+
+describe('B-934 process-level provider flags', () => {
+    const table = buildCodexProviderTable({
+        base: { id: 'corp', table: { name: 'Corp', base_url: 'https://old.example', env_key: 'CORP_KEY', http_headers: { 'X-Team': 'a "b"' }, request_max_retries: 3, supports_websockets: false } },
+        label: 'Team 账号',
+        baseUrl: 'https://api.example/v1',
+        nodePath: '/opt/node/bin/node',
+        keyPath: '/home/u/.happy/accounts/k e y',
+    });
+
+    it('an account provider becomes the process provider, with its table', () => {
+        const args = codexProcessProviderArgs({ modelProvider: 'vh-team', config: { model_providers: { 'vh-team': table } } });
+        expect(args.slice(0, 2)).toEqual(['-c', 'model_provider="vh-team"']);
+        expect(args[2]).toBe('-c');
+        const [key, value] = [args[3].slice(0, args[3].indexOf('=')), args[3].slice(args[3].indexOf('=') + 1)];
+        expect(key).toBe('model_providers.vh-team');
+        // What Codex parses back is the same table the thread config carries.
+        expect((parse(`v = ${value}`) as { v: unknown }).v).toEqual(table);
+        expect(args[3]).not.toContain('CORP_KEY');
+    });
+
+    it('a ChatGPT account pins the built-in provider without a table', () => {
+        expect(codexProcessProviderArgs({ modelProvider: 'openai' })).toEqual(['-c', 'model_provider="openai"']);
+    });
+
+    it('machine login passes nothing (config.toml decides)', () => {
+        expect(codexProcessProviderArgs({})).toEqual([]);
+        expect(codexProcessProviderArgs({ modelProvider: 'bad id' })).toEqual([]);
+    });
+
+    it('inline TOML values round-trip', () => {
+        const v = { s: 'a\\b"\n✓', n: 1.5, b: true, a: [1, 'x'], 'k.y': { z: 'q' } };
+        expect((parse(`v = ${tomlInlineValue(v)}`) as { v: unknown }).v).toEqual(v);
     });
 });

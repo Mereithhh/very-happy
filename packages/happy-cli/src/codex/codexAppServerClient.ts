@@ -53,6 +53,7 @@ import { isUnsupportedCodexMethodError, shouldReadCodexRateLimits } from '@/rate
 import { codexChildAnnouncements } from './codexChildThreads';
 import { killCodexProcessTree, stopCodexProcess } from './codexProcessTree';
 import { describeCodexExit, type CodexExit } from './codexFailureText';
+import { codexProcessProviderArgs } from '@/agentProfiles/codexConfig';
 
 /** B-901: an app-server exit we did not cause, for the crash-loop guard. */
 export type CodexUnexpectedExit = CodexExit & { threadId: string | null; servedTurn: boolean };
@@ -738,13 +739,15 @@ export class CodexAppServerClient {
         }
 
         let command = 'codex';
-        let args = ['app-server', '--listen', 'stdio://'];
+        // B-934: a bound session's provider is the process's too (Codex ≥0.167 checks).
+        const appServerArgs = [...codexProcessProviderArgs(this.accountOverrides), 'app-server', '--listen', 'stdio://'];
+        let args = appServerArgs;
         this.sandboxEnabled = false;
 
         if (this.sandboxConfig?.enabled && process.platform !== 'win32') {
             try {
                 this.sandboxCleanup = await initializeSandbox(this.sandboxConfig, process.cwd());
-                const wrapped = await wrapForMcpTransport('codex', ['app-server', '--listen', 'stdio://']);
+                const wrapped = await wrapForMcpTransport('codex', appServerArgs);
                 command = wrapped.command;
                 args = wrapped.args;
                 this.sandboxEnabled = true;
@@ -772,7 +775,8 @@ export class CodexAppServerClient {
         }
         Object.assign(env, this.accountOverrides.env);
 
-        logger.debug(`[CodexAppServer] Spawning: ${command} ${args.join(' ')}`);
+        // Not `args`: the provider table carries the key file's path.
+        logger.debug(`[CodexAppServer] Spawning: ${command} app-server --listen stdio://${this.accountOverrides.modelProvider ? ` (provider ${this.accountOverrides.modelProvider})` : ''}${this.sandboxEnabled ? ' (sandboxed)' : ''}`);
 
         const epoch = ++this.processEpoch;
         // Use cross-spawn so npm-installed wrappers (codex.cmd / codex.ps1) resolve on Windows.

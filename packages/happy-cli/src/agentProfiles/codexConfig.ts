@@ -114,3 +114,37 @@ export function buildCodexProviderTable(input: {
 export function accountProviderId(accountId: string): string {
     return `vh-${accountId}`;
 }
+
+/** Pure: a JSON-like value as a TOML inline value (what Codex's `-c key=value` parses). */
+export function tomlInlineValue(value: unknown): string {
+    if (typeof value === 'string') return JSON.stringify(value);
+    if (typeof value === 'number') {
+        if (!Number.isFinite(value)) throw new Error(`not a TOML number: ${value}`);
+        return String(value);
+    }
+    if (typeof value === 'boolean') return String(value);
+    if (Array.isArray(value)) return `[${value.map(tomlInlineValue).join(', ')}]`;
+    if (value && typeof value === 'object') {
+        const entries = Object.entries(value as Record<string, unknown>).filter(([, v]) => v !== undefined && v !== null);
+        return `{${entries.map(([k, v]) => `${/^[A-Za-z0-9_-]+$/.test(k) ? k : JSON.stringify(k)} = ${tomlInlineValue(v)}`).join(', ')}}`;
+    }
+    throw new Error(`not a TOML value: ${String(value)}`);
+}
+
+/**
+ * Pure (B-934): the `-c` flags that make a bound session's provider the
+ * app-server's process-level provider. Codex ≥0.167 rejects a thread whose
+ * `modelProvider` differs from the process's (`-32600 This chat uses …, but
+ * your current provider is …`), and the process's comes from config.toml
+ * unless overridden here; 0.154 accepts the same flags. The account's
+ * provider table goes along so the id resolves at startup. Machine-login
+ * sessions (no `modelProvider`) get none — config.toml as before.
+ */
+export function codexProcessProviderArgs(overrides: { modelProvider?: string; config?: Record<string, unknown> }): string[] {
+    const id = overrides.modelProvider;
+    if (!id || !/^[A-Za-z0-9_-]+$/.test(id)) return [];
+    const args = ['-c', `model_provider=${JSON.stringify(id)}`];
+    const table = (overrides.config?.model_providers as Record<string, unknown> | undefined)?.[id];
+    if (table && typeof table === 'object') args.push('-c', `model_providers.${id}=${tomlInlineValue(table)}`);
+    return args;
+}

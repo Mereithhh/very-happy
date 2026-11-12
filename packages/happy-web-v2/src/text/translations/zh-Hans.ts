@@ -3504,6 +3504,11 @@ export const zhHans: TranslationStructure = {
                 images: '新会话页（会话还没建好时）和新建会话对话框里都能粘贴、拖入或选择图片（手机也能选图）。会话启动后自动上传，和文字一起交给 Claude 或 Codex；只发图片也行。启动中刷新页面，图片也会保留并继续发送。',
                 noSilentDrop: '不再悄悄丢消息：文件发不出去时（上传失败、会话不支持这些文件）会说明原因，文字和文件放回输入框，再点发送即可重试。',
             },
+            nov13c: {
+                title: '用已添加账号的 Codex 会话支持新版 Codex',
+                summary: '在 Very Happy 里绑定了账号的 Codex 会话，在 Codex 0.167 及以后的版本上可以正常新建和恢复。',
+                codex: '新版 Codex 会以「This chat uses …, but your current provider is …」拒绝这类会话。现在绑定账号的 Codex 会话启动时就用账号自己的 provider，在新版 Codex 上也能新建和恢复。用本机 Codex 登录的会话不受影响。',
+            },
             nov13b: {
                 title: '连续归档不会再顺手带走下一个会话',
                 summary: '用 ⌘W 或命令面板归档后，会跳到下一个会话；现在它只是打开给你看，在你动它之前不会有任何变化。',
