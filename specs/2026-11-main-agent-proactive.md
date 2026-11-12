@@ -56,7 +56,7 @@
 - **首次启动**：state 文件不存在时，把当时已开着的卡和失败 run 记为已见，不唤醒（这些事早于开启）。
 - **合并**：第一个事件到达后开一个 `debounceSec` 的窗口，窗口内到达的全部合成一条消息；一条最多列 12 件，其余写「另有 N 件」。
 - **投递**：主 agent 没在跑时先在本机拉起（与 Web 打开主 agent 同一条 spawn 路径），再发送；拿不到会话时事件留在队列，5 分钟后重试。
-- **消息**：首行 `[主动唤醒]`；localId `automation-wake-<level>-<id>`，`sentFrom: automation`。`automation-` 前缀让 server 的 owner-replied 规则、Lead 汇报板和 B-924 的 turn source 都把这一轮当作「不是 Owner 说的话」。
+- **消息**：首行 `[主动唤醒]`；localId `automation-wake-<level>-<id>`，`sentFrom: automation`。`automation-` 前缀让 server 的 owner-replied 规则、Lead 汇报板和 B-924 的 turn source 都把这一轮当作「不是 Owner 说的话」。B-924d 起 wrapper 给 `automation-wake-*` 的 prompt 包一层来源标记（「［来源：主动唤醒（系统汇总的事件）…］」），唤醒正文不再自己写「不是 Owner 说的话」；托管段那句写明外面有来源标记、按主动程度设置处理。正文里台账例外（还在台账里的会话可以直接催）写在「卡住的会话发继续由 Owner 定」前面：真模型实测中，反过来的顺序让它催完又以为自己违规。
 - **预算**：发送前检查当日（`quietHours.tz` 的本地日）唤醒次数和 token；任一超限就不发，并在主 agent 会话的汇报板上发一张 report 卡（key `main-agent-proactive-budget:<YYYY-MM-DD>`，每天一张），标题写明是哪一项触发（次数 / token / 两者），正文分两行列出次数和 token 各自的已用 / 上限（QA P3-3）。之后当天的事件只记为已见。
 - **token 计量**：主 agent 的 wrapper 识别唤醒轮次（这一轮的 prompt 全是唤醒消息），按 assistant message id 取最新 usage 累加，轮次结束时追加到 `~/.happy/assistant/proactive-usage.jsonl`；daemon 按本地日求和，只保留 3 天。
 - **夜间免打扰**：唤醒照常，但消息里告诉主 agent「只上板，不推送」；主 agent 的卡在免打扰时段不推送由 server 保证（B-924）。
