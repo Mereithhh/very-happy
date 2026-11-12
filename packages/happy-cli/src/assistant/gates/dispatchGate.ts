@@ -170,7 +170,7 @@ export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'tool
     return {
         key: `${DISPATCH_CARD_KEY_PREFIX}${pending.approvalId}`,
         // B-924c (QA-T P3-2): the title names the action (想恢复自动化 / 想写项目决定 …), not always 派活.
-        title: `主 agent 想${mainAgentAskAction(pending.toolName)}（${pending.level}${forced ? '，需你确认' : ''}）：${head}`.slice(0, 120),
+        title: `主 agent 想${mainAgentAskAction(pending.toolName, pending.args)}（${pending.level}${forced ? '，需你确认' : ''}）：${head}`.slice(0, 120),
         bodyMd: clipBytes([
             `工具：${pending.toolName}`,
             ...(target ? [`目标：${target}`] : []),

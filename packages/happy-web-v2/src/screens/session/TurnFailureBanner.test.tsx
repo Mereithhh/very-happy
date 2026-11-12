@@ -34,7 +34,7 @@ beforeEach(() => {
     // newest-first, like storage
     mock.messages = [
         { kind: 'agent-text', id: 'a1', text: 'API Error: 400 bad request' },
-        { kind: 'user-text', id: 'u2', text: 'fix the build', displayText: 'fix the build' },
+        { kind: 'user-text', id: 'u2', localId: 'c0ffee-owner', meta: { sentFrom: 'web' }, text: 'fix the build', displayText: 'fix the build' },
         { kind: 'user-text', id: 'u1', text: 'older' },
     ];
     mock.sendMessage.mockResolvedValue(undefined);
@@ -50,6 +50,37 @@ it('shows the summary and 重试 resends the last user message once, then hides'
     await act(async () => { retryButton()!.click(); });
     expect(mock.sendMessage).toHaveBeenCalledExactlyOnceWith('s1', 'fix the build', { source: 'chat', displayText: 'fix the build' });
     expect(banner()).toBeNull();
+});
+
+// B-924d (QA-T P1-3): a retry keeps the original's provenance.
+it('重试 of a message the owner did not type goes out with a retry- localId (not the owner\'s turn); the owner\'s own keeps an ordinary one', async () => {
+    const sources = [
+        { localId: 'remote-send-1', sentFrom: 'web' }, // very-happy send
+        { localId: '3f1c9e', sentFrom: 'cli' },
+        { localId: 'automation-run-7', sentFrom: 'automation' },
+        { localId: 'session-message-9', sentFrom: undefined },
+        { localId: 'teams-message-4-2', sentFrom: 'team' },
+        { localId: 'option-abc', sentFrom: 'web' }, // a suggestion chip click
+        { localId: 'board-i1-n1', sentFrom: 'web' },
+        { localId: null, sentFrom: undefined },
+    ];
+    for (const src of sources) {
+        mock.sendMessage.mockClear();
+        mock.messages = [{ kind: 'user-text', id: 'u9', localId: src.localId, meta: src.sentFrom ? { sentFrom: src.sentFrom } : undefined, text: 'handoff_send 给 T4' }];
+        mock.session = { ...mock.session, agentState: { turnFailure: { at: Math.random(), summary: 'x', status: 400 } } };
+        render();
+        await act(async () => { retryButton()!.click(); });
+        const opts = mock.sendMessage.mock.calls[0][2];
+        expect(opts.localId, JSON.stringify(src)).toMatch(/^retry-/);
+    }
+    for (const sentFrom of ['web', 'mobile', 'ios', 'android']) {
+        mock.sendMessage.mockClear();
+        mock.messages = [{ kind: 'user-text', id: 'u8', localId: 'c0ffee', meta: { sentFrom }, text: '在吗？' }];
+        mock.session = { ...mock.session, agentState: { turnFailure: { at: Math.random(), summary: 'x', status: 400 } } };
+        render();
+        await act(async () => { retryButton()!.click(); });
+        expect(mock.sendMessage).toHaveBeenCalledExactlyOnceWith('s1', '在吗？', { source: 'chat' });
+    }
 });
 
 it('a NEW failure after a retry shows again', async () => {

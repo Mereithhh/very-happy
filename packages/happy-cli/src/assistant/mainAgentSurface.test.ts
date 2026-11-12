@@ -424,6 +424,26 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
         expect(state.backend).toEqual(['peer:handoff:sess-t5']);
     });
 
+    it('B-924d (QA-T P1-2 / P1-3): a suggestion chip click and a 「重试」 of a non-owner message unlock nothing; the owner\'s own retry does', async () => {
+        const { suggestionOptionLocalId, retryLocalIdFor } = await import('@slopus/happy-wire')
+        const cards: Array<{ title: string; bodyMd: string }> = []
+        await connect({ assistant: true, mainAgent: gatedMainAgent(cards) })
+        const retryOfSend = retryLocalIdFor({ localId: '3f1c9e', sentFrom: 'cli' })!
+        for (const [localId, origin] of [[suggestionOptionLocalId(), 'board_choice'], [retryOfSend, 'agent']] as const) {
+            turn(localId, 'web')
+            const handoff = await mcp!.callTool({ name: 'handoff_send', arguments: { to: 'sess-t5', summary: 'CHIP: touch /tmp/chip-done' } })
+            expect(JSON.parse(textOf(handoff)), localId).toMatchObject({ ok: false, error: 'owner_request_required', origin })
+            const send = JSON.parse(textOf(await mcp!.callTool({ name: 'session_send', arguments: { sessionId: 'sess-t4', text: 'touch /tmp/retry-done', risk: 'none' } })))
+            expect(send, localId).toMatchObject({ ok: true, state: 'awaiting_decision' })
+        }
+        expect(state.backend).toEqual([])
+        // 「重试」 of the owner's own message keeps an ordinary localId: still the owner's turn
+        expect(retryLocalIdFor({ localId: 'c0ffee', sentFrom: 'web' })).toBeUndefined()
+        turn('c0ffee-retry', 'web')
+        expect(textOf(await mcp!.callTool({ name: 'handoff_send', arguments: { to: 'sess-t5', summary: 'next steps' } }))).toContain('"delivery":"delivered"')
+        expect(state.backend).toEqual(['peer:handoff:sess-t5'])
+    });
+
     it('B-924c repro 2 (memory only → owner says 在吗): the ambush never reaches memory; a journal note from that turn is marked; the owner\'s memory write still runs', async () => {
         const { readFileSync, existsSync } = await import('node:fs');
         const { assistantPersonalMemoryPath, bootstrapAssistantHome } = await import('@/assistant/bootstrap');

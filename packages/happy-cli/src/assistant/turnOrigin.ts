@@ -42,17 +42,18 @@
 
 import type { AssistantToolRegistrar } from './assistantTools'
 import { MAIN_AGENT_OWNER_ONLY_TOOLS } from './mainAgentToolPolicy'
-import { ATTENTION_BOARD_LOCAL_ID_PREFIX } from '@slopus/happy-wire'
+import { ATTENTION_BOARD_LOCAL_ID_PREFIX, NON_OWNER_RETRY_LOCAL_ID_PREFIX, OWNER_SENT_FROM, SUGGESTION_OPTION_LOCAL_ID_PREFIX } from '@slopus/happy-wire'
 
-/** `meta.sentFrom` of a person typing in a Very Happy client (leadBoard's owner rule uses this list). */
-export const OWNER_SENT_FROM = ['web', 'mobile', 'ios', 'android'] as const
+/** `meta.sentFrom` of a person typing in a Very Happy client (leadBoard's owner rule uses this list). Shared with the Web (happy-wire promptProvenance). */
+export { OWNER_SENT_FROM }
 /** localId prefixes stamped by automated senders: never the owner, whatever `sentFrom` says. */
-export const AUTOMATED_LOCAL_ID_PREFIXES = ['automation-', 'teams-', 'remote-send-', 'session-message-', 'edit-conflict-', 'wrapup-', 'handoff-'] as const
+export const AUTOMATED_LOCAL_ID_PREFIXES = ['automation-', 'teams-', 'remote-send-', 'session-message-', 'edit-conflict-', 'wrapup-', 'handoff-', NON_OWNER_RETRY_LOCAL_ID_PREFIX] as const
 
 /**
  * `owner` the owner typed it in a client · `board_choice` (B-924c) the owner clicked an option on a
- * Briefing card (the text is the card's) · `automation` an automation run · `agent` anything else
- * automated (send, session_message, Lead / team, remote) · `unknown` no prompt / not tracked.
+ * Briefing card, or (B-924d) a suggestion chip under an agent reply (the text is the card's / the agent's) ·
+ * `automation` an automation run · `agent` anything else automated (send, session_message, Lead / team, remote,
+ * B-924d: 「重试」 of a message the owner did not type) · `unknown` no prompt / not tracked.
  * Only `owner` unlocks anything.
  */
 export type TurnOrigin = 'owner' | 'board_choice' | 'automation' | 'agent' | 'unknown'
@@ -64,7 +65,8 @@ export function promptOrigin(prompt: TurnPrompt | undefined): TurnOrigin {
     const localId = prompt.localId ?? ''
     if (localId.startsWith('automation-')) return 'automation'
     if (AUTOMATED_LOCAL_ID_PREFIXES.some(prefix => localId.startsWith(prefix))) return 'agent'
-    if (localId.startsWith(ATTENTION_BOARD_LOCAL_ID_PREFIX)) return 'board_choice'
+    // B-924d (QA-T P1-2): a suggestion chip under an agent reply is the same shape as a board option — the agent wrote the text.
+    if (localId.startsWith(ATTENTION_BOARD_LOCAL_ID_PREFIX) || localId.startsWith(SUGGESTION_OPTION_LOCAL_ID_PREFIX)) return 'board_choice'
     return typeof prompt.sentFrom === 'string' && (OWNER_SENT_FROM as readonly string[]).includes(prompt.sentFrom) ? 'owner' : 'agent'
 }
 
@@ -158,6 +160,8 @@ const PROMPT_SOURCE_BY_PREFIX: ReadonlyArray<readonly [string, string]> = [
     ['wrapup-', '收尾按钮的系统提示'],
     ['handoff-', '交接按钮的系统提示'],
     [ATTENTION_BOARD_LOCAL_ID_PREFIX, '汇报板卡片选项（Owner 点了选项，文字是卡片作者写的）'],
+    [SUGGESTION_OPTION_LOCAL_ID_PREFIX, '回复里的建议按钮（Owner 点了按钮，文字是 agent 写的）'],
+    [NON_OWNER_RETRY_LOCAL_ID_PREFIX, '「重试」重发的消息（原消息不是 Owner 本人发的）'],
 ]
 const PROMPT_SOURCE_BY_SENT_FROM: Readonly<Record<string, string>> = {
     cli: 'very-happy 命令行',

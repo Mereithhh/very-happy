@@ -11,6 +11,10 @@ describe('B-924 (QA P1-2) turn origin is an allowlist', () => {
         for (const sentFrom of OWNER_SENT_FROM) expect(promptOrigin({ localId: 'u-1', sentFrom })).toBe('owner')
         // B-924c (QA-T P1-A): a Briefing-board choice is the card's text, not the owner's words
         expect(promptOrigin({ localId: 'board-card-1-x', sentFrom: 'web' })).toBe('board_choice')
+        // B-924d (QA-T P1-2): a suggestion chip under an agent reply is the agent's text — same as a board choice
+        expect(promptOrigin({ localId: 'option-k3j9', sentFrom: 'web' })).toBe('board_choice')
+        // B-924d (QA-T P1-3): 「重试」 of a message the owner did not type
+        expect(promptOrigin({ localId: 'retry-k3j9', sentFrom: 'web' })).toBe('agent')
         // not the owner: CLI `very-happy send`, scripts, peers, Leads, automations, unknown senders
         expect(promptOrigin({ localId: '3f1c…', sentFrom: 'cli' })).toBe('agent')
         expect(promptOrigin({ localId: 'u-2', sentFrom: null })).toBe('agent')

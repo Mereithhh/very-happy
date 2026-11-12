@@ -147,7 +147,10 @@ export const MAIN_AGENT_ASK_ACTIONS: Readonly<Partial<Record<MainAgentToolName, 
     issue_assign: '指派 issue', issue_comment: '评论 issue', issue_create: '新建 issue',
     project_note: '写项目决定', memory_update: '写长期记忆',
 }
-export function mainAgentAskAction(name: string): string {
+/** B-924d (QA-T P3-2): project_note names its kind — a finding or a hand-off is not a decision. */
+const PROJECT_NOTE_ACTIONS: Readonly<Record<string, string>> = { decision: '写项目决定', finding: '记一条项目发现', handoff: '写项目交接' }
+export function mainAgentAskAction(name: string, args?: Record<string, unknown>): string {
+    if (name === 'project_note' && typeof args?.kind === 'string' && PROJECT_NOTE_ACTIONS[args.kind]) return PROJECT_NOTE_ACTIONS[args.kind]
     return (MAIN_AGENT_ASK_ACTIONS as Record<string, string | undefined>)[name] ?? '派活'
 }
 

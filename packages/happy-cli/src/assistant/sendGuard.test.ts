@@ -84,6 +84,10 @@ describe('B-924c (QA-T P3-2) gate-2 card titles name the action', () => {
         const card = (toolName: string, args: Record<string, unknown>) => decisionCard({ approvalId: 'a1', toolName, declared: 'none', level: 'none', args }, 'x', '原因')
         expect(card('automation_resume', { name: 'job-1' }).title).toBe('主 agent 想恢复自动化（none，需你确认）：x')
         expect(card('project_note', { projectId: 'p1' }).title).toContain('主 agent 想写项目决定')
+        // B-924d (QA-T P3-2): the kind decides the verb
+        expect(card('project_note', { projectId: 'p1', kind: 'decision' }).title).toContain('主 agent 想写项目决定')
+        expect(card('project_note', { projectId: 'p1', kind: 'finding' }).title).toContain('主 agent 想记一条项目发现')
+        expect(card('project_note', { projectId: 'p1', kind: 'handoff' }).title).toContain('主 agent 想写项目交接')
         expect(card('session_send', { sessionId: 's9', text: '继续' }).bodyMd).toContain('目标：会话 s9')
         expect(card('lead_message', { teamId: 't1', body: 'b' }).bodyMd).toContain('目标：团队 t1')
         // every ask tool has its own action; none falls back to 派活 except the delegate verbs that mean it

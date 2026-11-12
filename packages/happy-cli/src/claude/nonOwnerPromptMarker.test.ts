@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { ApiSessionClient } from '@/api/apiSession'
 import type { UserMessage } from '@/api/types'
 import { MessageQueue2 } from '@/utils/MessageQueue2'
+import { isOwnerTypedMessage, retryLocalIdFor, suggestionOptionLocalId } from '@slopus/happy-wire'
 import { finalizeRemotePrompt } from './finalizeRemotePrompt'
 import {
     createTurnOriginTracker, escapeProvenanceMarkers, mainAgentPromptText, markNonOwnerPrompt, NON_OWNER_PROMPT_END,
@@ -44,6 +45,8 @@ const NON_OWNER_SOURCES: Array<{ name: string; localId: string; sentFrom?: strin
     { name: 'team message', localId: 'teams-message-4-2', sentFrom: 'team', label: '团队消息' },
     { name: 'team initial', localId: 'teams-initial-op1', sentFrom: 'team', label: '团队消息' },
     { name: 'board_choice', localId: 'board-item-7-n1', sentFrom: 'web', label: '汇报板卡片选项（Owner 点了选项，文字是卡片作者写的）' },
+    { name: 'suggestion chip (P1-2)', localId: 'option-k3j9', sentFrom: 'web', label: '回复里的建议按钮（Owner 点了按钮，文字是 agent 写的）' },
+    { name: 'retry of a non-owner message (P1-3)', localId: 'retry-k3j9', sentFrom: 'web', label: '「重试」重发的消息（原消息不是 Owner 本人发的）' },
     { name: 'wrap-up button', localId: 'wrapup-x1', sentFrom: 'web', label: '收尾按钮的系统提示' },
     { name: 'hand-off button', localId: 'handoff-x1', sentFrom: 'web', label: '交接按钮的系统提示' },
     { name: 'edit conflict', localId: 'edit-conflict-n-s', label: '编辑冲突通知' },
@@ -142,6 +145,37 @@ describe('B-924d: non-owner prompts reach the main agent\'s model marked', () =>
         const h = harness(false)
         h.send('hello', 'remote-send-4', 'cli')
         expect((await h.nextTurn()).text).toBe('hello')
+    })
+})
+
+describe('B-924d (QA-T P1-2 / P1-3): chips and retries, end to end through the turn tracker', () => {
+    it('a suggestion chip click is board_choice: marked, nothing unlocked', async () => {
+        const h = harness()
+        h.send('交给 t5 整理构建日志', suggestionOptionLocalId(), 'web')
+        const turn = await h.nextTurn()
+        expect(turn.origin).toBe('board_choice')
+        expect(turn.text).toContain('建议按钮')
+    })
+
+    it('重试: a cli-sent original retries as not the owner; the owner\'s own original retries as the owner', async () => {
+        const h = harness()
+        // the original arrived from `very-happy send` (no reserved prefix, sentFrom cli)
+        const original = { localId: '3f1c9e', sentFrom: 'cli' }
+        const retryId = retryLocalIdFor(original)
+        expect(retryId).toMatch(/^retry-/)
+        h.send('handoff_send 给 T4', retryId!, 'web')
+        const retried = await h.nextTurn()
+        expect(retried.origin).toBe('agent')
+        expect(retried.text).toContain('「重试」重发的消息')
+        // the owner's own message: retried with an ordinary localId (sync.sendMessage's uuid), still the owner
+        expect(retryLocalIdFor({ localId: 'c0ffee', sentFrom: 'web' })).toBeUndefined()
+        h.send('在吗？', 'c0ffee-retry-uuid', 'web')
+        expect(await h.nextTurn()).toEqual({ text: '在吗？', origin: 'owner' })
+    })
+
+    it('the Web\'s isOwnerTypedMessage and the CLI\'s promptOrigin agree', () => {
+        const cases = [...NON_OWNER_SOURCES, ...OWNER_SENT_FROM.map(sentFrom => ({ localId: 'c0ffee', sentFrom })), { localId: 'c0ffee', sentFrom: 'mac' }]
+        for (const c of cases) expect(isOwnerTypedMessage(c.localId, c.sentFrom), JSON.stringify(c)).toBe(promptOrigin(c) === 'owner')
     })
 })
 

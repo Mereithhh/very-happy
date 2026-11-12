@@ -28,6 +28,7 @@ export * from './promptQueue';
 
 export * from './migrationProtocol';
 export * from './attention';
+export * from './promptProvenance';
 export * from './wrapup';
 export * from './issues';
 
