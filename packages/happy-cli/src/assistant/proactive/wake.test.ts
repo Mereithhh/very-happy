@@ -44,6 +44,8 @@ describe('wake engine', () => {
         expect(h.sent).toHaveLength(1)
         expect(h.sent[0].sessionId).toBe('main-agent-session')
         expect(h.sent[0].text).toContain('[主动唤醒] 系统汇总了 3 件')
+        // B-924d: the wrapper's source marker says who sent it; the wake text does not repeat it.
+        expect(h.sent[0].text).not.toContain('自动发送')
         expect(mainAgentWakeLevelOf(h.sent[0].localId)).toBe('follow')
     })
 
