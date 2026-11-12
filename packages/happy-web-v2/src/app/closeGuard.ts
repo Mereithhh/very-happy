@@ -94,20 +94,39 @@ export function isClosableViewPath(pathname: string, search: string): boolean {
  *                (or the archive/close is in flight), so key-repeat / a second
  *                ⌘W must not stack dialogs or double-fire, and the keystroke
  *                must not fall through to xterm either.
+ *  - 'settle'  — B-933: the target changed < CLOSE_VIEW_SETTLE_MS ago (e.g.
+ *                the web just landed here after an archive): swallow, say
+ *                which session is now on screen; the next chord acts.
  *  - 'close'   — confirmation disabled (`closeViewConfirm` off): archive the
  *                session / close the terminal immediately, no dialog.
  *  - 'confirm' — ask first via the row-menu confirm, act only on confirm.
  */
-export type CloseViewAction = 'none' | 'swallow' | 'close' | 'confirm';
+export type CloseViewAction = 'none' | 'swallow' | 'settle' | 'close' | 'confirm';
 
 export function closeViewAction(input: {
   closable: boolean;
   confirmEnabled: boolean;
   confirmOpen: boolean;
+  /** B-933: ms since the close target (route) last changed; undefined = unknown/old. */
+  targetAgeMs?: number;
+  /** B-933: this target already absorbed one settle press. */
+  settleHeld?: boolean;
 }): CloseViewAction {
   if (!input.closable) return 'none';
   if (input.confirmOpen) return 'swallow';
+  // B-933: the view just changed under the user (archive landing, a click):
+  // the first chord only shows what is on screen, the next one acts.
+  if (input.targetAgeMs !== undefined && input.targetAgeMs < CLOSE_VIEW_SETTLE_MS && !input.settleHeld) return 'settle';
   return input.confirmEnabled ? 'confirm' : 'close';
+}
+
+/** B-933: a close target younger than this is not archived by the first ⌘W. */
+export const CLOSE_VIEW_SETTLE_MS = 1_000;
+
+/** Stable identity of a close target (route change detection). */
+export function closeViewTargetKey(target: CloseViewTarget | null): string | null {
+  if (!target) return null;
+  return target.kind === 'session' ? `session:${target.sessionId}` : `terminal:${target.machineId}:${target.terminalId}`;
 }
 
 /**

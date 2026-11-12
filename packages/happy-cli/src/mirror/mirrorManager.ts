@@ -231,7 +231,7 @@ export function createMirrorManager(deps: {
         // purpose, so it gets the tombstone (B-505: `deactivateSession` is the
         // offline-only variant and would leave it "resumable" forever).
         try {
-            await deps.api.archiveSession(binding.happySessionId);
+            await deps.api.archiveSession(binding.happySessionId, 'terminal-mirror');
         } catch (error) {
             logger.debug(`[MIRROR] archiveSession failed for ${binding.happySessionId}:`, error);
         }

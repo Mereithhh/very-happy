@@ -598,8 +598,18 @@ export async function stopSession(sessionId: string): Promise<boolean> {
     return await stopDaemonSession(sessionId)
 }
 
+/**
+ * B-933: who asked for an archive, sent as `X-Happy-Archive-Source` and kept in
+ * the server's archive audit (`team-cleanup`, `main-agent`, `gc`, …). Lowercase
+ * `[a-z][a-z0-9-]{0,31}`; anything else is dropped here (the server would log
+ * it as `invalid`).
+ */
+export function archiveSourceHeaders(source: string | undefined): Record<string, string> {
+    return source && /^[a-z][a-z0-9-]{0,31}$/.test(source) ? { 'X-Happy-Archive-Source': source } : {}
+}
+
 /** Mark the session inactive server-side. It stays resumable. */
-export async function archiveSession(sessionId: string): Promise<void> {
+export async function archiveSession(sessionId: string, options: { source?: string } = {}): Promise<void> {
     const token = await bearerToken()
     await axios.post(
         `${configuration.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}/archive`,
@@ -608,6 +618,7 @@ export async function archiveSession(sessionId: string): Promise<void> {
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'X-Happy-Client': `${SESSION_OPS_CLIENT}/${configuration.currentCliVersion}`,
+                ...archiveSourceHeaders(options.source),
             },
             timeout: 10_000,
         },

@@ -6,6 +6,7 @@ import { db } from "@/storage/db";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { log } from "@/utils/log";
+import { auditSessionArchive } from "@/app/session/sessionArchiveAudit";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { sessionDelete } from "@/app/session/sessionDelete";
 import { isAccountResourceLimitError } from '../resourceLimits';
@@ -432,6 +433,9 @@ export function sessionRoutes(app: Fastify) {
         const userId = request.userId;
         const { sessionId } = request.params;
 
+        // B-933: an archive on an already-archived row is a repeat (a retried cleanup);
+        // the audit says so. Read is best-effort and never gates the archive.
+        const before = await db.session.findFirst({ where: { id: sessionId, accountId: userId }, select: { archivedAt: true } }).catch(() => null);
         const archivedAt = new Date();
         const result = await db.session.updateMany({
             where: { id: sessionId, accountId: userId },
@@ -439,8 +443,10 @@ export function sessionRoutes(app: Fastify) {
         });
 
         if (result.count === 0) {
+            auditSessionArchive(request, { operation: 'archive', sessionId, userId, status: 404 });
             return reply.code(404).send({ error: 'Session not found' });
         }
+        auditSessionArchive(request, { operation: 'archive', sessionId, userId, status: 200, alreadyArchived: before ? before.archivedAt != null : undefined });
 
         activityCache.discardSessionUpdate(sessionId);
         eventRouter.emitSessionArchived(userId, sessionId);
@@ -514,6 +520,8 @@ export function sessionRoutes(app: Fastify) {
             where: { id: sessionId, accountId: request.userId },
             data: { archivedAt: null, active: false, lastActiveAt: new Date() }
         });
+        // B-933: who unarchived it (see sessionArchiveAudit).
+        auditSessionArchive(request, { operation: 'unarchive', sessionId, userId: request.userId, status: result.count === 0 ? 404 : 200 });
         if (result.count === 0) return reply.code(404).send({ error: 'Session not found' });
         await emitArchivedAtUpdate(request.userId, sessionId, null);
         return reply.send({ success: true });

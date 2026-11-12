@@ -100,14 +100,14 @@ describe('runClaude / api wiring', () => {
 
     it('deactivateSession posts to /deactivate and treats 404 (older server) as a no-op', () => {
         const start = api.indexOf('async deactivateSession(sessionId: string)');
-        const body = api.slice(start, api.indexOf('async archiveSession(sessionId: string)'));
+        const body = api.slice(start, api.indexOf('async archiveSession(sessionId: string'));
         expect(body).toContain('/v1/sessions/${sessionId}/deactivate`');
         expect(body).not.toContain('/archive`');
         expect(body).toContain('status === 404');
     });
 
     it('archiveSession is the only /archive caller', () => {
-        const start = api.indexOf('async archiveSession(sessionId: string)');
+        const start = api.indexOf('async archiveSession(sessionId: string');
         expect(api.slice(start, start + 800)).toContain('/v1/sessions/${sessionId}/archive`');
         expect(api.match(/\/v1\/sessions\/\$\{sessionId\}\/archive`/g)).toHaveLength(1);
     });

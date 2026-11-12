@@ -7,11 +7,16 @@ x-happy-server: &happy-server
   stop_grace_period: 2m
   # B-827: an unrotated json log grew to 8.9 GB on happy-server-blue.
   # scripts/ci/check-log-rotation.sh refuses a deploy without max-size.
+  # B-933: 50m x 5 kept ~20 min of the active slot (B-932 could not tell who
+  # archived a session the evening before). 200m x 100 = 20 GB raw ≈ 26 h at
+  # ~750 MB/h; rotated files are gzipped, so ~2–4 GB on disk per busy slot.
+  # Sizing + rollback: docs/operations.md「Container log rotation」.
   logging:
     driver: json-file
     options:
-      max-size: 50m
-      max-file: "5"
+      max-size: 200m
+      compress: "true"
+      max-file: "100"
   networks:
     - happy
   volumes:

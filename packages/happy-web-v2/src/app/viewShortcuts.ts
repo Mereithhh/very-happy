@@ -48,9 +48,12 @@ import { t } from '@/i18n/useTranslation';
 import { storage, useLocalSetting } from '@/sync/storage';
 import { pendingSessions } from '@/sync/pendingSessionsRuntime';
 import { flushPendingDrafts } from './draftFlush';
+import { toast } from '@/ui/Toast';
+import { getSessionName } from '@/utils/sessionUtils';
 import {
   closeViewAction,
   closeViewTarget,
+  closeViewTargetKey,
   matchCloseViewChord,
   pickRefocusTarget,
   shouldWarnOnUnload,
@@ -189,20 +192,40 @@ export function useCloseViewShortcuts(): void {
     confirmEnabledRef.current = confirmEnabled;
   }, [confirmEnabled]);
   const confirmOpenRef = useRef(false);
+  // B-933: when the ⌘W target last changed. Repeated ⌘W used to archive the
+  // session the web had JUST landed on (B-111) before the user could see it.
+  const location = useLocation();
+  const currentKey = closeViewTargetKey(closeViewTarget(location.pathname, location.search));
+  const targetRef = useRef<{ key: string | null; changedAt: number; held: boolean }>({ key: null, changedAt: 0, held: false });
+  useEffect(() => {
+    if (targetRef.current.key !== currentKey) targetRef.current = { key: currentKey, changedAt: Date.now(), held: false };
+  }, [currentKey]);
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isImeGuardedEvent(e)) return;
       if (!matchCloseViewChord(e)) return;
       const target = closeViewTarget(window.location.pathname, window.location.search);
+      const key = closeViewTargetKey(target);
+      const now = Date.now();
+      // The route may have changed before the effect above ran: same rule.
+      if (targetRef.current.key !== key) targetRef.current = { key, changedAt: now, held: false };
       const action = closeViewAction({
         closable: target !== null,
         confirmEnabled: confirmEnabledRef.current,
         confirmOpen: confirmOpenRef.current,
+        targetAgeMs: target?.kind === 'session' ? now - targetRef.current.changedAt : undefined,
+        settleHeld: targetRef.current.held,
       });
       if (action === 'none') return;
       e.preventDefault(); // effective in the PWA; a normal tab ignores it for ⌘W
       e.stopPropagation();
       if (action === 'swallow') return;
+      if (action === 'settle') {
+        targetRef.current.held = true;
+        const session = target?.kind === 'session' ? storage.getState().sessions[target.sessionId] : undefined;
+        if (session) toast.show(t('sidebar.closeViewSettle', { name: getSessionName(session) }));
+        return;
+      }
       // 'confirm' = ask first; 'close' = closeViewConfirm off, act immediately.
       void archiveOrCloseTarget(target!, navigate, action === 'confirm', confirmOpenRef);
     };

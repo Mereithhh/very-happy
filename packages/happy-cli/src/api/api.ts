@@ -544,7 +544,7 @@ export class ApiClient {
    * cannot recover from, a terminal mirror whose pane went back to a shell.
    * Never call this from a signal handler; see `deactivateSession`.
    */
-  async archiveSession(sessionId: string): Promise<boolean> {
+  async archiveSession(sessionId: string, source: string = 'wrapper-exit'): Promise<boolean> {
     try {
       const response = await axios.post(
         `${configuration.serverUrl}/v1/sessions/${sessionId}/archive`,
@@ -553,6 +553,8 @@ export class ApiClient {
           headers: {
             'Authorization': `Bearer ${this.credential.token}`,
             'X-Happy-Client': `cli-coding-session/${configuration.currentCliVersion}`,
+            // B-933: server archive audit — wrapper exit with archive intent vs mirror teardown.
+            'X-Happy-Archive-Source': source,
           },
           timeout: 3000,
         },

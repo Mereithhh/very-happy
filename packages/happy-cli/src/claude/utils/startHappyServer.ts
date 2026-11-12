@@ -322,7 +322,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         client: sharedAttentionClient(),
         boardReady: async () => { await leadBoard.init(); return leadBoard.supported(); },
         sendPeer: (args) => sendPeerMessage(peerContext, args),
-        archiveSelf: (id) => archiveSession(id),
+        archiveSelf: (id) => archiveSession(id, { source: 'wrapup-handoff' }),
         log: (message) => logger.debug(message),
     });
     const wrapupTools: WrapupToolExecutor = (name, args) => executeWrapupTool(name, args, { selfId: () => client.sessionId, tracker: wrapupTracker });

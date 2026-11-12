@@ -4,6 +4,8 @@ import {
   isClosableViewPath,
   closeViewTarget,
   closeViewAction,
+  closeViewTargetKey,
+  CLOSE_VIEW_SETTLE_MS,
   shouldWarnOnUnload,
   pickRefocusTarget,
 } from './closeGuard';
@@ -115,6 +117,21 @@ describe('closeViewAction', () => {
     expect(closeViewAction({ ...on, confirmOpen: true })).toBe('swallow');
     // even with confirmation off: a dialog can only be open if it was on
     expect(closeViewAction({ ...on, confirmEnabled: false, confirmOpen: true })).toBe('swallow');
+  });
+  it('B-933: a target younger than the settle window only settles once, then acts', () => {
+    expect(closeViewAction({ ...on, targetAgeMs: 200 })).toBe('settle');
+    expect(closeViewAction({ ...on, confirmEnabled: false, targetAgeMs: 200 })).toBe('settle');
+    expect(closeViewAction({ ...on, targetAgeMs: 200, settleHeld: true })).toBe('confirm');
+    expect(closeViewAction({ ...on, targetAgeMs: CLOSE_VIEW_SETTLE_MS })).toBe('confirm');
+    expect(closeViewAction({ ...on, targetAgeMs: undefined })).toBe('confirm');
+    // a dialog already up still swallows first
+    expect(closeViewAction({ ...on, confirmOpen: true, targetAgeMs: 0 })).toBe('swallow');
+  });
+
+  it('B-933: target keys tell sessions and terminals apart', () => {
+    expect(closeViewTargetKey({ kind: 'session', sessionId: 'a' })).toBe('session:a');
+    expect(closeViewTargetKey({ kind: 'terminal', machineId: 'm', terminalId: 't' })).toBe('terminal:m:t');
+    expect(closeViewTargetKey(null)).toBeNull();
   });
 });
 

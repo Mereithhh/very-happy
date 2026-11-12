@@ -54,6 +54,10 @@ describe('B-587 auto-wake on open', () => {
     it('opening a hibernated session wakes it once per hibernation', () => {
         expect(shouldAutoWake(base)).toBe(autoWakeKey('s1', hibernated));
         expect(shouldAutoWake({ ...base, attempted: new Set([autoWakeKey('s1', hibernated)!]) })).toBeNull();
+        // B-933: an archive landing only shows the session…
+        expect(shouldAutoWake({ ...base, openedByCloseLanding: true })).toBeNull();
+        // …but a user message that arrived after hibernation still wakes it.
+        expect(shouldAutoWake({ ...base, openedByCloseLanding: true, latestUserMessageAt: stamp.at + 1 })).not.toBeNull();
     });
     it('hibernating while the page is open does not wake it (the open tab would pin it awake)', () => {
         expect(shouldAutoWake({ ...base, openedAt: stamp.at - 1 })).toBeNull();

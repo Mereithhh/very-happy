@@ -6,7 +6,8 @@ const MAX_LOG_DEPTH = 5;
 const SECRET_KEY = /(?:authorization|cookie|credential|password|private.?key|secret|token)$/i;
 const CONTENT_KEY = /(?:body|content|detail|endpoint|err|error|message|payload|path|prompt|reason|response|stack|text|url)$/i;
 const IDENTIFIER_KEY = /^(?:accountId|conversationId|deviceId|githubUserId|machineId|roomId|sessionId|socketId|tag|userId|voiceId)$/i;
-const SAFE_STRING_KEY = /^(?:client|clientType|code|connectionType|event|event_type|kind|lang|language|level|method|mode|module|operation|platform|provider|resource|role|source|status|type)$/i;
+// tokenKind / uaFamily: bounded categories (B-933 archive audit), never raw tokens or UA strings.
+const SAFE_STRING_KEY = /^(?:client|clientType|code|connectionType|event|event_type|kind|lang|language|level|method|mode|module|operation|platform|provider|resource|role|source|status|tokenKind|type|uaFamily)$/i;
 
 function byteLength(value: string): number {
     return Buffer.byteLength(value, 'utf8');

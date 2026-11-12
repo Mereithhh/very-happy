@@ -305,6 +305,46 @@ logs at warn level, so probes no longer write access-log lines.
   `docker inspect -f '{{.Name}} {{json .HostConfig.LogConfig}}' $(docker ps -q)`;
   the release log prints a `note:` for each container still unrotated.
 
+**Server slot retention (B-933).** `happy-server-blue/green` keep
+`max-size: 200m`, `max-file: "100"`, `compress: "true"` (relays and
+`vh-pgbouncer` stay at 50m×5). 50m×5 held only ~20 minutes of the active slot
+on 2026-11-12 (B-932). Estimate: 250 MB raw per ~20 min ≈ 750 MB/h ≈ 18 GB/day
+raw → 20 GB raw ≈ 26 h. Docker gzips each rotated file; JSON request logs
+typically shrink 5–10×, so the active slot needs about 2–4 GB on disk (the
+current 200 MB file plus 99 compressed ones); the idle slot logs little.
+These are estimates from one observation, not a measurement.
+
+- Before the first release carrying this: on vh-sg `df -h /var/lib/docker`
+  must show ≥ 10 GB free. If not, prune old images first (each release leaves
+  ~2.2 GB, see 「磁盘」 below) or ship a smaller `max-file`.
+- It takes effect when a slot is **recreated** (each release recreates the
+  candidate), so retention grows over the next two releases.
+- Verify a day later: `docker inspect -f '{{json .HostConfig.LogConfig}}'
+  happy-server-<slot>`, `du -sh /var/lib/docker/containers/<id>/` and the
+  oldest line of `docker logs happy-server-<slot> | head -1` (≥ 24 h back).
+- Rollback: restore `max-size: 50m` / `max-file: "5"` and drop `compress` in
+  `ops/production/docker-compose.blue-green.yml`, merge, release; the
+  recreated slot goes back to 50m×5 and the extra files of the old container
+  are removed with it.
+
+**Archive audit (B-933).** Every `POST /v1/sessions/:id/archive` and
+`/unarchive` logs one `module: "session-archive-audit"` line: `operation`,
+`status`, `alreadyArchived`, `tokenKind` (`human` = browser login, `machine` =
+CLI/daemon/access key), `client` (`X-Happy-Client`), `source`
+(`X-Happy-Archive-Source`: `team-cleanup`, `main-agent`, `wrapper-exit`,
+`terminal-mirror`, `wrapup-handoff`, `cli` or the script's own
+`very-happy sessions archive --source gc` / `HAPPY_ARCHIVE_SOURCE`; absent =
+the Web or a CLI older than this), `uaFamily` and `atMs`. Never the token. The
+log sanitizer pseudonymizes ids, so to find one session:
+
+```bash
+ref=$(printf 'sessionid\0%s' <sessionId> | sha256sum | cut -c1-16)
+docker logs happy-server-<slot> 2>&1 | grep session-archive-audit | grep "sessionid:$ref"
+```
+
+With the business audit sink configured the same record is also sent as
+`session.archived` / `session.unarchived` with raw ids.
+
 ### Post-deploy browser smoke (B-024)
 
 `.github/workflows/e2e-smoke.yml` runs as the `smoke` job of **Deploy
