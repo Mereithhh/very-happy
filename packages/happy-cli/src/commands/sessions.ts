@@ -9,7 +9,7 @@
  *   very-happy sessions list [--all] [--tag <name>] [--limit <n>] [--json]
  *   very-happy sessions read <id> [--limit <n>] [--full] [--answer] [--wait [--timeout <s>]] [--json]
  *   very-happy sessions stop <id> [--json]
- *   very-happy sessions archive <id> [--json]
+ *   very-happy sessions archive <id> [--source <name>] [--json]
  *   very-happy sessions approve <id> <requestId> [--for-session] [--json]
  *   very-happy sessions deny <id> <requestId> [--reason <text>] [--json]
  *   very-happy sessions peers [--scope repo|cwd|machine|project] [--cwd <dir>] [--json]
@@ -139,8 +139,12 @@ export interface SessionsCommandOptions {
     archive: boolean
     /** handoff: extra instruction appended to the request. */
     note?: string
+    /** archive: who asks (B-933 server audit), e.g. `gc`, `harvest`. Default: `$HAPPY_ARCHIVE_SOURCE`, else `cli`. */
+    source?: string
     json: boolean
 }
+
+const ARCHIVE_SOURCE_RE = /^[a-z][a-z0-9-]{0,31}$/
 
 const ACTIONS: readonly SessionsAction[] = ['list', 'read', 'stop', 'archive', 'approve', 'deny', 'peers', 'message', 'wrapup', 'handoff']
 const ACTIONS_NEEDING_ID: ReadonlySet<SessionsAction> = new Set(['read', 'stop', 'archive', 'approve', 'deny', 'message', 'handoff'])
@@ -206,6 +210,10 @@ export function parseSessionsArgs(args: string[]): SessionsCommandOptions {
             options.to = value
         } else if (arg === '--archive') {
             options.archive = true
+        } else if (arg === '--source') {
+            const value = args[++i]
+            if (value === undefined || !ARCHIVE_SOURCE_RE.test(value)) throw new Error('--source requires a lowercase name like `gc` ([a-z][a-z0-9-]{0,31})')
+            options.source = value
         } else if (arg === '--note') {
             const value = args[++i]
             if (value === undefined || value.trim() === '') throw new Error('--note requires a value')
@@ -302,6 +310,7 @@ export function parseSessionsArgs(args: string[]): SessionsCommandOptions {
         if (options.archive) throw new Error('--archive only applies to `sessions handoff`')
         if (options.note !== undefined) throw new Error('--note only applies to `sessions handoff`')
     }
+    if (options.source !== undefined && options.action !== 'archive') throw new Error('--source only applies to `sessions archive`')
     if (options.templateFile !== undefined && options.action !== 'wrapup') throw new Error('--template-file only applies to `sessions wrapup`')
     if (options.machine !== undefined) {
         if (!MACHINE_ACTIONS.has(options.action)) throw new Error('--machine only applies to `sessions list|read|peers|message`')
@@ -320,7 +329,7 @@ ${chalk.bold('Usage:')}
   very-happy sessions read <id> [--machine <id>] [--limit <n>] [--full] [--answer]
                           [--wait [--timeout <s>]] [--json]
   very-happy sessions stop <id> [--json]
-  very-happy sessions archive <id> [--json]
+  very-happy sessions archive <id> [--source <name>] [--json]
   very-happy sessions approve <id> <requestId> [--for-session] [--json]
   very-happy sessions deny <id> <requestId> [--reason <text>] [--json]
   very-happy sessions peers [--scope repo|cwd|machine|project] [--cwd <dir>] [--machine <id>] [--json]
@@ -419,6 +428,8 @@ ${chalk.bold('Options:')}
   --template-file <f> wrapup only: use this file as the template.
   --to <id>          handoff only: the session that takes the work over.
   --archive          handoff only: archive <from> after a confirmed delivery.
+  --source <name>    archive only: who asks, kept in the server's archive audit
+                     (e.g. gc, harvest; default $HAPPY_ARCHIVE_SOURCE, else cli).
   --note <text>      handoff only: extra instruction for <from>.
   --json             Machine-readable output.
   -h, --help         Show this help
@@ -789,7 +800,9 @@ async function runSessionsCommand(args: string[]): Promise<number> {
             return 0
         }
 
-        await archiveSession(sessionId)
+        // B-933: the server audit tells scripted archives (GC, harvest) from people.
+        const envSource = process.env.HAPPY_ARCHIVE_SOURCE
+        await archiveSession(sessionId, { source: options.source ?? (envSource && ARCHIVE_SOURCE_RE.test(envSource) ? envSource : 'cli') })
         if (options.json) console.log(JSON.stringify({ sessionId, archived: true }))
         else console.log(`Archived ${sessionId}`)
         return 0

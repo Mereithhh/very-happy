@@ -25,6 +25,8 @@ import { storage } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import type { Session } from '@/sync/storageTypes';
 import { nextPathAfterClose } from './nextSession';
+import { markCloseLanding } from './closeLanding';
+import { getSessionName } from '@/utils/sessionUtils';
 import { sessionPlacementResolver } from './sessionPlacement';
 import { projectsSnapshot } from '@/sync/projects';
 import { teamNavigationSnapshot } from '@/screens/sessions/useTeamNavigation';
@@ -46,17 +48,22 @@ const UNDO_HOLD_MS = UNDO_WINDOW_MS + 5_000;
  *  team conversation, the same project, or the no-project pool), else that
  *  project's page or '/'. Read the stores at CALL time (after the archive
  *  flipped local state is fine — the candidate set excludes the closed id
- *  explicitly). */
+ *  explicitly). Side effect (B-933): marks the result as a close landing —
+ *  call it only right before navigating there. */
 export function nextSessionPathAfterClose(closedId: string): string {
   const all = Object.values(storage.getState().sessions ?? {}) as Session[];
   const projects = projectsSnapshot();
   const teams = teamNavigationSnapshot();
   const placementOf = projects.status === 'ready' ? sessionPlacementResolver(projects.projects, projects.members, teams) : null;
-  return nextPathAfterClose(all, closedId, {
+  const path = nextPathAfterClose(all, closedId, {
     placementOf,
     teamHref: (teamId) => `/teams/${encodeURIComponent(teamId)}`,
     projectHref: projectPath,
   });
+  // B-933: every caller navigates to this path right away — mark it as a
+  // landing so the page only SHOWS the session (no hibernation open-wake).
+  markCloseLanding(path);
+  return path;
 }
 
 /** The server-owned archive transition (no confirm). The server commits the
@@ -195,7 +202,8 @@ function reportCommitFailure(tag: string, error: unknown, reason: FlushReason): 
  *  Returns whether the archive actually ran — false means the user cancelled
  *  (callers like the ⌘W flow restore focus / stay put on cancel). */
 export async function confirmArchiveSession(session: Session): Promise<boolean> {
-  const ok = await Modal.confirm(t('sidebar.archiveConfirm'), undefined, {
+  // B-933: name the session — repeated ⌘W must show WHICH session goes.
+  const ok = await Modal.confirm(t('sidebar.archiveConfirm'), t('sidebar.archiveConfirmTarget', { name: getSessionName(session) }), {
     confirmText: t('common.archive'),
     destructive: true,
   });

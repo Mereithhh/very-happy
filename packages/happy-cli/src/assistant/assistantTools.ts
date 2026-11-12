@@ -372,7 +372,7 @@ export function registerAssistantSessionTools(host: AssistantToolRegistrar): voi
     }, async (args) => {
         if (!isValidSessionId(args.sessionId)) return fail('Invalid sessionId')
         try {
-            await archiveSession(args.sessionId)
+            await archiveSession(args.sessionId, { source: 'main-agent' })
             const persisted = readPersistedSessions()[args.sessionId]
             return ok(`Archived ${describeSession(args.sessionId, persisted)}`)
         } catch (error) {

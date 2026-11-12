@@ -53,7 +53,7 @@ import { useBoardItems } from '@/screens/board/useBoardItems';
 import { createTerminalHere, NEW_TERMINAL_SHORTCUT_HINT } from '@/app/newTerminal';
 import { createChatOrConfigure } from '@/app/newChat';
 import { sessionUpdateTitle } from '@/sync/ops';
-import { archiveSessionNow, nextSessionPathAfterClose, restoreSessionOrAlert } from '@/app/rowActions';
+import { confirmArchiveSession, nextSessionPathAfterClose, restoreSessionOrAlert } from '@/app/rowActions';
 import { canOfferRestore } from '@/app/sessionRestore';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -418,15 +418,13 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
         typeof session !== 'string' && session.id === currentSessionId,
     );
     if (!current) return;
-    try {
-      await archiveSessionNow(current);
-      // B-111: leave the archived detail view onto the next session.
-      navigate(nextSessionPathAfterClose(currentSessionId));
-    } catch (error) {
-      console.error('[commandPalette] archive failed', error);
-      Modal.alert(t('common.error'), t('sessionInfo.failedToArchiveSession'));
-    }
-  }, [currentSessionId, navigate, sessions, t]);
+    // B-933: the palette archived with no confirm — the target may be a session
+    // the web just landed on. Same titled confirm as ⌘W / the row menu
+    // (it surfaces its own failure alert).
+    const archived = await confirmArchiveSession(current);
+    // B-111: leave the archived detail view onto the next session.
+    if (archived) navigate(nextSessionPathAfterClose(currentSessionId));
+  }, [currentSessionId, navigate, sessions]);
 
   // ── build the full item index (unfiltered) ──
   const happyBotEntryVisible = useLocalSetting('happyBotEntryVisible');

@@ -93,6 +93,16 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
     const action = async (teamId: string, requestId: string, value: TeamAction): Promise<TeamResponse> =>
         (await http.post(`/v1/teams/${encodeURIComponent(teamId)}/actions`, { requestId, action: value })).data;
 
+    /** B-933: already archived on the server? Unknown (old server, network) = no, archive as before. */
+    async function sessionArchived(sessionId: string): Promise<boolean> {
+        try {
+            const ids = (await http.post('/v1/sessions/archive-status', { sessionIds: [sessionId] })).data?.archivedSessionIds;
+            return Array.isArray(ids) && ids.includes(sessionId);
+        } catch {
+            return false;
+        }
+    }
+
     async function complete(op: TeamOperation, receipt: TeamEffectReceipt) {
         await action(op.teamId, `complete-${op.id}`, { type: 'complete-operation', operationId: op.id, machineId: deps.machineId, claimId: receipt.claimId, ...(receipt.sessionId ? { sessionId: receipt.sessionId } : {}), ...(op.type === 'spawn' && receipt.directory ? { workingDirectory: receipt.directory } : {}) });
         writeReceipt(home, { ...receipt, phase: 'completed' });
@@ -246,7 +256,9 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                 if (!bot || (op.sessionId && bot.transferredTo?.sessionId === op.sessionId)) throw new Error('Worker binding changed; preserve resources for reconciliation');
                 if (op.sessionId) {
                     await deps.stopAndWait(op.sessionId);
-                    await archiveSession(op.sessionId);
+                    // B-933: a cleanup stuck on its worktree step re-archived the same session on
+                    // every retry. Archive once; the server's audit names the source.
+                    if (!(await sessionArchived(op.sessionId))) await archiveSession(op.sessionId, { source: 'team-cleanup' });
                     sessionStopped = true;
                 }
                 // Archiving hides a team, it never authorizes deleting its worktrees.

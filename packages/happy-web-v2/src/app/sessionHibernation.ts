@@ -148,6 +148,8 @@ export function shouldAutoWake(input: {
     openedAt: number;
     /** createdAt of the newest user message this tab knows for the session (review P2-3). */
     latestUserMessageAt?: number;
+    /** B-933: the screen was reached by an archive/close landing, not opened by the user. */
+    openedByCloseLanding?: boolean;
 }): string | null {
     const key = autoWakeKey(input.sessionId, input.session);
     if (!key || !input.machineOnline || input.restoreBusy) return null;
@@ -159,6 +161,10 @@ export function shouldAutoWake(input: {
         const messageKey = `${key}:msg:${input.latestUserMessageAt}`;
         if (!input.attempted.has(messageKey)) return messageKey;
     }
+    // B-933: a session the web jumped to after ⌘W / palette / row archive is
+    // only SHOWN — waking it made the next ⌘W hit a session the user never
+    // looked at. The banner's 「唤醒」 or sending a message wakes it.
+    if (input.openedByCloseLanding) return null;
     // Opening wakes; hibernating WHILE on screen does not — otherwise a tab
     // left open would keep its session awake forever. The next send wakes it.
     if (input.attempted.has(key) || stampAt > input.openedAt) return null;

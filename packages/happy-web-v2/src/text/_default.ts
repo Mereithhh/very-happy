@@ -2366,6 +2366,8 @@ export const en = {
         collapse: 'Collapse sidebar',
         openSessions: 'Open sessions',
         archiveConfirm: 'Archive this session?',
+        archiveConfirmTarget: ({ name }: { name: string }) => `Archiving: “${name}”`,
+        closeViewSettle: ({ name }: { name: string }) => `Now on “${name}” — press again to archive it`,
         sessionsTitle: 'Very Happy',
         showArchived: 'Show archived',
         hideArchived: 'Hide archived',
@@ -3373,6 +3375,13 @@ export const en = {
                 summary: 'Paste, drop or pick images while a new chat is still starting; they go out with your text as one message.',
                 images: 'On a new chat\'s page (before the session is up) and in the new-chat dialog, images can be pasted, dropped or picked (also on phones). They are uploaded once the session has started and reach Claude or Codex together with the text; a message of images only works too. A reload while it starts keeps them.',
                 noSilentDrop: 'Nothing is dropped silently any more: if the files cannot go out (upload failed, or the session does not take them), you are told why and the text and files are back in the box — send again to retry.',
+            },
+            nov13b: {
+                title: 'Archiving one after another no longer takes the next session with it',
+                summary: 'After ⌘W or the command palette archives a session you land on the next one; it now stays as it is until you act on it.',
+                noWake: 'The session you land on is only shown. A sleeping one stays asleep until you send it a message or click Wake.',
+                settle: 'If ⌘W comes within a second of landing on a session, it only tells you which session is now open; press it again to archive that one.',
+                named: 'The archive confirmation, now also asked by the command palette, names the session it will archive.',
             },
             nov13a: {
                 title: 'Codex sessions no longer restart over and over for an update',

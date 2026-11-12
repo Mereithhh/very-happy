@@ -2521,6 +2521,8 @@ export const zhHans: TranslationStructure = {
         collapse: '收起侧栏',
         openSessions: '打开的会话',
         archiveConfirm: '归档此会话？',
+        archiveConfirmTarget: ({ name }: { name: string }) => `将归档：「${name}」`,
+        closeViewSettle: ({ name }: { name: string }) => `已切到「${name}」，确认要归档再按一次`,
         sessionsTitle: 'Happy',
         showArchived: '显示已归档',
         hideArchived: '隐藏已归档',
@@ -3501,6 +3503,13 @@ export const zhHans: TranslationStructure = {
                 summary: '新会话还在启动时就能粘贴、拖入或选择图片，会和文字作为同一条消息发出。',
                 images: '新会话页（会话还没建好时）和新建会话对话框里都能粘贴、拖入或选择图片（手机也能选图）。会话启动后自动上传，和文字一起交给 Claude 或 Codex；只发图片也行。启动中刷新页面，图片也会保留并继续发送。',
                 noSilentDrop: '不再悄悄丢消息：文件发不出去时（上传失败、会话不支持这些文件）会说明原因，文字和文件放回输入框，再点发送即可重试。',
+            },
+            nov13b: {
+                title: '连续归档不会再顺手带走下一个会话',
+                summary: '用 ⌘W 或命令面板归档后，会跳到下一个会话；现在它只是打开给你看，在你动它之前不会有任何变化。',
+                noWake: '跳过去的会话只显示，不会自动唤醒；休眠的会话要等你发消息或点「唤醒」才会醒。',
+                settle: '刚跳到一个会话不到 1 秒就按 ⌘W，只会提示现在打开的是哪个会话；再按一次才会归档它。',
+                named: '归档确认框会写出要归档的会话标题；命令面板里的「归档」现在也会先确认。',
             },
             nov13a: {
                 title: 'Codex 会话不再因为「更新」反复重启',

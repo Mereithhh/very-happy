@@ -52,6 +52,25 @@ beforeEach(() => {
 afterEach(() => { workers.forEach(w => w.stop()); workers = []; rmSync(home, { recursive: true, force: true }); });
 
 describe('daemon team effect recovery', () => {
+    it('B-933: a cleanup retry does not re-archive a session the server already archived', async () => {
+        const operation = {...op(), type:'stop' as const, sessionId:'session1'};
+        setup(operation);
+        const original = mocks.post.getMockImplementation()!;
+        mocks.post.mockImplementation(async (path: string, body: any) => path === '/v1/sessions/archive-status'
+            ? { data: { archivedSessionIds: body.sessionIds } }
+            : original(path, body));
+        const getOriginal = mocks.get.getMockImplementation()!;
+        mocks.get.mockImplementation(async (...args) => {
+            const result = await getOriginal(...args);
+            if (result.data.team) result.data.team.archivedAt = 10;
+            return result;
+        });
+        const worker = start(); await settled(worker);
+        expect(mocks.post).toHaveBeenCalledWith('/v1/sessions/archive-status', { sessionIds: ['session1'] });
+        expect(stopAndWait).toHaveBeenCalledWith('session1');
+        expect(mocks.archive).not.toHaveBeenCalled();
+        expect(readReceipt(home, 'op1')?.phase).toBe('completed');
+    });
     it('settles archived teams without deleting retained worktrees', async () => {
         const operation = {...op(), type:'stop' as const, sessionId:'session1'};
         setup(operation);
@@ -63,7 +82,7 @@ describe('daemon team effect recovery', () => {
         });
         const worker = start(); await settled(worker);
         expect(stopAndWait).toHaveBeenCalledWith('session1');
-        expect(mocks.archive).toHaveBeenCalledWith('session1');
+        expect(mocks.archive).toHaveBeenCalledWith('session1', { source: 'team-cleanup' });
         expect(mocks.remove).not.toHaveBeenCalled();
         expect(readReceipt(home, 'op1')?.phase).toBe('completed');
         expect(mocks.get).toHaveBeenCalledWith('/v1/teams/operations', expect.objectContaining({params:expect.objectContaining({teamArchiveVersion:1})}));
@@ -283,7 +302,7 @@ describe('daemon team effect recovery', () => {
         writeReceipt(home, { operationId: 'op1', teamId: 'team1', claimId: 'claim0', phase: 'completed', directory: '/isolated', repository: '/repo', branch: 'codex/team-op1' });
         mocks.remove.mockRejectedValue(new Error('Unmerged work retained'));
         const worker = start(); await settled(worker);
-        expect(mocks.archive).toHaveBeenCalledWith('session1');
+        expect(mocks.archive).toHaveBeenCalledWith('session1', { source: 'team-cleanup' });
         expect(mocks.post.mock.calls.some(c => c[1].action?.type === 'complete-operation')).toBe(false);
         expect(mocks.post.mock.calls.some(c => c[1].action?.type === 'fail-operation')).toBe(true);
     });

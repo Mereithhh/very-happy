@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-13-archive-lands-without-waking',
+    date: '2026-11-13',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov13b.title',
+    summaryKey: 'changelog.releases.nov13b.summary',
+    itemKeys: ['changelog.releases.nov13b.noWake', 'changelog.releases.nov13b.settle', 'changelog.releases.nov13b.named'],
+  },
+  {
     id: '2026-11-13-cli-agent-restart-loop-0-2-213',
     cliVersion: '0.2.213',
     date: '2026-11-13',
