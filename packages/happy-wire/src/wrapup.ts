@@ -71,21 +71,31 @@ export function decodeWrapupConfig(value: string | null | undefined): WrapupConf
     }
 }
 
-/** Generic on purpose: nothing personal or organisation-specific. */
+/**
+ * Generic on purpose (public repo): nothing personal, organisation-specific, no
+ * paths or internal tool names. Besides reporting, it asks the session to keep
+ * what is worth keeping (docs, scripts, a few verified rules) before closing.
+ */
 export const DEFAULT_WRAPUP_TEMPLATE: Record<WrapupLang, string> = {
     zh: [
         '请收尾这个会话：',
-        '1. 这次做了什么（简要）。',
-        '2. 改了哪些文件、有哪些提交；还没提交的改动先说明要不要提交。',
-        '3. 还有哪些没做完，或需要我确认的事项。',
-        '4. 这个会话现在是否可以关闭。',
+        '1. 简要说说这次做了什么。',
+        '2. 需要留下的文档，是否都已保存到项目里。',
+        '3. 可复用的经验：能做成脚本或命令的优先做成脚本；只把少量确定有用的规则写进项目说明（如 CLAUDE.md、AGENTS.md 或 skills），不堆过程记录。',
+        '4. 写之前先核对最新的事实，别把过时的信息写进去。',
+        '5. 涉及具体的人、群或事的结论，写清是谁、在哪、什么时候，方便以后查找。',
+        '6. 改了哪些文件、有哪些提交；没有不确定的就直接提交并推送，有不确定的先列出来，不要提交。',
+        '7. 还有什么没做完或需要我确认，这个会话现在能不能关闭。',
     ].join('\n'),
     en: [
         'Please wrap up this session:',
-        '1. What was done (briefly).',
-        '2. Which files changed and which commits were made; say whether uncommitted changes should be committed.',
-        '3. What is unfinished, or needs my confirmation.',
-        '4. Whether this session can be closed now.',
+        '1. Briefly, what was done.',
+        '2. Whether the documents worth keeping have been saved in the project.',
+        '3. Reusable lessons: anything that can be a script or command becomes one first; put only a few rules you are sure are useful into the project instructions (such as CLAUDE.md, AGENTS.md or skills), not a log of the process.',
+        '4. Check the latest facts before writing anything down, so nothing outdated gets saved.',
+        '5. For conclusions about specific people, group chats or events, record who, where and when, so they are easy to find later.',
+        '6. Which files changed and which commits were made; if nothing is uncertain, commit and push; if something is, list it first and do not commit.',
+        '7. What is unfinished or needs my confirmation, and whether this session can be closed now.',
     ].join('\n'),
 };
 

@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-11-cli-wrapup-default-template-0-2-213',
+    cliVersion: '0.2.213',
+    date: '2026-11-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov11w.title',
+    summaryKey: 'changelog.releases.nov11w.summary',
+    itemKeys: ['changelog.releases.nov11w.keep', 'changelog.releases.nov11w.custom'],
+  },
+  {
     id: '2026-11-11-very-happy-settings-command',
     date: '2026-11-11',
     buildVersion: __APP_VERSION__,

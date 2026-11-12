@@ -3374,6 +3374,12 @@ export const en = {
                 images: 'On a new chat\'s page (before the session is up) and in the new-chat dialog, images can be pasted, dropped or picked (also on phones). They are uploaded once the session has started and reach Claude or Codex together with the text; a message of images only works too. A reload while it starts keeps them.',
                 noSilentDrop: 'Nothing is dropped silently any more: if the files cannot go out (upload failed, or the session does not take them), you are told why and the text and files are back in the box — send again to retry.',
             },
+            nov11w: {
+                title: 'Wrap up now keeps what is worth keeping',
+                summary: 'If you have not set your own wrap-up template, Wrap up now also asks the session to save its documents, turn reusable steps into scripts, and check the facts before committing.',
+                keep: 'The default prompt asks the session to save the documents worth keeping, prefer scripts or commands over long notes, put only a few verified rules into the project instructions, record who, where and when for conclusions about people and events, and commit and push when nothing is uncertain (anything uncertain is listed instead of committed).',
+                custom: 'If you already wrote your own template in Settings, nothing changes for you. The settings page shows the new default as its placeholder.',
+            },
             nov11m: {
                 title: 'Agents can change settings, with your decision for risky ones',
                 summary: '`very-happy settings` lets an agent read and change account, machine and project settings; anything that loosens safety waits for you.',

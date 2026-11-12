@@ -5,7 +5,7 @@ import {
 } from './attention';
 import {
     buildHandoffPrompt, buildWrapupPrompt, builtinActionOfLocalId, decodeWrapupConfig, DEFAULT_WRAPUP_TEMPLATE, encodeWrapupConfig,
-    handoffLocalId, resolveWrapupTemplate, WRAPUP_PROTOCOL_TAIL, wrapupLocalId,
+    handoffLocalId, resolveWrapupTemplate, WRAPUP_PROTOCOL_TAIL, WRAPUP_TEMPLATE_MAX_CHARS, wrapupLocalId,
 } from './wrapup';
 
 const done = { v: 1 as const, mode: 'wrapup' as const, status: 'done' as const, summary: 's', pending: [{ id: 'p1', label: 'release?', checked: false }], canClose: false };
@@ -67,8 +67,18 @@ describe('B-915 wrap-up contract', () => {
         expect(h).toContain('archive_after: true');
         expect(h).toContain('Note from the user: hi');
     });
-    it('default templates are generic', () => {
-        for (const t of Object.values(DEFAULT_WRAPUP_TEMPLATE)) expect(t).not.toMatch(/skill|commit push|沉淀/i);
+    it('default templates are generic and cover the same points in both languages', () => {
+        for (const t of Object.values(DEFAULT_WRAPUP_TEMPLATE)) {
+            // Public repo: no paths or script names (names of people/organisations are guarded repo-wide by sensitiveTerms.test.ts).
+            expect(t).not.toMatch(/~\/|\/home\/|\/Users\/|[A-Z]:\\|\.(sh|py|mjs)\b/i);
+            expect(t.length).toBeLessThan(WRAPUP_TEMPLATE_MAX_CHARS);
+        }
+        const steps = (t: string) => t.split('\n').filter((l) => /^\d+\. /.test(l)).length;
+        expect(steps(DEFAULT_WRAPUP_TEMPLATE.zh)).toBe(7);
+        expect(steps(DEFAULT_WRAPUP_TEMPLATE.en)).toBe(7);
+        // Docs saved, scripts over prose, facts checked, who/where/when, commit & push only when certain.
+        expect(DEFAULT_WRAPUP_TEMPLATE.zh).toMatch(/文档[\s\S]*脚本[\s\S]*核对[\s\S]*谁、在哪、什么时候[\s\S]*提交并推送[\s\S]*关闭/);
+        expect(DEFAULT_WRAPUP_TEMPLATE.en).toMatch(/documents[\s\S]*script[\s\S]*latest facts[\s\S]*who, where and when[\s\S]*commit and push[\s\S]*closed/);
     });
     it('localId prefixes', () => {
         expect(builtinActionOfLocalId(wrapupLocalId('n'))).toBe('wrapup');
