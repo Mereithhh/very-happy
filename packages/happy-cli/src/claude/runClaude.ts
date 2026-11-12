@@ -1,5 +1,6 @@
 import os from 'node:os';
 import { MAIN_AGENT_PROVENANCE_SYSTEM_PROMPT, mainAgentPromptText } from '@/assistant/turnOrigin';
+import { registerSystemCardRunner, systemCardPromptText } from '@/assistant/systemCardChoice';
 import { applyReconnectReplay, applyServerSnapshot, exitCursorStamp, mergeReconnectMetadata, withoutServerSnapshot, type ReconnectReplay } from '@/utils/reconnectSession';
 import { AUTO_RESTART_CAPABILITY, takeAutoRestartedEvent } from '@/update/autoRestartPolicy';
 import { takeRestartEffort } from '@/update/idleRestartPolicy';
@@ -729,6 +730,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // B-916c: the main agent (assistant variant outside any team) gets gate 1
     // (outbound denylist), gate 2 (risk → decision card) and its skill segment.
     const mainAgent = isAssistantVariant && !process.env.VH_TEAM_SCOPE_FILE ? await prepareMainAgentForSession(api, session, credentials) : undefined;
+    // B-924g: the gate-1 / gate-2 cards' owner choices are run by the wrapper (systemCardChoice.ts).
+    if (mainAgent) registerSystemCardRunner('gates', mainAgent.boardChoice);
     const happyServer = await startHappyServer(session, { assistant: isAssistantVariant, mainAgent, selfReportState: boardSelfReport, push: { sendAttention: (input) => api.push().sendAttention(input) } });
     logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
 
@@ -1224,7 +1227,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         const enhancedMode: EnhancedMode = resolvedMode;
         // B-924d: the main agent's model sees who sent a prompt that is not the owner's (a marked block);
         // the server copy and the Web keep the original text. Same per-prompt verdict as the turn tracker.
-        const modelText = mainAgentPromptText(Boolean(mainAgent), message.content.text, typeof session.routedLocalIdOf === 'function' ? session.routedLocalIdOf(message) : message.localKey, message.meta);
+        const routedLocalId = typeof session.routedLocalIdOf === 'function' ? session.routedLocalIdOf(message) : message.localKey;
+        // B-924g (QA-T P2-2): an owner choice on a system card is carried out here (the gate runs the bound call);
+        // the model gets the system receipt instead of the card text (systemCardChoice.ts).
+        const systemText = mainAgent ? await systemCardPromptText(routedLocalId, (line) => logger.debug(line)) : null;
+        const modelText = systemText ?? mainAgentPromptText(Boolean(mainAgent), message.content.text, routedLocalId, message.meta);
 
         if (message.meta?.delivery === 'steer' && currentRunMode === 'remote') {
             const accepted = await currentSession?.trySteer({

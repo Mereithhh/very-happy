@@ -348,7 +348,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         turnOrigin.onUserMessage({ localId: event.localId, sentFrom: event.message?.meta?.sentFrom });
         promptTaint.onUserMessage({ localId: event.localId, sentFrom: event.message?.meta?.sentFrom, text: typeof text === 'string' ? text : null });
     };
-    const onClaudeLine = (body: unknown) => { for (const text of assistantTexts(body)) leadBoard.onAssistantText(text); };
+    const onClaudeLine = (body: unknown) => { for (const text of assistantTexts(body)) { leadBoard.onAssistantText(text); promptTaint.onAssistantText(text); } };
     const onTurnStarted = (sourceIds?: string[]) => {
         wrapupTracker.onTurnStart(sourceIds);
         turnOrigin.onTurnStart(sourceIds);

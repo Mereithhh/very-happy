@@ -31,6 +31,7 @@ import type { AssistantToolRegistrar } from './assistantTools'
 import { isValidSessionId } from './ids'
 import { ownerOnlyRefusal, type TurnOrigin } from './turnOrigin'
 import { MAIN_AGENT_OPS_TOOL_NAMES, registerMainAgentOpsTools, type MainAgentOpsDeps } from './mainAgentOpsTools'
+import { registerSystemCardRunner } from './systemCardChoice'
 import { formatIssueLine, describeIssueError } from '@/issues/format'
 import { formatContextForTool } from '@/projects/prompt'
 
@@ -402,5 +403,5 @@ export function registerMainAgentTools(mcp: AssistantToolRegistrar, deps: MainAg
     // Always registered (a fixed tool list); without readers (tests, older hosts) they answer not_available.
     const unavailable = async (): Promise<never> => { throw new Error('not_available: this tool has no backend in this session') }
     const ops = deps.ops ?? { board: { list: unavailable, post: unavailable, resolve: unavailable }, sessions: unavailable, projectSessionIds: unavailable }
-    registerMainAgentOpsTools(mcp, { ...ops, sessionId: deps.sessionId, listTeams: deps.listTeams, wrapup: () => lifecycle.wrapup })
+    registerMainAgentOpsTools(mcp, { ...ops, sessionId: deps.sessionId, listTeams: deps.listTeams, wrapup: () => lifecycle.wrapup, registerBoardChoice: (runner) => registerSystemCardRunner('wrapup', runner) })
 }

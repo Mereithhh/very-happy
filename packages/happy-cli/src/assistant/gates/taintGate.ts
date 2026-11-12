@@ -20,6 +20,8 @@ export type TitlesOf = (kind: 'session' | 'team', id: string) => Promise<string[
 let installedTitlesOf: TitlesOf = async () => null
 /** startHappyServer installs the live lookup (taintTitles.ts); nothing installed = lookup fails (sessions fail closed). */
 export function installTaintTitlesOf(next: TitlesOf | null): void { installedTitlesOf = next ?? (async () => null) }
+/** The installed lookup (B-924g: the dispatch card's 目标 line uses it too). */
+export const taintTitlesOf: TitlesOf = (kind, id) => installedTitlesOf(kind, id)
 
 export function mainAgentTaintHook(deps: { snapshot?: () => TaintSnapshot; titlesOf?: TitlesOf; isOwner?: () => boolean; log?: (line: string) => void } = {}) {
     const snapshotOf = deps.snapshot ?? mainAgentPromptTaint

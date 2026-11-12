@@ -59,6 +59,8 @@ export type MainAgentOpsDeps = {
     wrapup: () => ((input: { sessionId: string; requestId: string }) => Promise<WrapupReceipt>) | undefined
     /** Where a posted checklist card is bound (QA P1-1); default: 0600 files under `~/.happy/main-agent-approvals/wrapup-cards`. */
     cardRecords?: WrapupCardRecords
+    /** B-924g: where the checklist card's owner-choice runner goes (systemCardChoice.ts); absent = not registered (tests). */
+    registerBoardChoice?: (runner: (itemId: string) => Promise<string | null>) => void
 }
 
 /** What the main agent posted: the card face and the original list, so a rewritten card wraps up nothing. */
@@ -250,14 +252,16 @@ export function registerMainAgentOpsTools(mcp: AssistantToolRegistrar, deps: Mai
     })
 
     // ── wrapup_selected ──────────────────────────────────────────────────────
-    register('wrapup_selected', 'After the owner chose 收尾所选 on your wrap-up checklist card: wrap up exactly the sessions they ticked (each gets one wrap-up turn, the same as the owner pressing 收尾; nothing is closed or archived). Refuses unless the owner made that choice on that card; sessions not ticked are never touched.', {
-        boardItemId: id.describe('The card id (in the owner\'s message)'),
-    }, false, async (args) => {
+    // B-924g: a checklist card already carried out (by the wrapper on the owner's choice, or a call) is not run again.
+    const doneCards = new Map<string, string>()
+    async function wrapupSelected(boardItemId: string): Promise<Result> {
+        const done = doneCards.get(boardItemId)
+        if (done) return ok(JSON.stringify({ ok: true, boardItemId, state: 'already_done', note: `already carried out: ${done}` }))
         const self = deps.sessionId()
         const { items } = await deps.board.list({ sessionId: self, state: 'all', limit: 200 })
-        const item = items.find(i => i.id === args.boardItemId)
+        const item = items.find(i => i.id === boardItemId)
         const refusal = wrapupCardRefusal(item, self)
-        if (refusal) return fail(JSON.stringify({ ok: false, error: refusal, boardItemId: args.boardItemId }))
+        if (refusal) return fail(JSON.stringify({ ok: false, error: refusal, boardItemId }))
         // QA P1-1: only a card this main agent posted, still showing exactly what it posted.
         const record = await records.read(item!.id)
         if (!record) return fail(JSON.stringify({ ok: false, error: 'card_not_found', boardItemId: item!.id, note: 'not a checklist card this main agent posted' }))
@@ -266,7 +270,7 @@ export function registerMainAgentOpsTools(mcp: AssistantToolRegistrar, deps: Mai
         if (!wrapup) return fail(JSON.stringify({ ok: false, error: 'not_available', note: 'Wrap-up is not available on this Very Happy version yet' }))
         const ticked = tickedSessions(item!, record.items)
         const total = parseSelectPayload(item!.payload)?.items.length ?? 0
-        if (!ticked.length) return ok(JSON.stringify({ ok: true, boardItemId: item!.id, queued: 0, note: 'the owner ticked none: nothing wrapped up' }))
+        if (!ticked.length) { doneCards.set(item!.id, 'none ticked'); return ok(JSON.stringify({ ok: true, boardItemId: item!.id, queued: 0, note: 'the owner ticked none: nothing wrapped up' })) }
         const results: string[] = []
         let queued = 0
         for (const sessionId of ticked) {
@@ -278,6 +282,26 @@ export function registerMainAgentOpsTools(mcp: AssistantToolRegistrar, deps: Mai
                 results.push(`${sessionId.slice(0, 10)} failed: ${oneLine(error instanceof Error ? error.message : String(error), 40)}`)
             }
         }
-        return ok(JSON.stringify({ ok: true, boardItemId: item!.id, queued, note: `${ticked.length} of ${total} ticked; ${results.join('; ')}` }))
+        const note = `${ticked.length} of ${total} ticked; ${results.join('; ')}`
+        if (queued > 0) doneCards.set(item!.id, note)
+        return ok(JSON.stringify({ ok: true, boardItemId: item!.id, queued, note }))
+    }
+    register('wrapup_selected', 'After the owner chose 收尾所选 on your wrap-up checklist card: wrap up exactly the sessions they ticked (each gets one wrap-up turn, the same as the owner pressing 收尾; nothing is closed or archived). Refuses unless the owner made that choice on that card; sessions not ticked are never touched. Usually the system has already done this when the owner chose (you get a 系统回执); calling it again asks nobody twice.', {
+        boardItemId: id.describe('The card id (in the owner\'s message)'),
+    }, false, async (args) => wrapupSelected(args.boardItemId))
+
+    // B-924g (QA-T P2-2): the owner's choice on this main agent's checklist card is carried out by the wrapper.
+    deps.registerBoardChoice?.(async (itemId) => {
+        const { items } = await deps.board.list({ sessionId: deps.sessionId(), state: 'all', limit: 200 })
+        const item = items.find(i => i.id === itemId)
+        if (!item || item.kind !== 'decision' || !item.key?.startsWith(MAIN_AGENT_CARD_KEY.wrapup) || !(await records.read(item.id))) return null
+        if (item.state === 'resolved' && item.resolvedBy === 'owner' && item.ownerChoice !== WRAPUP_APPROVE_OPTION) {
+            return 'Owner 在收尾清单卡上选了「这次不用」：系统什么都没收尾。不要再调 wrapup_selected；不用追问。'
+        }
+        const result = await wrapupSelected(itemId)
+        const text = result.content.map(c => c.text).join('')
+        return result.isError
+            ? `系统没有按收尾清单收尾（${oneLine(text, 160)}）。告诉 Owner 没有收尾和原因，不要换别的工具绕过。`
+            : `Owner 在收尾清单卡上选了「收尾所选」。系统已经替你按 Owner 勾选的会话发起了收尾（每个会话只发一次）：${oneLine(text, 240)}\n不要再调 wrapup_selected；告诉 Owner 发起了哪些收尾。`
     })
 }

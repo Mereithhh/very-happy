@@ -110,8 +110,8 @@ export function toolApprovalCard(approvalId: string, toolName: string, input: Re
 }
 
 export const toolWaitReason = (toolName: string, boardItemId: string) =>
-    `已在「需要我决策」出卡（决策 ${boardItemId}），等 Owner 批准这次 ${toolName} 调用。现在先停下，告诉用户在等批准，不要换别的工具绕过；`
-    + `Owner 批准后，用完全相同的参数再调用一次 ${toolName}（参数一变就要重新批准）。`
+    `还没执行：已在「需要我决策」出卡（决策 ${boardItemId}），等 Owner 批准这次 ${toolName} 调用。现在先停下，告诉用户在等他批准（不要说已经做了），不要换别的工具绕过；`
+    + `Owner 批准后系统会发一条「系统回执」给你，那时用完全相同的参数再调用一次 ${toolName}（参数一变就要重新批准）。`
     + ` (Waiting for the owner to approve this call on the decision board. Stop and tell the user; after approval call ${toolName} again with exactly the same arguments.)`
 
 export const toolDeniedReason = (toolName: string, boardItemId: string) =>
@@ -133,7 +133,20 @@ export type ToolApprovalDeps = {
     log?: (line: string) => void
 }
 
-export function createToolApproval(deps: ToolApprovalDeps): { ask: ToolAsker } {
+/**
+ * B-924g (QA-T P2-2): the system receipt for the owner's choice on a gate-1 card. Gate 1 cannot run a Claude
+ * Code tool for the model, so the receipt says exactly what to call again; the PreToolUse hook lets that one
+ * identical call through (single-use claim). Read-only: nothing is claimed here.
+ */
+export function toolChoiceReceipt(toolName: string, boardItemId: string, choice: string | null): string {
+    if (choice === 'once' || choice === MAIN_AGENT_TOOL_ALWAYS_CHOICE) {
+        return `Owner 在工具批准卡（决策 ${boardItemId}）上选了「${choice === 'once' ? '批准这一次' : '以后都允许这个工具'}」，批准的是你刚才被拦下的那次 ${toolName} 调用。系统不能替你执行这个工具：现在就用和那次完全相同的参数再调用一次 ${toolName}（系统核对参数，只放行这一次），然后把结果告诉 Owner。`
+    }
+    if (choice === 'deny') return `Owner 在工具批准卡（决策 ${boardItemId}）上选了「拒绝」：那次 ${toolName} 调用不执行。不要用同样的参数重试；需要的话问 Owner 怎么处理。`
+    return `工具批准卡（决策 ${boardItemId}）上还读不到 Owner 的选择：先不要调用 ${toolName}，告诉 Owner 在等卡上的选择。`
+}
+
+export function createToolApproval(deps: ToolApprovalDeps): { ask: ToolAsker; boardChoice: (itemId: string) => Promise<string | null> } {
     const now = deps.now ?? Date.now
     const newId = deps.newId ?? randomUUID
     const recordPath = (argsSha256: string) => join(deps.pendingDir, `${argsSha256}.json`)
@@ -198,5 +211,22 @@ export function createToolApproval(deps: ToolApprovalDeps): { ask: ToolAsker } {
         return 'allow'
     }
 
-    return { ask }
+    /** B-924g: systemCardChoice.ts runner — the receipt when `itemId` is one of this gate's cards, else null. */
+    async function boardChoice(itemId: string): Promise<string | null> {
+        const { readdir } = await import('node:fs/promises')
+        let names: string[] = []
+        try { names = await readdir(deps.pendingDir) } catch { return null }
+        for (const name of names) {
+            if (!/^[0-9a-f]{64}\.json$/.test(name)) continue
+            const record = await readRecord(name.slice(0, -5))
+            if (!record || record.boardItemId !== itemId) continue
+            const board = deps.board
+            if (!board) return toolChoiceReceipt(record.toolName, itemId, null)
+            const decision = ownerDecision(await board.findById(itemId), { key: toolCardKey(record.approvalId, record.toolName), cardSha256: record.cardSha256 })
+            return toolChoiceReceipt(record.toolName, itemId, decision.ok ? decision.choice : null)
+        }
+        return null
+    }
+
+    return { ask, boardChoice }
 }

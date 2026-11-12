@@ -26,7 +26,7 @@ import { compileOutboundDenylist, outboundPreToolUseHook, type CompiledDenylist,
 import { cardLang, createToolApproval, type CardLang, type ToolApprovalDeps } from './toolApproval'
 import { happyHomeCandidates, MAIN_AGENT_APPROVALS_DIR, protectedPathsFor } from './protectedPaths'
 import { createDispatchGate, DISPATCH_OPTIONS, type DispatchBoard, type DispatchGate } from './dispatchGate'
-import { mainAgentTaintHook } from './taintGate'
+import { mainAgentTaintHook, taintTitlesOf } from './taintGate'
 import type { OneShotRunner } from './risk'
 import { boardItemView as view, clipBytes } from '@/attention/ownerApproval'
 
@@ -46,6 +46,8 @@ export type MainAgentRuntime = {
     /** Existing skillRoots, for SDK `additionalDirectories`. */
     extraDirectories: string[]
     gate: DispatchGate
+    /** B-924g (QA-T P2-2): the system receipt for an owner choice on a gate-1 / gate-2 card (systemCardChoice.ts); null = not one. */
+    boardChoice: (itemId: string) => Promise<string | null>
 }
 
 export function attentionDispatchBoard(client: AttentionClient, sessionId: () => string): DispatchBoard {
@@ -130,7 +132,10 @@ export async function prepareMainAgent(deps: {
         mustAsk,
         // B-924f: the owner's turn — key arguments that came from recent non-owner prompts → card (taintGate.ts).
         taint: mainAgentTaintHook({ ...(deps.isOwner ? { isOwner: deps.isOwner } : {}), log: deps.log }),
+        // B-924g (QA-T P3-1): the card's 目标 line names the session / team by title.
+        targetTitle: async (kind, id) => (await taintTitlesOf(kind, id))?.[0] ?? null,
     })
+    const toolCards = createToolApproval(approvalDeps)
     return {
         config,
         safety,
@@ -143,6 +148,7 @@ export async function prepareMainAgent(deps: {
         // the default mode (isolated probe; QA77 #7: a Grep one level up asked too).
         extraDirectories: [...(skillPath ? [dirname(dirname(dirname(skillPath)))] : []), ...roots.filter(r => r.exists).map(r => r.path)],
         gate,
+        boardChoice: async (itemId) => (await gate.runBoardChoice(itemId)) ?? (await toolCards.boardChoice(itemId)),
     }
 }
 

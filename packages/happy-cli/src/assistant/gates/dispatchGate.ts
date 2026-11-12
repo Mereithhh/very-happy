@@ -149,6 +149,10 @@ export type DispatchGateDeps = {
      * came from recent non-owner prompts and not from the owner's text; null otherwise. Checked after `mustAsk`.
      */
     taint?: (toolName: string, args: Record<string, unknown>) => Promise<string | null>
+    /** B-924g (QA-T P3-1): the title of the card's session / team target, for the 目标 line; null = unknown. */
+    targetTitle?: (kind: 'session' | 'team', id: string) => Promise<string | null>
+    /** B-924g (QA-T P2-2): retry pause while the owner's choice is not readable yet (default 400 ms × 3). */
+    settleDelayMs?: number
 }
 /** false / null / undefined = no; true = yes (generic reason); a string = yes, and it is the card's 原因 line (B-924b). */
 export type MustAskVerdict = boolean | string | null | undefined
@@ -160,25 +164,37 @@ function firstLine(text: string, max: number): string {
     return line.length > max ? `${line.slice(0, max - 1)}…` : line
 }
 
-/** B-924c: the card's 目标 line — who receives the text (session / Lead / terminal / team / issue / automation). */
-function cardTarget(args: Record<string, unknown> | undefined): string | null {
+/** B-924g: the session / team a card's 目标 line names (the one whose title the gate looks up). */
+export function cardTargetRef(args: Record<string, unknown> | undefined): { kind: 'session' | 'team'; id: string } | null {
     if (!args) return null
     const pick = (...keys: string[]) => keys.map(k => str(args[k])).find(Boolean) ?? ''
+    const session = pick('sessionId', 'session_id', 'to')
+    if (session) return { kind: 'session', id: session }
+    if (Array.isArray(args.session_ids) || pick('terminalId')) return null
+    const team = pick('teamId')
+    return team ? { kind: 'team', id: team } : null
+}
+
+/** B-924c: the card's 目标 line — who receives the text (session / Lead / terminal / team / issue / automation). B-924g: with its title when known. */
+function cardTarget(args: Record<string, unknown> | undefined, title?: string | null): string | null {
+    if (!args) return null
+    const pick = (...keys: string[]) => keys.map(k => str(args[k])).find(Boolean) ?? ''
+    const named = (id: string) => title ? `「${title.replace(/\s+/g, ' ').slice(0, 60)}」（${id}）` : id
     const session = pick('sessionId', 'session_id', 'to') || (Array.isArray(args.session_ids) ? args.session_ids.map(str).filter(Boolean).join(', ') : '')
-    if (session) return `会话 ${session}`
+    if (session) return `会话 ${pick('sessionId', 'session_id', 'to') ? named(session) : session}`
     const terminal = pick('terminalId')
     if (terminal) return `终端 ${terminal}`
     const team = pick('teamId')
-    if (team) return `团队 ${team}${pick('taskId', 'botId') ? ` · ${pick('taskId', 'botId')}` : ''}`
+    if (team) return `团队 ${named(team)}${pick('taskId', 'botId') ? ` · ${pick('taskId', 'botId')}` : ''}`
     const issue = pick('issue', 'issueId')
     if (issue) return `issue ${issue}`
     const automation = pick('id', 'name')
     return automation ? automation : null
 }
 
-export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'toolName' | 'declared' | 'level'> & { args?: Record<string, unknown> }, payload: string, forced: boolean | string = false) {
+export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'toolName' | 'declared' | 'level'> & { args?: Record<string, unknown> }, payload: string, forced: boolean | string = false, targetTitle?: string | null) {
     const head = firstLine(payload, 60) || pending.toolName
-    const target = cardTarget(pending.args)
+    const target = cardTarget(pending.args, targetTitle)
     return {
         key: `${DISPATCH_CARD_KEY_PREFIX}${pending.approvalId}`,
         // B-924c (QA-T P3-2): the title names the action (想恢复自动化 / 想写项目决定 …), not always 派活.
@@ -218,6 +234,23 @@ export function withApprovalPrefix(toolName: string, args: Record<string, unknow
 }
 
 const APPROVAL_ID_RE = /^[0-9a-f-]{36}$/i
+
+/** B-924g (QA-T P3-2): the main agent said「已催」「已经告诉 T3 了」for a call that was only carded. */
+export const AWAITING_NOTE = '还没发出、还没执行：已放到「需要我决策」，等 Owner 在卡上批准。告诉 Owner 这件事在等他批准，不要说「已经发了 / 已经告诉了 / 已催」。Owner 批准后系统会直接执行并通知你，不用你再调工具。'
+
+/** B-924g (QA-T P2-2): the system receipt the main agent gets for the owner's choice on a dispatch card. */
+export function dispatchChoiceReceipt(toolName: string, args: Record<string, unknown>, result: { state?: string; error?: string; result?: string }, title?: string | null): string {
+    const target = cardTarget(args, title)
+    const what = `${toolName}${target ? `（目标：${target}）` : ''}`
+    const detail = typeof result.result === 'string' && result.result ? `\n工具结果：${result.result.slice(0, 200)}` : ''
+    switch (result.state) {
+        case 'dispatched': return `Owner 在「需要我决策」卡上选了「批准执行」。系统已经替你执行了这次 ${what}，只执行这一次。${detail}\n不要再调 dispatch_approved，也不要重新调用 ${toolName}；用一两句话告诉 Owner 已经执行和结果。`
+        case 'already_dispatched': return `这张卡批准的 ${what} 已经执行过了（每张卡只执行一次）。${detail}\n不要再调用；告诉 Owner 已经执行过。`
+        case 'draft_only': return `Owner 在「需要我决策」卡上选了「只出草稿」：系统没有发出任何内容。现在在对话里把这次 ${what} 要发的内容写成草稿给 Owner 看，不要发送，也不要再调工具。`
+        case 'dropped': return `Owner 在「需要我决策」卡上选了「放弃」：${what} 没有执行。不要再试；需要的话问 Owner 接下来怎么办。`
+        default: return `系统没有执行这次 ${what}（${result.error ?? result.state ?? 'unknown'}）。告诉 Owner 没有执行和原因，不要自己换别的工具绕过。`
+    }
+}
 
 export function createDispatchGate(deps: DispatchGateDeps) {
     const now = deps.now ?? Date.now
@@ -281,11 +314,13 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         try {
             await mkdir(deps.pendingDir, { recursive: true, mode: 0o700 })
             await writePrivate(pendingPath(approvalId), pending)
-            const card = decisionCard(pending, payload, forced)
+            const ref = cardTargetRef(args)
+            const title = ref && deps.targetTitle ? await deps.targetTitle(ref.kind, ref.id).catch(() => null) : null
+            const card = decisionCard(pending, payload, forced, title)
             const posted = await deps.board.postDecision(card)
             const id = posted.id
             await writePrivate(pendingPath(approvalId), { ...pending, boardItemId: id, cardSha256: cardFaceHash(posted) })
-            return ok({ ok: true, state: 'awaiting_decision', approvalId, boardItemId: id, risk: level, note: '已放到「需要我决策」，等用户选择后调 dispatch_approved' })
+            return ok({ ok: true, state: 'awaiting_decision', sent: false, approvalId, boardItemId: id, risk: level, note: AWAITING_NOTE })
         } catch (error) {
             deps.log?.(`[main-agent gate] park failed: ${error instanceof Error ? error.message : String(error)}`)
             return fail({ error: 'board_unavailable', risk: level })
@@ -339,6 +374,33 @@ export function createDispatchGate(deps: DispatchGateDeps) {
     }
 
     const { claim, release } = approvalClaims(deps.pendingDir)
+
+    /**
+     * B-924g (QA-T P2-2): the owner chose on one of this gate's cards → run `approved` here (same checks, same
+     * single-use claim), so the approved call never depends on the model calling dispatch_approved. A choice
+     * the server does not show yet is retried briefly; null = not this gate's card.
+     */
+    async function runBoardChoice(itemId: string): Promise<string | null> {
+        const approvalId = await approvalIdForCard(itemId)
+        if (!approvalId) return null
+        const pending = await readJson(pendingPath(approvalId))
+        if (!pending) return null
+        const parse = (r: ToolResult): { state?: string; error?: string; result?: string } => {
+            const text = r.content.map(c => c.text).join('')
+            try { return JSON.parse(text) } catch { /* a clipped receipt */ }
+            const field = (k: string) => text.match(new RegExp(`"${k}":"([^"]*)"`))?.[1]
+            return { state: field('state'), error: field('error') ?? (field('state') ? undefined : 'unreadable'), result: field('result') }
+        }
+        let out = parse(await approved({ approvalId }))
+        for (let i = 0; i < 3 && out.error === 'awaiting_decision'; i++) {
+            await new Promise(r => setTimeout(r, deps.settleDelayMs ?? 400))
+            out = parse(await approved({ approvalId }))
+        }
+        deps.log?.(`[main-agent gate] card ${itemId} chosen → ${out.state ?? out.error}`)
+        const ref = cardTargetRef(pending.args)
+        const title = ref && deps.targetTitle ? await deps.targetTitle(ref.kind, ref.id).catch(() => null) : null
+        return dispatchChoiceReceipt(pending.toolName, pending.args, out, title)
+    }
 
     /** The approval whose pending record names this card (the gate's own records only). */
     async function approvalIdForCard(id: string): Promise<string | null> {
@@ -411,6 +473,8 @@ export function createDispatchGate(deps: DispatchGateDeps) {
                 inputSchema: { approvalId: z.string().min(1).max(64).optional(), boardItemId: z.string().min(1).max(128).optional().describe('The decision card id, when the approvalId is not at hand') },
             }, (args: { approvalId?: unknown; boardItemId?: unknown }) => approved(args))
         },
+        /** B-924g: systemCardChoice.ts runner for this gate's cards. */
+        runBoardChoice,
         /** Test hook. */
         _intercept: intercept,
         _interceptAskOnly: interceptAskOnly,

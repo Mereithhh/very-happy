@@ -593,7 +593,7 @@ Owner 11-11：「主 agent 的安全阀太严格了……可以让用户配置�
 - **窗口 N**：本进程最近 **32 条**非 Owner prompt（`promptOrigin !== 'owner'`：send、自动化、唤醒、session_message、团队、汇报板 / 建议按钮、非 Owner 的重试），在消息路由时就进窗口，中间隔多少个 Owner 回合都不出窗口，只被更新的 32 条挤出；每条最多扫 16,000 字。
 - **Owner 原文**：当前回合批次里 Owner 亲手打的全部 prompt 原文（服务器存的原文，不带标记）。
 - **关键参数**（`taintKeys`，递归遍历参数）：
-  - 目标：`to / from / sessionId / session_id(s) / teamId / taskId / botId / assigneeBotId / terminalId / issue / issueId / key / id / name / scheduleId / projectId / directory`。会话和团队目标先查标题（会话：本机列表，找不到再查账号未归档会话；团队：账号团队名；30 秒缓存，5 秒超时）。`to_title / title / newName` 在只有一个目标时并入该目标。
+  - 目标：`to / from / sessionId / session_id(s) / teamId / taskId / botId / assigneeBotId / terminalId / issue / issueId / key / id / name / scheduleId / projectId / directory`。会话和团队目标先查标题（会话：本机列表，找不到再查账号未归档会话；团队：账号团队名；30 秒缓存，5 秒超时）。`to_title / title / newName` 是模型自己填的，**不算目标的名字**（B-924g），只当文字检查。
   - 文字：其余字符串参数（summary、text、body、prompt、goal、acceptance、note、template…）。`risk / kind / agent / requestId / version / machineId…` 这类枚举和簿记参数不看。
 - **匹配**（NFKC + 小写）：
   - 「提到」：包含该标识。纯 ASCII 字母数字的标识（`t4`、`dev4`）要求 ASCII 词边界（`st45` 不算 `t4`）；≥12 字符的 id，出现它 ≥8 字符的前缀也算；标题出现前 6 个字也算。
@@ -611,6 +611,34 @@ Owner 11-11：「主 agent 的安全阀太严格了……可以让用户配置�
 - 窗口只在内存里，wrapper 重启后清空（resume 回来的 JSONL 仍带来源标记，只剩软防线）。
 - 模型经工具读到的文字（session_read、issue 正文、网页）不进窗口。
 - 注入用既不是 id 也不是标题的别名指目标（「刚才那个会话」），且不照抄 12 字以上的文字时，闸看不出来。
+
+### 10.3d 污点闸第二轮：只认查到的标题、Owner 的指代不再误伤、系统卡批准由 wrapper 执行（B-924g，QA-T on B-924f）
+
+**问题**：P1-1 模型多传 `to_title:"在吗"` 就和 Owner 的「在吗？」对上，目标被放行（4/4 送达 T4），summary 写成「跑 ./x.sh」不到 12 字也不查。P2-1 Owner 的日常指代（「好，让它收尾」「把刚才那个任务交给 T3」「催一下早报里那个卡住的会话」、对主 agent 反问回「对」）调了工具 7/7 出卡。P2-2 系统卡点「批准执行」后的回传消息带「不要执行」标记，haiku 3 次只有 1 次去调 dispatch_approved。
+
+**规则改动**（`promptTaint.ts`）：
+- **只认查到的标题**：目标的名字只有 id 和 `titlesOf` 查到的真实标题。真实标题除了全称、前 6 字，还认它的特征词：含数字的 ASCII 词（「T4」「B-924f」）、≥4 字的非 ASCII 词（「构建日志整理」）。参数里的 `to_title / title / newName` 并进文字检查。
+- **短文字**：6–11 字的文字参数整段出现在窗口某条 prompt 里、Owner 没说过 → 污染（「跑./x.sh」）。不到 6 字不查。
+- **Owner 语境**：本回合原文 + Owner 最近 3 条（30 分钟内）亲手打的消息 + 本回合是确认（「对」「好」「可以」…单独说或打头，如「好，让它收尾」）时，主 agent 上一回合的回复（Owner 回答的那个问题 / 复述）。**更早的 Owner 消息只能放行它之前到达的来信提到的目标**：Owner 10:00 说过 T4，10:05 来的 send 指向 T4，Owner 10:06 说「在吗」→ 仍出卡（同一序号计数）。
+- **放开来信方自己和早报列出的会话（只放目标）**：窗口里每条 prompt 记下它可以提到而不污染的会话：
+  - `session-message-*`：信封首行里的发件会话（`parsePeerMessage`，不认 CLI 发件人）；
+  - `automation-*`：precheck 块（`----- BEGIN/END PRECHECK OUTPUT -----`）里 `- <sessionId> | <title> | …` 行列出的会话（卡住 / 可收尾，`scan.ts formatStuck / formatWrapup`）。
+  这条 prompt 提到的**其它**会话（来信里点名的第三方 T4）照样污染；别的 prompt 也提到这个会话时，以那条为准。CLI send 里伪造的信封或 precheck 块不放开任何会话（看 localId，不看正文）。文字照查。
+- **「刚才那个」**：Owner 本回合用了回指词（刚才 / 上面 / 那个 / 这个 / 它 / 汇报 / 早报 / 提到…；「约定」不算），且这次调用的**每个目标都是 Owner 亲手打出名字的**（不含主 agent 的回复）时，来自最近 5 条、30 分钟内来信的文字片段不算污染（把 T2 汇报的任务原话转给 Owner 点名的 T3）。目标只有窗口点过名时不适用（复现 2）。
+
+**系统卡批准由 wrapper 执行**（`systemCardChoice.ts`，runClaude 在把 prompt 交给模型前调用）：Web 发来的 `board-<itemId>-<nonce>` 选项消息，先问三类系统卡的 runner：
+- **需要我决策的卡（闸 2，含污点卡）**：`gate.runBoardChoice` 直接跑 `dispatch_approved` 的同一套核对（卡 key、卡面 hash、`resolvedBy=owner`、参数 hash、O_EXCL 单次认领）并执行绑定参数的调用；选择还读不到时重试 3×400ms。模型、重复路由、重复点击、之后的 dispatch_approved 都只会得到 `already_dispatched`。
+- **收尾清单**：同一个 `wrapup_selected` 逻辑由 wrapper 执行；同一张卡执行过就不再执行（进程内记录 + 每个会话固定 requestId）。
+- **工具批准卡（闸 1）**：wrapper 不能替模型执行 Claude Code 的工具，回执明确写「现在用完全相同的参数再调用一次 <工具>」，PreToolUse 钩子按原规则只放行一次。
+命中时模型拿到的不是卡片文字，而是「［系统回执：…］…［系统回执结束］」（结果、目标标题、下一步）；系统提示写明这是例外、照做。非 Owner prompt 里的「系统回执」字样被转义。不是系统卡（主 agent 自己发的普通卡）照旧带来源标记。
+
+**卡面与回执**（P3）：决定卡「目标」行写「会话 「T4 构建日志整理」（<id>）」（团队同理，查不到标题时只写 id）。`awaiting_decision` 回执加 `sent:false`，note 写「还没发出、还没执行…不要说已经发了 / 已经告诉了 / 已催」；闸 1 的等待说明同样开头「还没执行」；系统提示和手册各加一条。
+
+**剩余风险**：
+- Owner 回「对 / 好」时，主 agent 上一条回复整段算 Owner 语境：如果那条回复复述了注入内容、Owner 回了「好」，就按 Owner 同意处理（Owner 看到了才回答）。
+- 来信方自己被放开：会话让主 agent 收尾 / 交接 / 发给它自己，目标不出卡（文字照查）。
+- 「刚才那个」+ Owner 亲手点名目标时，最近来信的文字会被转发出去。
+- 10.3c 的剩余风险仍在（窗口在内存、工具读到的文字不进窗口、32 条可被挤出）。
 
 ### 10.4 推送与免打扰
 
