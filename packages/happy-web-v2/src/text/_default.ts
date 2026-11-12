@@ -3379,7 +3379,7 @@ export const en = {
             nov13c: {
                 title: 'Codex sessions on an added account work with newer Codex',
                 summary: 'Codex sessions that run on an account you added in Very Happy start and resume again on Codex 0.167 and later.',
-                codex: 'Newer Codex refused these sessions with "This chat uses …, but your current provider is …". The session now starts Codex on its account\'s provider, so new chats, follow-up turns and resumes work on both older and newer Codex. Sessions on the machine\'s own Codex login are unchanged.',
+                codex: 'Newer Codex refused these sessions with "This chat uses …, but your current provider is …". A session bound to an account now starts Codex on that account\'s provider, so it can be created and resumed on newer Codex too. Sessions on the machine\'s own Codex login are unchanged.',
             },
             nov13b: {
                 title: 'Archiving one after another no longer takes the next session with it',

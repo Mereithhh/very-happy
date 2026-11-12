@@ -3507,7 +3507,7 @@ export const zhHans: TranslationStructure = {
             nov13c: {
                 title: '用已添加账号的 Codex 会话支持新版 Codex',
                 summary: '在 Very Happy 里绑定了账号的 Codex 会话，在 Codex 0.167 及以后的版本上可以正常新建和恢复。',
-                codex: '新版 Codex 会以「This chat uses …, but your current provider is …」拒绝这类会话。现在会话启动 Codex 时就用账号自己的 provider，新建、续聊和恢复在新旧版本 Codex 上都正常。用本机 Codex 登录的会话不受影响。',
+                codex: '新版 Codex 会以「This chat uses …, but your current provider is …」拒绝这类会话。现在绑定账号的 Codex 会话启动时就用账号自己的 provider，在新版 Codex 上也能新建和恢复。用本机 Codex 登录的会话不受影响。',
             },
             nov13b: {
                 title: '连续归档不会再顺手带走下一个会话',
