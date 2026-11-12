@@ -1,3 +1,4 @@
+import { isReservedCardKey } from './ownerApproval';
 import {
     OwnerBoardListInputSchema, OwnerBoardPostInputSchema, OwnerBoardResolveInputSchema, OwnerBoardUpdateInputSchema,
 } from '@slopus/happy-wire';
@@ -48,8 +49,16 @@ export function registerOwnerBoardTools(server: AssistantToolRegistrar, board: L
             catch (error) { return { content: [{ type: 'text' as const, text: errorText(error) }], isError: true }; }
         });
     };
-    register('owner_board_post', POST_DESCRIPTION, OwnerBoardPostInputSchema, (args) => board.post(args as never));
-    register('owner_board_update', UPDATE_DESCRIPTION, OwnerBoardUpdateInputSchema, (args) => board.update(args as never));
-    register('owner_board_resolve', RESOLVE_DESCRIPTION, OwnerBoardResolveInputSchema, (args) => board.resolve(args as never));
+    // B-920: approval cards (dispatch gate, `very-happy settings`) are posted by those gates only; an agent's own
+    // board tools never post, edit or close one. The binding check (owner-only choice + card face hash) is what
+    // actually protects an approval; this keeps an agent from muddling its own cards by accident.
+    const reservedById = async (id: string): Promise<boolean> => {
+        const { items } = await board.list({ state: 'all' } as never) as { items?: Array<{ id: string; key?: string | null }> };
+        return isReservedCardKey(items?.find((item) => item.id === id)?.key);
+    };
+    const refuseReserved = (): never => { throw new Error('reserved_card: approval cards are managed by Very Happy itself and cannot be posted, edited or closed with owner_board_* tools'); };
+    register('owner_board_post', POST_DESCRIPTION, OwnerBoardPostInputSchema, (args) => isReservedCardKey((args as { key?: unknown }).key) ? refuseReserved() : board.post(args as never));
+    register('owner_board_update', UPDATE_DESCRIPTION, OwnerBoardUpdateInputSchema, async (args) => await reservedById((args as { id: string }).id) ? refuseReserved() : board.update(args as never));
+    register('owner_board_resolve', RESOLVE_DESCRIPTION, OwnerBoardResolveInputSchema, async (args) => await reservedById((args as { id: string }).id) ? refuseReserved() : board.resolve(args as never));
     register('owner_board_list', LIST_DESCRIPTION, OwnerBoardListInputSchema, (args) => board.list(args as never), true);
 }

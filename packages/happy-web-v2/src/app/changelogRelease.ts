@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-11-very-happy-settings-command',
+    date: '2026-11-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov11m.title',
+    summaryKey: 'changelog.releases.nov11m.summary',
+    itemKeys: ['changelog.releases.nov11m.command', 'changelog.releases.nov11m.approval'],
+  },
+  {
     id: '2026-11-11-owner-actions-need-sign-in',
     date: '2026-11-11',
     buildVersion: __APP_VERSION__,

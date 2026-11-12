@@ -3374,6 +3374,12 @@ export const en = {
                 images: 'On a new chat\'s page (before the session is up) and in the new-chat dialog, images can be pasted, dropped or picked (also on phones). They are uploaded once the session has started and reach Claude or Codex together with the text; a message of images only works too. A reload while it starts keeps them.',
                 noSilentDrop: 'Nothing is dropped silently any more: if the files cannot go out (upload failed, or the session does not take them), you are told why and the text and files are back in the box — send again to retry.',
             },
+            nov11m: {
+                title: 'Agents can change settings, with your decision for risky ones',
+                summary: '`very-happy settings` lets an agent read and change account, machine and project settings; anything that loosens safety waits for you.',
+                command: '`very-happy settings list / get / set`: display and language, new-session agent / model / effort, machine hibernation and auto-update, project defaults. Only listed keys, checked against the same schema the Web uses (needs a new CLI).',
+                approval: 'Loosening permissions or the sandbox, server and credential settings, and commands that run by themselves first put a decision card on the session\'s board; the change is written only after you approve that exact value, once.',
+            },
             nov11s: {
                 title: 'Sidebar entries have names',
                 summary: 'The row of icons under New session is now a short list you can read without hovering.',

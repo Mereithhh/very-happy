@@ -76,6 +76,8 @@ export function createProjectsClient(deps: ProjectsClientDeps = {}) {
         get: (projectId: string) => request<ProjectDetailResponse>(`/v1/projects/${sid(projectId)}`, 'GET'),
         /** B-850d: a project's new-session defaults (spawn --project resolves its account). */
         defaults: (projectId: string) => request<{ project: { defaults?: ProjectDefaults } }>(`/v1/projects/${sid(projectId)}`, 'GET').then(r => r.project.defaults ?? {}),
+        /** B-920: `very-happy settings --scope project` (the server checks the account owns the project). */
+        update: (projectId: string, patch: { defaults?: ProjectDefaults }) => request<{ project: { id: string; defaults?: ProjectDefaults } }>(`/v1/projects/${sid(projectId)}`, 'PATCH', patch),
         membership: (sessionId: string) => request<{ projectId: string | null; via: string | null }>(`/v1/projects/session/${sid(sessionId)}`, 'GET'),
         note: (projectId: string, input: { kind: string; title: string; body?: string; supersedes?: string; /** Absent = the owner's entry (B-916b main agent). */ authorSessionId?: string }) =>
             request<{ entry: ProjectLogEntryView }>(`/v1/projects/${sid(projectId)}/log`, 'POST', input),

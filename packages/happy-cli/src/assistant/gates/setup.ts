@@ -21,6 +21,7 @@ import { expandHome, loadMainAgentConfig, type MainAgentConfig } from './config'
 import { compileOutboundDenylist, outboundPreToolUseHook, type CompiledDenylist } from './outboundDenylist'
 import { createDispatchGate, DISPATCH_OPTIONS, type DispatchBoard, type DispatchGate } from './dispatchGate'
 import type { OneShotRunner } from './risk'
+import { boardItemView as view } from '@/attention/ownerApproval'
 
 export const MAIN_AGENT_GATES_CAPABILITY = 'main-agent-gates-v1'
 
@@ -32,10 +33,6 @@ export type MainAgentRuntime = {
     /** Existing skillRoots, for SDK `additionalDirectories`. */
     extraDirectories: string[]
     gate: DispatchGate
-}
-
-function view(item: { id: string; key: string | null; state: string; ownerChoice: string | null; resolvedBy: string | null; title: string; bodyMd: string | null; options: Array<{ id: string; label: string }> | null }) {
-    return { id: item.id, key: item.key, state: item.state, ownerChoice: item.ownerChoice, resolvedBy: item.resolvedBy, title: item.title, bodyMd: item.bodyMd, options: item.options ? item.options.map(o => ({ id: o.id, label: o.label })) : null }
 }
 
 export function attentionDispatchBoard(client: AttentionClient, sessionId: () => string): DispatchBoard {

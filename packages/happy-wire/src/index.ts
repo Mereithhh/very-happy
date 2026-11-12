@@ -34,3 +34,5 @@ export * from './issues';
 export * from './syncProtocol';
 
 export * from './turnFailure';
+export * from './accountSettings';
+export * from './machineSettings';
