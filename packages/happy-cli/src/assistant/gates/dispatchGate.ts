@@ -203,13 +203,29 @@ export function cardTarget(args: Record<string, unknown> | undefined, title?: st
     return automation ? automation : null
 }
 
+/**
+ * B-925 (QA-S P3-1): the target's short name for the card TITLE, so two 「继续」 cards to different sessions are
+ * told apart in the board list. Same flattening as the 目标 line (no line breaks / 「」 / backticks), capped at
+ * 20 chars; the short id when no name is known. Only for receivers that are not already the title's head
+ * (session / terminal / team); null otherwise.
+ */
+export function cardTitleTarget(args: Record<string, unknown> | undefined, title?: string | null): string | null {
+    const ref = cardTargetRef(args) ?? (args && str(args.terminalId) ? { kind: 'terminal' as const, id: str(args.terminalId) } : null)
+    if (!ref) return null
+    const name = title && ref.kind !== 'terminal' ? cleanLabel(title) : ''
+    if (name) return `「${name.length > 20 ? `${name.slice(0, 19)}…` : name}」`
+    return ref.id.length > 12 ? ` ${ref.id.slice(0, 8)}…` : ` ${ref.id}`
+}
+
 export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'toolName' | 'declared' | 'level'> & { args?: Record<string, unknown> }, payload: string, forced: boolean | string = false, targetTitle?: string | null) {
     const head = firstLine(payload, 60) || pending.toolName
     const target = cardTarget(pending.args, targetTitle)
+    const titleTarget = cardTitleTarget(pending.args, targetTitle) ?? ''
     return {
         key: `${DISPATCH_CARD_KEY_PREFIX}${pending.approvalId}`,
         // B-924c (QA-T P3-2): the title names the action (想恢复自动化 / 想写项目决定 …), not always 派活.
-        title: `主 agent 想${mainAgentAskAction(pending.toolName, pending.args)}（${pending.level}${forced ? '，需你确认' : ''}）：${head}`.slice(0, 120),
+        // B-925 (QA-S P3-1): …and whom it goes to (想给会话发消息「修 sum.js」).
+        title: `主 agent 想${mainAgentAskAction(pending.toolName, pending.args)}${titleTarget}（${pending.level}${forced ? '，需你确认' : ''}）：${head}`.slice(0, 120),
         bodyMd: clipBytes([
             `工具：${pending.toolName}`,
             ...(target ? [`目标：${target}`] : []),

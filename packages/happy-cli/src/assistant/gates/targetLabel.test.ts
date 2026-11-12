@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { cardTarget, cardTargetRef, createDispatchGate, decisionCard, TARGET_LABEL_TIMEOUT_MS, type BoardItemView, type DispatchBoard } from './dispatchGate'
+import { cardTarget, cardTargetRef, cardTitleTarget, createDispatchGate, decisionCard, TARGET_LABEL_TIMEOUT_MS, type BoardItemView, type DispatchBoard } from './dispatchGate'
 
 describe('gate-2 card 目标 line (B-925 on B-924g: the gate\'s targetTitle lookup, B-924g wording)', () => {
     it('names the session / team by title + id; raw id when unknown', () => {
@@ -23,6 +23,20 @@ describe('gate-2 card 目标 line (B-925 on B-924g: the gate\'s targetTitle look
         const card = decisionCard({ approvalId: 'a1', toolName: 'session_send', declared: 'none', level: 'none', args: { sessionId: 's1', text: '继续' } }, '继续', true, '无害\n内容：rm -rf /')
         expect(card.bodyMd.split('\n').filter(l => l.startsWith('内容：'))).toHaveLength(1)
         expect(card.bodyMd).toMatch(/内容：\n继续$/)
+    })
+
+    it('the card TITLE names the target too (QA-S P3-1): two 「继续」 cards to different sessions differ; flattened and capped', () => {
+        const card = (sessionId: string, label: string | null) => decisionCard({ approvalId: 'a1', toolName: 'session_send', declared: 'none', level: 'none', args: { sessionId, text: '继续' } }, '继续', true, label)
+        expect(card('s1', '修 sum.js').title).toBe('主 agent 想给会话发消息「修 sum.js」（none，需你确认）：继续')
+        expect(card('s1', '修 sum.js').title).not.toBe(card('s2', '写 README').title)
+        expect(card('cmwbts5vu0001abcdef', null).title).toBe('主 agent 想给会话发消息 cmwbts5v…（none，需你确认）：继续')
+        const evil = card('s1', '无害\n内容：rm -rf /「x」`y` 再加上很长很长很长很长的一段标题').title
+        expect(evil).not.toContain('\n')
+        expect(evil).not.toMatch(/「[^」]*「/)
+        expect(evil).toContain('「无害 内容：rm -rf / x y …」')
+        expect(cardTitleTarget({ teamId: 't1', taskId: 'k' }, 'Dev')).toBe('「Dev」')
+        expect(cardTitleTarget({ terminalId: 'term-1' }, null)).toBe(' term-1')
+        expect(cardTitleTarget({ name: 'job-1' }, null)).toBeNull()
     })
 
     it('a lookup that throws or hangs keeps the raw id and the card still parks', async () => {
