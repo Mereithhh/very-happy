@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+    AUTO_RESTART_LANDING_TTL_MS,
+    judgeLanding,
+    noEffectReason,
+    parseAutoRestartLandings,
+    restartLanded,
+    type AutoRestartLanding,
     LEGACY_CHECK_IN_GRACE_MS,
     resolveCheckInGraceMs,
     uncheckedWrapperStatus,
@@ -163,10 +169,51 @@ describe('B-852 restarted marker → service line', () => {
         expect(decodeAutoRestarted(encodeAutoRestarted('cli', '0.2.190'))).toEqual({ kind: 'cli', target: '0.2.190' });
         expect(decodeAutoRestarted('nope')).toBeNull();
         const env: NodeJS.ProcessEnv = { HAPPY_AUTO_RESTARTED: 'cli:0.2.190' };
-        expect(takeAutoRestartedEvent(env)).toEqual({ type: 'message', kind: 'session-auto-updated', message: autoUpdatedEventText('cli', '0.2.190') });
+        expect(takeAutoRestartedEvent(env, { cliVersion: '0.2.190' })).toEqual({ type: 'message', kind: 'session-auto-updated', message: autoUpdatedEventText('cli', '0.2.190') });
         expect(env.HAPPY_AUTO_RESTARTED).toBeUndefined();
-        expect(takeAutoRestartedEvent({})).toBeNull();
+        expect(takeAutoRestartedEvent({}, { cliVersion: '0.2.190' })).toBeNull();
         expect(autoUpdatedEventText('agent', '0.155.0')).toBe('Updated Codex to 0.155.0 (session restarted in place, history kept)');
+    });
+});
+
+describe('B-931 the "updated to X" line only when the session runs X', () => {
+    it('agent: the app-server it started must report the target', () => {
+        const env = (): NodeJS.ProcessEnv => ({ HAPPY_AUTO_RESTARTED: 'agent:0.167.2' });
+        expect(takeAutoRestartedEvent(env(), { cliVersion: '0.2.213', agentVersion: '0.154.0' }, 'Codex')).toBeNull();
+        expect(takeAutoRestartedEvent(env(), { cliVersion: '0.2.213', agentVersion: null }, 'Codex')).toBeNull();
+        expect(takeAutoRestartedEvent(env(), { cliVersion: '0.2.213', agentVersion: '0.167.2' }, 'Codex')?.message).toBe('Updated Codex to 0.167.2 (session restarted in place, history kept)');
+        const e = env();
+        takeAutoRestartedEvent(e, { cliVersion: '0.2.213', agentVersion: '0.154.0' });
+        expect(e.HAPPY_AUTO_RESTARTED).toBeUndefined();
+    });
+    it('cli: the wrapper own version must reach the target', () => {
+        expect(takeAutoRestartedEvent({ HAPPY_AUTO_RESTARTED: 'cli:0.2.213' }, { cliVersion: '0.2.212' })).toBeNull();
+        expect(takeAutoRestartedEvent({ HAPPY_AUTO_RESTARTED: 'cli:0.2.213' }, { cliVersion: '0.2.213' })?.kind).toBe('session-auto-updated');
+        expect(restartLanded('cli', '0.2.213', { cliVersion: '0.2.214' })).toBe(true);
+    });
+});
+
+describe('B-931 a restart that changed nothing is not repeated', () => {
+    const landing: AutoRestartLanding = { kind: 'agent', from: '0.154.0', target: '0.167.2', at: 1 };
+    it('same kind / from / target = no effect; moved = progress; anything else = none', () => {
+        expect(judgeLanding(undefined, { kind: 'agent', from: '0.154.0', target: '0.167.2' })).toBe('none');
+        expect(judgeLanding(landing, { kind: 'agent', from: '0.154.0', target: '0.167.2' })).toBe('no-effect');
+        expect(judgeLanding(landing, { kind: 'agent', from: '0.160.0', target: '0.167.2' })).toBe('progress');
+        expect(judgeLanding(landing, { kind: 'agent', from: '0.154.0', target: '0.168.0' })).toBe('none');
+        expect(judgeLanding(landing, { kind: 'cli', from: '0.2.212', target: '0.2.213' })).toBe('none');
+        expect(judgeLanding(landing, null)).toBe('none');
+        expect(noEffectReason(landing)).toBe('no-effect: still 0.154.0 after a restart onto 0.167.2');
+    });
+    it('persisted records parse defensively and expire', () => {
+        const now = 10 * 24 * 3600 * 1000;
+        const parsed = parseAutoRestartLandings({
+            a: { ...landing, at: now - 1000, noEffect: true },
+            old: { ...landing, at: now - AUTO_RESTART_LANDING_TTL_MS - 1 },
+            bad: { kind: 'x', from: '1', target: '2', at: now },
+            junk: 'nope',
+        }, now);
+        expect(parsed).toEqual({ a: { ...landing, at: now - 1000, noEffect: true } });
+        expect(parseAutoRestartLandings(null, now)).toEqual({});
     });
 });
 

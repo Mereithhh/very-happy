@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-13-cli-agent-restart-loop-0-2-213',
+    cliVersion: '0.2.213',
+    date: '2026-11-13',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov13a.title',
+    summaryKey: 'changelog.releases.nov13a.summary',
+    itemKeys: ['changelog.releases.nov13a.once', 'changelog.releases.nov13a.install', 'changelog.releases.nov13a.quiet'],
+  },
+  {
     id: '2026-11-11-cli-wrapup-default-template-0-2-213',
     cliVersion: '0.2.213',
     date: '2026-11-11',

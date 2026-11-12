@@ -63,6 +63,7 @@ import { EditReportThrottle, extractAcpEditPaths } from '@/sessions/editPaths';
 import { reportSessionEditToDaemon } from '@/daemon/controlClient';
 import { readGeminiConfiguredModel } from './geminiConfiguredModel';
 import { AUTO_RESTART_CAPABILITY, takeAutoRestartedEvent } from '@/update/autoRestartPolicy';
+import packageJson from '../../../package.json';
 import { HibernationProbe } from '@/hibernation/hibernationProbe';
 import { resolveCheckMs, type WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
 import { checkDaemonHibernation } from '@/daemon/controlClient';
@@ -1411,7 +1412,7 @@ export async function runAcp(opts: {
       });
       piProbe.start();
     }
-    const autoUpdated = takeAutoRestartedEvent(process.env);
+    const autoUpdated = takeAutoRestartedEvent(process.env, { cliVersion: packageJson.version });
     if (autoUpdated) session.sendSessionEvent(autoUpdated);
     if (verbose) {
       if (!sawSlashCommands) {

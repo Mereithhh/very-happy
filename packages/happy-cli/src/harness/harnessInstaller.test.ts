@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { HarnessInstallState } from '@slopus/happy-wire';
-import { createHarnessInstaller, redactNpmText, summarizeNpmFailure } from './harnessInstaller';
+import { createHarnessInstaller, installVerificationFailure, redactNpmText, resolveOnPath, summarizeNpmFailure } from './harnessInstaller';
 import { HARNESS_INSTALL_CATALOG, harnessInstallArgs, harnessInstallCommand, nodeSatisfies } from './installCatalog';
 
 const PKG = '/home/u/.npm-global/lib/node_modules/very-happy-cli';
@@ -19,6 +19,7 @@ function setup(over: Partial<Parameters<typeof createHarnessInstaller>[0]> = {})
         nodeVersion: '22.23.2',
         canWrite: async () => true,
         isPlainDirectory: async () => true,
+        verifyInstalled: vi.fn(async () => null as string | null),
         now: () => 1000,
         ...over,
     };
@@ -39,6 +40,42 @@ describe('harness install whitelist (B-719)', () => {
     it('refuses a prefix that could smuggle arguments', () => {
         expect(() => harnessInstallArgs('pi', '/tmp/x y')).toThrow();
         expect(() => harnessInstallArgs('pi', '/tmp/x;rm')).toThrow();
+    });
+});
+
+describe('B-931 install verified against the binary a session runs', () => {
+    it('npm exit 0 but the command on PATH still runs the old version → failed with the reason, never "installed"', async () => {
+        const verifyInstalled = vi.fn(async () => 'version_mismatch: codex on PATH (/usr/bin/codex) runs 0.154.0, installed 0.167.2');
+        const { installer, published, logs, deps, onPath } = setup({ verifyInstalled });
+        onPath.add('codex');
+        await installer.request({ harness: 'codex' });
+        await settle(); await settle();
+        expect(verifyInstalled).toHaveBeenCalledWith('codex', '/home/u/.npm-global');
+        expect(published.map((p) => p.state)).toEqual(['installing', 'failed']);
+        expect(published[1].detail).toBe('version_mismatch: codex on PATH (/usr/bin/codex) runs 0.154.0, installed 0.167.2');
+        expect(logs.some((l) => l.includes('codex installed'))).toBe(false);
+        // The Web still re-probes, so it shows what really runs.
+        expect(deps.afterInstall).toHaveBeenCalledTimes(1);
+        expect(installer.isRunning()).toBe(false);
+    });
+    it('a verifier that throws is a failure too', async () => {
+        const { installer, published, onPath } = setup({ verifyInstalled: vi.fn(async () => { throw new Error('boom /home/me/x'); }) });
+        onPath.add('codex');
+        await installer.request({ harness: 'codex' });
+        await settle(); await settle();
+        expect(published.at(-1)).toMatchObject({ state: 'failed', detail: 'version_unverified: Error: boom ~/x' });
+    });
+    it('compares the prefix package with what --version on PATH reports', () => {
+        expect(installVerificationFailure('codex', { installed: '0.167.2', running: '0.167.2', resolved: '/home/u/.npm-global/bin/codex' })).toBeNull();
+        expect(installVerificationFailure('codex', { installed: '0.167.2', running: '0.154.0', resolved: '/usr/bin/codex' })).toBe('version_mismatch: codex on PATH (/usr/bin/codex) runs 0.154.0, installed 0.167.2');
+        expect(installVerificationFailure('codex', { installed: null, running: '0.154.0', resolved: null })).toBe('version_unverified: no codex package in the install prefix');
+        expect(installVerificationFailure('codex', { installed: '0.167.2', running: null, resolved: '/home/me/.npm-global/bin/codex' })).toBe('version_unverified: codex --version (~/.npm-global/bin/codex) gave no version');
+    });
+    it('resolves the first executable on PATH, in PATH order', async () => {
+        const exec = new Set(['/usr/bin/codex', '/home/u/.npm-global/bin/codex']);
+        expect(await resolveOnPath('codex', '/home/u/.npm-global/bin:/usr/bin', async (p) => exec.has(p))).toBe('/home/u/.npm-global/bin/codex');
+        expect(await resolveOnPath('codex', '/usr/local/bin:/usr/bin:/home/u/.npm-global/bin', async (p) => exec.has(p))).toBe('/usr/bin/codex');
+        expect(await resolveOnPath('codex', '', async () => true)).toBeNull();
     });
 });
 

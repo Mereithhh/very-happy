@@ -49,6 +49,15 @@ describe('resumeExistingThread', () => {
         });
     });
 
+    it('B-931: announce=false (an automatic restart) keeps the chat free of the resume line', async () => {
+        const client = { resumeThread: vi.fn().mockResolvedValue({ threadId: 't-1', model: 'gpt-5.4' }) };
+        const session = { updateMetadata: vi.fn(), sendSessionEvent: vi.fn() };
+        const messageBuffer = { addMessage: vi.fn() };
+        await resumeExistingThread({ client, session, messageBuffer, threadId: 't-1', cwd: '/tmp/project', mcpServers: {}, announce: false });
+        expect(session.sendSessionEvent).not.toHaveBeenCalled();
+        expect(session.updateMetadata).toHaveBeenCalledTimes(1);
+    });
+
     it('wraps backend resume errors with the thread ID', async () => {
         const client = {
             resumeThread: vi.fn().mockRejectedValue(new Error('thread not found')),

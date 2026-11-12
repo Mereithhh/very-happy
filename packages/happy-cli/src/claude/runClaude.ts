@@ -1442,7 +1442,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         hibernationProbe.start();
     }
     // B-852: the daemon restarted this session onto new code by itself — say so, quietly.
-    const autoUpdated = takeAutoRestartedEvent(process.env);
+    const autoUpdated = takeAutoRestartedEvent(process.env, { cliVersion: packageJson.version });
     if (autoUpdated) session.sendSessionEvent(autoUpdated);
 
     // Create claude loop

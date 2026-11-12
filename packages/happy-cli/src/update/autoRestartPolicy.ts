@@ -345,17 +345,82 @@ export function autoUpdatedEventText(kind: StaleKind, version: string, agentName
         : `Updated to Very Happy ${version} (session restarted in place, history kept)`;
 }
 
+/** What the restarted wrapper really runs (B-931): its own CLI, and for Codex the app-server it started. */
+export interface RunningVersions {
+    cliVersion: string;
+    agentVersion?: string | null;
+}
+
+/** B-931: the restart landed on its target — never claim an update the session does not run. */
+export function restartLanded(kind: StaleKind, target: string, running: RunningVersions): boolean {
+    const now = kind === 'cli' ? running.cliVersion : running.agentVersion?.trim();
+    if (!now) return false;
+    const cmp = compareExactVersions(now, target);
+    return cmp !== null && cmp >= 0;
+}
+
 /**
  * Read (and remove, so it never leaks into the agent's own child processes)
- * the restart marker; returns the event to post, or null.
+ * the restart marker; returns the event to post, or null. B-931: the
+ * "updated to X" line only when the wrapper really runs X now.
  */
-export function takeAutoRestartedEvent(env: NodeJS.ProcessEnv, agentName?: string): { type: 'message'; kind: string; message: string } | null {
+export function takeAutoRestartedEvent(env: NodeJS.ProcessEnv, running: RunningVersions, agentName?: string): { type: 'message'; kind: string; message: string } | null {
     const decoded = decodeAutoRestarted(env[AUTO_RESTARTED_ENV]);
     delete env[AUTO_RESTARTED_ENV];
     // B-911: or the restart the agent asked for (`request_idle_restart`).
     const requested = takeRestartedOnRequestEvent(env);
     if (!decoded) return requested;
+    if (!restartLanded(decoded.kind, decoded.target, running)) return null;
     return { type: 'message', kind: AUTO_UPDATED_EVENT_KIND, message: autoUpdatedEventText(decoded.kind, decoded.target, agentName) };
+}
+
+/**
+ * B-931 — a successful automatic restart, remembered (persisted) until the
+ * session runs something else. If the next look finds the same session still
+ * on the same `from` for the same `target`, the restart changed nothing (the
+ * installed agent was swapped back, or the wrapper resolves another binary):
+ * restarting again would loop forever, so it is left to the user, once.
+ */
+export interface AutoRestartLanding {
+    kind: StaleKind;
+    from: string;
+    target: string;
+    at: number;
+    /** Set once the no-effect verdict was logged and published. */
+    noEffect?: boolean;
+}
+
+/** Records older than this are dropped on load (sessions that never came back). */
+export const AUTO_RESTART_LANDING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export type LandingVerdict = 'none' | 'progress' | 'no-effect';
+
+/**
+ * `none`: no record applies (keep going, drop the record if any);
+ * `progress`: the session moved since (drop it, judge normally);
+ * `no-effect`: same kind / from / target as the restart that already ran.
+ */
+export function judgeLanding(landing: AutoRestartLanding | undefined, staleness: Staleness | null): LandingVerdict {
+    if (!landing) return 'none';
+    if (!staleness || staleness.kind !== landing.kind || staleness.target !== landing.target) return 'none';
+    return staleness.from === landing.from ? 'no-effect' : 'progress';
+}
+
+export function noEffectReason(landing: Pick<AutoRestartLanding, 'from' | 'target'>): string {
+    return `no-effect: still ${landing.from} after a restart onto ${landing.target}`;
+}
+
+export function parseAutoRestartLandings(raw: unknown, now: number): Record<string, AutoRestartLanding> {
+    const out: Record<string, AutoRestartLanding> = {};
+    if (!raw || typeof raw !== 'object') return out;
+    for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (!value || typeof value !== 'object') continue;
+        const v = value as Record<string, unknown>;
+        if ((v.kind !== 'cli' && v.kind !== 'agent') || typeof v.from !== 'string' || typeof v.target !== 'string' || typeof v.at !== 'number') continue;
+        if (!(now - v.at < AUTO_RESTART_LANDING_TTL_MS)) continue;
+        out[id] = { kind: v.kind, from: v.from, target: v.target, at: v.at, ...(v.noEffect === true ? { noEffect: true } : {}) };
+    }
+    return out;
 }
 
 /**
