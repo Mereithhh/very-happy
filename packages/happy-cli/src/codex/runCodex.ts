@@ -1246,6 +1246,8 @@ export async function runCodex(opts: {
                     // B-850b: after an account switch the thread moves to the
                     // new account's model (its old one is sticky otherwise).
                     ...(accountSwitched && machineDefaultModel ? { model: machineDefaultModel } : {}),
+                    // B-934b: a provider change continues in a fork; the notice names the account.
+                    ...(codexAccount.profile ? { accountLabel: codexAccount.profile.label } : {}),
                 });
             } catch (error) {
                 noteAccountFailure(error instanceof Error ? error.message : String(error));
