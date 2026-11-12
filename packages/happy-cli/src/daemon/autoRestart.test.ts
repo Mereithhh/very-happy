@@ -493,6 +493,20 @@ describe('B-931 an agent restart that changes nothing is not repeated', () => {
         expect(scheduler.statuses().c).toBeUndefined();
     });
 
+    it('snapshot higher than the binary and the probe cannot tell: the reported version decides, one restart only', async () => {
+        const store = memoryStore();
+        const probe = vi.fn(async () => null);
+        const { scheduler, restart, report, advance } = setup({ installedAgentVersion: () => '0.167.2', probeInstalledAgentVersion: probe, landings: store }, codex);
+        for (let cycle = 0; cycle < 3; cycle++) {
+            await scheduler.onCheckIn({ sessionId: 'c', pid: 1 + cycle, report: codexReport(report, '0.154.0') });
+            await flush();
+            advance(10 * 60 * 1000);
+        }
+        expect(probe).toHaveBeenCalledTimes(1);
+        expect(restart).toHaveBeenCalledTimes(1);
+        expect(scheduler.statuses().c).toMatchObject({ state: 'failed', reason: 'no-effect: still 0.154.0 after a restart onto 0.167.2' });
+    });
+
     it('a fresh probe that finds an even newer install restarts onto that one', async () => {
         const { scheduler, restart, report } = setup({ installedAgentVersion: () => '0.167.2', probeInstalledAgentVersion: async () => '0.168.0' }, codex);
         expect((await scheduler.onCheckIn({ sessionId: 'c', pid: 1, report: codexReport(report, '0.154.0') })).restarting).toBe(true);
