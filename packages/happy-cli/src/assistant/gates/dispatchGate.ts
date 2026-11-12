@@ -22,7 +22,7 @@ import { approvalClaims, cardFaceHash, clipBytes, DISPATCH_CARD_KEY_PREFIX, isRe
 import type { AssistantToolRegistrar } from '../assistantTools'
 import type { DispatchPolicy } from '@slopus/happy-wire'
 import { effectiveRisk, isRiskLevel, RISK_LEVELS, type OneShotRunner, type RiskLevel } from './risk'
-import { MAIN_AGENT_ASK_TOOLS, mainAgentAskAction } from '../mainAgentToolPolicy'
+import { MAIN_AGENT_ASK_TOOLS, MAIN_AGENT_OWNER_ONLY_TOOLS, mainAgentAskAction } from '../mainAgentToolPolicy'
 
 /** Dispatch tools and the argument text each hands over (spec §4.2 table). */
 export const DISPATCH_TOOL_PAYLOADS: Readonly<Record<string, (args: Record<string, unknown>) => string>> = {
@@ -46,6 +46,12 @@ export const DISPATCH_TOOL_NAMES = Object.keys(DISPATCH_TOOL_PAYLOADS)
  * delete, issue_assign / issue_comment, project_note, team_* writes.
  */
 export const ASK_ONLY_TOOLS: readonly string[] = MAIN_AGENT_ASK_TOOLS.filter(n => !(n in DISPATCH_TOOL_PAYLOADS))
+/**
+ * B-924f: owner_only tools (mainAgentToolPolicy.ts ①) pass through the gate too. A turn the owner did not type
+ * never gets here (withOwnerOnlyTools refuses first); in the owner's turn a call the taint hook flags parks as a
+ * decision card and runs only through dispatch_approved.
+ */
+export const OWNER_ONLY_GATED_TOOLS: readonly string[] = MAIN_AGENT_OWNER_ONLY_TOOLS
 function askOnlyPayload(args: Record<string, unknown>): string {
     const head = ['name', 'id', 'issue', 'key', 'issueId', 'teamId', 'taskId', 'title'].map(k => str(args[k])).find(Boolean) ?? ''
     return [head, JSON.stringify(args).slice(0, 1_400)].filter(Boolean).join('\n')
@@ -55,6 +61,7 @@ function askOnlyPayload(args: Record<string, unknown>): string {
 const PAYLOAD_FIELD: Readonly<Record<string, string>> = {
     session_spawn: 'prompt', session_send: 'text', terminal_send: 'text', team_delegate: 'goal',
     team_message: 'body', session_message: 'body', lead_delegate: 'goal', lead_message: 'body',
+    handoff_send: 'summary',
 }
 
 export const DISPATCH_APPROVED_TOOL = 'dispatch_approved'
@@ -137,6 +144,11 @@ export type DispatchGateDeps = {
      * rule: setup.ts ORs the conditions (B-922: terminal_send while Bash is off). Args are the call's (no risk).
      */
     mustAsk?: (toolName: string, args: Record<string, unknown>) => MustAskVerdict
+    /**
+     * B-924f taint gate (taintGate.ts): in the owner's turn, the card's 原因 line when the call's key arguments
+     * came from recent non-owner prompts and not from the owner's text; null otherwise. Checked after `mustAsk`.
+     */
+    taint?: (toolName: string, args: Record<string, unknown>) => Promise<string | null>
 }
 /** false / null / undefined = no; true = yes (generic reason); a string = yes, and it is the card's 原因 line (B-924b). */
 export type MustAskVerdict = boolean | string | null | undefined
@@ -152,7 +164,7 @@ function firstLine(text: string, max: number): string {
 function cardTarget(args: Record<string, unknown> | undefined): string | null {
     if (!args) return null
     const pick = (...keys: string[]) => keys.map(k => str(args[k])).find(Boolean) ?? ''
-    const session = pick('sessionId', 'to')
+    const session = pick('sessionId', 'session_id', 'to') || (Array.isArray(args.session_ids) ? args.session_ids.map(str).filter(Boolean).join(', ') : '')
     if (session) return `会话 ${session}`
     const terminal = pick('terminalId')
     if (terminal) return `终端 ${terminal}`
@@ -225,7 +237,7 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         const payload = DISPATCH_TOOL_PAYLOADS[toolName]?.(args) ?? ''
         const { level, keyword, classifier } = await effectiveRisk({ toolName, declared: risk, payload, classify: deps.classify })
         deps.log?.(`[main-agent gate] ${toolName} declared=${risk} keyword=${keyword} classifier=${classifier ?? 'n/a'} → ${level}`)
-        const verdict = deps.mustAsk?.(toolName, args)
+        const verdict = await verdictOf(toolName, args)
         const forced = verdict === true || (typeof verdict === 'string' && verdict.length > 0)
         if (level === 'none' && !forced) return handlers.get(toolName)!(args, extra)
         // B-922: the owner chose "直接派" for this level (default ask = B-916c).
@@ -240,10 +252,26 @@ export function createDispatchGate(deps: DispatchGateDeps) {
     /** B-924b: an ASK_ONLY_TOOLS call — runs unless `mustAsk`, then parks like a forced dispatch (risk none). */
     async function interceptAskOnly(toolName: string, rawArgs: Record<string, unknown>, extra: unknown): Promise<ToolResult> {
         const args = rawArgs ?? {}
-        const verdict = deps.mustAsk?.(toolName, args)
+        const verdict = await verdictOf(toolName, args)
         if (!(verdict === true || (typeof verdict === 'string' && verdict.length > 0))) return handlers.get(toolName)!(args, extra)
         deps.log?.(`[main-agent gate] ${toolName} must ask (${typeof verdict === 'string' ? 'reason' : 'forced'})`)
         return park(toolName, args, 'none', 'none', askOnlyPayload(args), verdict)
+    }
+
+    /** `mustAsk` first (sync rules), then the B-924f taint hook. */
+    async function verdictOf(toolName: string, args: Record<string, unknown>): Promise<MustAskVerdict> {
+        const verdict = deps.mustAsk?.(toolName, args)
+        if (verdict === true || (typeof verdict === 'string' && verdict.length > 0)) return verdict
+        return (await deps.taint?.(toolName, args)) ?? verdict
+    }
+
+    /** B-924f: an owner_only call that reached the gate (the owner's turn) — runs unless the taint hook flags it. */
+    async function interceptOwnerOnly(toolName: string, rawArgs: Record<string, unknown>, extra: unknown): Promise<ToolResult> {
+        const args = rawArgs ?? {}
+        const reason = await deps.taint?.(toolName, args)
+        if (!reason) return handlers.get(toolName)!(args, extra)
+        deps.log?.(`[main-agent gate] ${toolName} tainted, parked`)
+        return park(toolName, args, 'none', 'none', toolName === 'handoff_send' ? str(args.summary) || askOnlyPayload(args) : askOnlyPayload(args), reason)
     }
 
     async function park(toolName: string, args: Record<string, unknown>, declared: RiskLevel, level: RiskLevel, payload: string, forced: boolean | string): Promise<ToolResult> {
@@ -359,6 +387,10 @@ export function createDispatchGate(deps: DispatchGateDeps) {
                         return handler(args, extra)
                     })
                 }
+                if (OWNER_ONLY_GATED_TOOLS.includes(name)) {
+                    handlers.set(name, handler)
+                    return (mcp.registerTool as any)(name, config, (args: Record<string, unknown>, extra: unknown) => interceptOwnerOnly(name, args, extra))
+                }
                 if (ASK_ONLY_TOOLS.includes(name)) {
                     handlers.set(name, handler)
                     return (mcp.registerTool as any)(name, config, (args: Record<string, unknown>, extra: unknown) => interceptAskOnly(name, args, extra))
@@ -382,6 +414,7 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         /** Test hook. */
         _intercept: intercept,
         _interceptAskOnly: interceptAskOnly,
+        _interceptOwnerOnly: interceptOwnerOnly,
         _approved: approved,
         _boardWriteRefusal: boardWriteRefusal,
     }

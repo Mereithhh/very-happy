@@ -54,6 +54,9 @@ import { installSessionLifecycle, MAIN_AGENT_REPLACES, MAIN_AGENT_TOOL_NAMES, re
 import { createLiveMainAgentLifecycle } from "@/assistant/mainAgentLifecycle";
 import { createMainAgentDeps } from "@/assistant/mainAgentDeps";
 import { createTurnOriginTracker, installMainAgentTurnOrigin, withOwnerOnlyTools } from "@/assistant/turnOrigin";
+import { createPromptTaintTracker, installMainAgentPromptTaint } from "@/assistant/promptTaint";
+import { installTaintTitlesOf } from "@/assistant/gates/taintGate";
+import { liveTitlesOf } from "@/assistant/gates/taintTitles";
 import { withNonOwnerProvenance } from "@/assistant/sendGuard";
 
 interface HappyMcpHandlers {
@@ -147,11 +150,12 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     // B-874: issue_get / issue_update / issue_comment / issue_list — always registered; "issue_not_bound" outside an issue run.
     if (client) registerIssueTools(mcp, createIssueToolExecutor(() => client.sessionId), replaced);
     // B-911: the agent asks the daemon to restart its own session once idle (the daemon matches this wrapper's pid).
-    if (client) registerIdleRestartTool(mcp, async () => idleRestartToolResult(await requestIdleRestartViaDaemon(client.sessionId, process.pid)));
+    // B-924f: owner_only tools go through the gate as well (taint check in the owner's turn; dispatchGate.ts).
+    if (client) registerIdleRestartTool(dispatchRegistrar, async () => idleRestartToolResult(await requestIdleRestartViaDaemon(client.sessionId, process.pid)));
     // B-915: wrapup_report / handoff_send / session_wrapup / session_handoff — every session.
     // Rebase onto B-916b: the main agent registers its own session_wrapup / session_handoff (mainAgentTools.ts),
     // so on its surface only wrapup_report / handoff_send come from here (a second registration throws).
-    if (wrapup) registerWrapupTools(mcp, wrapup, mainAgent ? MAIN_AGENT_TOOL_NAMES : []);
+    if (wrapup) registerWrapupTools(dispatchRegistrar, wrapup, mainAgent ? MAIN_AGENT_TOOL_NAMES : []);
 
     mcp.registerTool('change_title', {
         description: 'Change the title of the current chat session',
@@ -334,16 +338,21 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
     // B-924 (QA P1-2): the main agent's turn origin — owner only when every prompt was typed in a client.
     const turnOrigin = createTurnOriginTracker();
     if (mainAgentLifecycle) installMainAgentTurnOrigin(turnOrigin.current);
+    // B-924f: the texts behind the taint gate — recent non-owner prompts and the owner's text of this turn.
+    const promptTaint = createPromptTaintTracker();
+    if (mainAgentLifecycle) { installMainAgentPromptTaint(promptTaint.snapshot); installTaintTitlesOf(liveTitlesOf()); }
     const onRoutedUserMessage = (event: { localId?: string | null; message?: { content?: { text?: unknown }; meta?: { sentFrom?: string; delivery?: string } } }) => {
         const text = event.message?.content?.text;
         leadBoard.onUserMessage({ localId: event.localId, text: typeof text === 'string' ? text : null, sentFrom: event.message?.meta?.sentFrom, delivery: event.message?.meta?.delivery });
         wrapupTracker.onUserMessage({ localId: event.localId });
         turnOrigin.onUserMessage({ localId: event.localId, sentFrom: event.message?.meta?.sentFrom });
+        promptTaint.onUserMessage({ localId: event.localId, sentFrom: event.message?.meta?.sentFrom, text: typeof text === 'string' ? text : null });
     };
     const onClaudeLine = (body: unknown) => { for (const text of assistantTexts(body)) leadBoard.onAssistantText(text); };
     const onTurnStarted = (sourceIds?: string[]) => {
         wrapupTracker.onTurnStart(sourceIds);
         turnOrigin.onTurnStart(sourceIds);
+        promptTaint.onTurnStart(sourceIds);
     };
     const onTurnEnded = () => { void leadBoard.onTurnEnd(); void wrapupTracker.onTurnEnd(); };
     // Codex / pi / Gemini end a turn with a `ready` event and never emit `turn-ended`.

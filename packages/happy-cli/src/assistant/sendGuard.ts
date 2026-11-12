@@ -50,6 +50,12 @@ export function dispatchTarget(toolName: string, args: Record<string, unknown>):
     }
 }
 
+/** B-924f: a direct send whose target is in the dispatch ledger (the taint gate exempts it too, like a non-owner turn). */
+export function isLedgerSend(toolName: string, args: Record<string, unknown>): boolean {
+    const target = dispatchTarget(toolName, args)
+    return target !== null && ledger(target)
+}
+
 export type MustAskReason = 'not_owner_turn' | 'not_owner_turn_automation' | 'not_owner_turn_persist'
 
 /** Why this call must become a card regardless of risk (gate 2 `mustAsk`), or null. */

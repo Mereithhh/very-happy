@@ -146,6 +146,10 @@ export const MAIN_AGENT_ASK_ACTIONS: Readonly<Partial<Record<MainAgentToolName, 
     automation_resume: '恢复自动化', automation_pause: '暂停自动化', automation_delete: '删除自动化',
     issue_assign: '指派 issue', issue_comment: '评论 issue', issue_create: '新建 issue',
     project_note: '写项目决定', memory_update: '写长期记忆',
+    // B-924f: owner_only calls the taint gate parks in the owner's turn.
+    session_wrapup: '让会话收尾', session_handoff: '让会话交接', session_archive: '归档会话', session_kill: '停掉会话',
+    session_restart: '重启会话', handoff_send: '把工作交接给别的会话', request_idle_restart: '重启自己',
+    team_cancel: '取消团队任务', team_handoff: '转交团队任务',
 }
 /** B-924d (QA-T P3-2): project_note names its kind — a finding or a hand-off is not a decision. */
 const PROJECT_NOTE_ACTIONS: Readonly<Record<string, string>> = { decision: '写项目决定', finding: '记一条项目发现', handoff: '写项目交接' }

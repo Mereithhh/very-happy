@@ -26,6 +26,7 @@ import { compileOutboundDenylist, outboundPreToolUseHook, type CompiledDenylist,
 import { cardLang, createToolApproval, type CardLang, type ToolApprovalDeps } from './toolApproval'
 import { happyHomeCandidates, MAIN_AGENT_APPROVALS_DIR, protectedPathsFor } from './protectedPaths'
 import { createDispatchGate, DISPATCH_OPTIONS, type DispatchBoard, type DispatchGate } from './dispatchGate'
+import { mainAgentTaintHook } from './taintGate'
 import type { OneShotRunner } from './risk'
 import { boardItemView as view, clipBytes } from '@/attention/ownerApproval'
 
@@ -127,6 +128,8 @@ export async function prepareMainAgent(deps: {
         log: deps.log,
         dispatchPolicy: () => ({ external: safety.policy.dispatchExternal, production: safety.policy.dispatchProduction }),
         mustAsk,
+        // B-924f: the owner's turn — key arguments that came from recent non-owner prompts → card (taintGate.ts).
+        taint: mainAgentTaintHook({ ...(deps.isOwner ? { isOwner: deps.isOwner } : {}), log: deps.log }),
     })
     return {
         config,
