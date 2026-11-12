@@ -27,7 +27,9 @@ describe('B-925 wiring', () => {
         expect(server).toContain('if (wakeUsage && mainAgentLifecycle) installDispatchLedger(proactiveDispatchLedger(followupsPath(assistantHome())));')
         expect(server).toContain('const mcp = mainAgent ? withOwnerOnlyTools(options?.mainAgentProactive ? withTurnGuards(capped, options.mainAgentProactive) : capped) : server;')
         expect(server).toContain('options!.mainAgent!.gate.wrap(mcp)')
-        for (const family of ['registerProjectTools', 'registerIssueTools', 'registerIdleRestartTool', 'registerWrapupTools']) expect(server).toContain(`${family}(mcp,`)
+        for (const family of ['registerProjectTools', 'registerIssueTools']) expect(server).toContain(`${family}(mcp,`)
+        // B-924f: owner_only tools pass through the gate (taint check in the owner's turn); the turn guards still sit under it.
+        for (const family of ['registerIdleRestartTool', 'registerWrapupTools']) expect(server).toContain(`${family}(dispatchRegistrar,`)
         expect(server).toContain('if (options?.mainAgentProactive) registerFollowupsTool(mcp, { ledgerPath: options.mainAgentProactive.ledgerPath });')
     })
 

@@ -202,12 +202,15 @@ vi.mock('@/projects/client', async (importOriginal) => {
 });
 vi.mock('@/persistence', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/persistence')>();
-    return { ...actual, readPersistedSessions: () => ({ 'sess-1': { metadata: { summary: { text: 'x' } } } }), readSettings: async () => ({ machineId: 'm1' }) };
+    return { ...actual, readPersistedSessions: () => ({ 'sess-1': { metadata: { summary: { text: 'x' } } }, 'sess-t4': { metadata: { summary: { text: 'T4' } } }, 'sess-t5': { metadata: { summary: { text: 'T5' } } } }), readSettings: async () => ({ machineId: 'm1' }) };
 });
 
 const { startHappyServer } = await import('@/claude/utils/startHappyServer');
 // B-924f: after the mocks (taintGate imports the session / teams clients the factories above replace).
 const { mainAgentTaintHook } = await import('@/assistant/gates/taintGate');
+const { installDispatchLedger } = await import('@/assistant/sendGuard');
+const { proactiveDispatchLedger } = await import('@/assistant/proactive/surface');
+const { recordFollowup } = await import('@/assistant/proactive/ledger');
 const { RECEIPT_MAX_CHARS, LIST_MAX_CHARS, BODY_MAX_CHARS, capClassFor } = await import('./toolCaps');
 const { MAIN_AGENT_TOOL_NAMES } = await import('./mainAgentTools');
 const { ASSISTANT_TOOL_NAMES } = await import('./assistantTools');
@@ -839,6 +842,36 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
         // A follow-level wake is not held to report-only: the shared layers decide (an ask tool parks a card).
         turn('automation-wake-follow-ghi', 'automation');
         expect(await call('automation_run')).toMatchObject({ ok: true, state: 'awaiting_decision' });
+    });
+
+    // ── B-925 on B-924f: a wake-up prompt enters the taint window; the follow-up ledger still exempts its targets ──
+    it('B-925 on B-924f: the wake names a ledger session (T4) and one off the ledger (T5) — in the owner\'s turn T4 is nudged directly, T5 asks; the woken「继续」is still one card', async () => {
+        const { runtime, cards } = taintedMainAgent();
+        const ledgerPath = join(mkdtempSync(join(tmpdir(), 'vh-surface-ledger-')), 'followups.json');
+        await recordFollowup(ledgerPath, { id: 'fu-0000t4', kind: 'spawn', title: 'T4', createdAt: 1, updatedAt: 1, dueAt: 9, state: 'open', nudges: 0, sessionId: 'sess-t4' });
+        await connect({ assistant: true, mainAgent: runtime });
+        installDispatchLedger(proactiveDispatchLedger(ledgerPath));
+        try {
+            // The stuck wake-up (an automation prompt, non-owner): it names both sessions.
+            turn('automation-wake-follow-st1', 'automation', '跟进：T4 已 3 小时没有消息（台账 fu-0000t4）；T5 以 API Error 结束。');
+            // Stuck → 继续 in the woken turn: T5 is off the ledger → exactly one card; T4 (ledger) goes out directly.
+            expect(JSON.parse(textOf(await mcp!.callTool({ name: 'session_send', arguments: { sessionId: 'sess-t5', text: '继续', risk: 'none' } })))).toMatchObject({ ok: true, state: 'awaiting_decision' });
+            expect(cards).toHaveLength(1);
+            expect(cards[0].bodyMd).toMatch(/内容：\n继续$/);
+            expect(textOf(await mcp!.callTool({ name: 'session_send', arguments: { sessionId: 'sess-t4', text: '继续', risk: 'none' } }))).toContain('delivered');
+            expect(state.backend).toHaveLength(1);
+            expect(state.backend[0]).toMatch(/^deliver:\["sess-t4",.*继续/);
+            session!.emit('turn-ended');
+            // The owner's turn, no target named: the wake text is in the taint window.
+            turn('u-owner-cui', 'web', '在吗？去催一下');
+            expect(textOf(await mcp!.callTool({ name: 'session_send', arguments: { sessionId: 'sess-t4', text: '进度怎么样了？', risk: 'none' } }))).toContain('delivered');
+            expect(state.backend.map(b => b.slice(0, 18))).toEqual(['deliver:["sess-t4"', 'deliver:["sess-t4"']);
+            const off = JSON.parse(textOf(await mcp!.callTool({ name: 'session_send', arguments: { sessionId: 'sess-t5', text: '进度怎么样了？', risk: 'none' } })));
+            expect(off).toMatchObject({ ok: true, state: 'awaiting_decision' });
+            expect(cards).toHaveLength(2);
+            expect(cards[1].bodyMd).toContain('原因：这是你本人发起的回合，但这次调用的目标「T5」出现在最近别处发来的消息里');
+            expect(state.backend).toHaveLength(2);
+        } finally { installDispatchLedger(null); }
     });
 
     it('QA77 #6: an assistant without the gate runtime (pi / ACP) gets only the legacy B-051 tools', async () => {
