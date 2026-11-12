@@ -10,8 +10,23 @@
  */
 import { ATTENTION_BOARD_LOCAL_ID_PREFIX } from './attention';
 
-/** `meta.sentFrom` of a person typing in a Very Happy client. */
-export const OWNER_SENT_FROM = ['web', 'mobile', 'ios', 'android'] as const;
+/**
+ * B-924e: every `meta.sentFrom` a Very Happy client's composer writes (the Web's and the app's `resolveSentFrom`
+ * are typed `ClientSentFrom`, so a new value does not compile until it is listed here). `mac` is the app on
+ * Mac Catalyst / "Designed for iPad" — the owner typing, like `ios`.
+ */
+export const CLIENT_SENT_FROM = ['web', 'android', 'ios', 'mac'] as const;
+export type ClientSentFrom = typeof CLIENT_SENT_FROM[number];
+/** `meta.sentFrom` of a person typing in a Very Happy client (`mobile`: written by older app builds). */
+export const OWNER_SENT_FROM = [...CLIENT_SENT_FROM, 'mobile'] as const;
+/**
+ * B-924e: every `meta.sentFrom` a program writes — never the owner, whatever it says. Together with
+ * OWNER_SENT_FROM this is the full inventory (specs/2026-11-main-agent.md「sentFrom 盘点」); a test scans the
+ * repo for `sentFrom` literals and fails on one that is in neither list.
+ */
+export const PROGRAM_SENT_FROM = [
+    'cli', 'assistant', 'automation', 'team', 'issue', 'session-peer', 'shared', 'happy-agent',
+] as const;
 export const SUGGESTION_OPTION_LOCAL_ID_PREFIX = 'option-';
 export const NON_OWNER_RETRY_LOCAL_ID_PREFIX = 'retry-';
 /** localId prefixes that are never the owner typing, whatever `sentFrom` says (the CLI turn origin reads the same list). */

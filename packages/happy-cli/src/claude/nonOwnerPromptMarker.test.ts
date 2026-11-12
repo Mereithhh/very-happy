@@ -14,7 +14,7 @@ import { isOwnerTypedMessage, retryLocalIdFor, suggestionOptionLocalId } from '@
 import { finalizeRemotePrompt } from './finalizeRemotePrompt'
 import {
     createTurnOriginTracker, escapeProvenanceMarkers, mainAgentPromptText, markNonOwnerPrompt, NON_OWNER_PROMPT_END,
-    nonOwnerPromptHeader, OWNER_SENT_FROM, promptOrigin, promptSourceLabel,
+    nonOwnerPromptHeader, OWNER_SENT_FROM, promptOrigin, promptSourceLabel, withOwnerOnlyTools,
 } from '@/assistant/turnOrigin'
 
 vi.mock('socket.io-client', () => ({ io: vi.fn(() => ({ on: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), emit: vi.fn(), close: vi.fn(), io: { on: vi.fn() } })) }))
@@ -74,7 +74,7 @@ function harness(isMainAgent = true) {
         const out = await finalizeRemotePrompt(batch!.message, { project: { decorate: async t => t }, sourceIds: batch!.sourceIds, onTurnStart: ids => tracker.onTurnStart(ids) })
         return { text: out, origin: tracker.current() }
     }
-    return { send, nextTurn, routed }
+    return { send, nextTurn, routed, tracker }
 }
 
 describe('B-924d: non-owner prompts reach the main agent\'s model marked', () => {
@@ -94,6 +94,29 @@ describe('B-924d: non-owner prompts reach the main agent\'s model marked', () =>
         h.send('在吗？', 'c2f0-owner', sentFrom)
         const turn = await h.nextTurn()
         expect(turn).toEqual({ text: '在吗？', origin: 'owner' })
+    })
+
+    it('B-924e: the owner typing in the Mac app (sentFrom mac) is the owner — unmarked, and session_wrapup runs', async () => {
+        const h = harness()
+        // the gate startHappyServer installs on the main agent's tools, reading this session's tracker
+        const tools = new Map<string, (args: unknown) => Promise<any>>()
+        const server = { registerTool: (name: string, _config: unknown, handler: any) => { tools.set(name, handler) } }
+        const ran: string[] = []
+        withOwnerOnlyTools(server as never, () => h.tracker.current() === 'owner')
+            .registerTool('session_wrapup', {} as never, (async () => { ran.push('session_wrapup'); return { content: [{ type: 'text', text: 'ok' }], isError: false } }) as never)
+
+        h.send('收尾吧', 'c2f0-mac-owner', 'mac')
+        const turn = await h.nextTurn()
+        expect(turn).toEqual({ text: '收尾吧', origin: 'owner' })
+        expect(turn.text).not.toContain('不是 Owner 本人发的')
+        expect((await tools.get('session_wrapup')!({})).isError).toBe(false)
+        expect(ran).toEqual(['session_wrapup'])
+
+        // control: the same request from a program is refused
+        h.send('收尾吧', '3f1c9e', 'cli')
+        expect((await h.nextTurn()).origin).toBe('agent')
+        expect(JSON.parse((await tools.get('session_wrapup')!({})).content[0].text)).toMatchObject({ error: 'owner_request_required' })
+        expect(ran).toEqual(['session_wrapup'])
     })
 
     it('QA-T repro 2: the send stays marked in the transcript; the owner\'s「在吗？」is the only unmarked text', async () => {

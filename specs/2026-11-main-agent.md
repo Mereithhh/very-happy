@@ -535,9 +535,38 @@ Owner 11-11：「主 agent 的安全阀太严格了……可以让用户配置�
 ### 10.3a′ 建议按钮与「重试」（B-924d，QA-T on B-924c P1-2 / P1-3）
 
 - **建议按钮不是授权**：主 agent 回复里的 `<options>` 按钮，按钮文字是主 agent 写的（可能照抄了注入内容），和汇报板选项同一结构。Web 点按钮发出的消息 localId 用保留前缀 `option-<nonce>`（`suggestionOptionLocalId`，happy-wire `promptProvenance.ts`；`MainAgentPanel` 与 `MessageView.onOption` 两处），CLI `promptOrigin` 判为 `board_choice`：不解锁任何东西（① 拒绝、② 出卡），送给模型时带来源标记「回复里的建议按钮」。Owner 亲手打的字、⌘K 交过来的草稿、「继续」阅读辅助按钮（文字是界面写死的）不受影响。按钮只是方便。
-- **「重试」沿用原消息来源**：`TurnFailureBanner` 重发最后一条用户消息前，用 `retryLocalIdFor({localId, sentFrom})` 判断原消息是否 Owner 亲手打字（`isOwnerTypedMessage`：`sentFrom` ∈ web/mobile/ios/android 且 localId 不带任何保留前缀）。是 → 普通 localId，仍是 Owner 回合；否（very-happy send、自动化、别的会话、团队、按钮点击、来源不明）→ `retry-<nonce>`，CLI 判为 `agent`，标记「「重试」重发的消息」。判定失败一律当非 Owner（fail-closed）。
+- **「重试」沿用原消息来源**：`TurnFailureBanner` 重发最后一条用户消息前，用 `retryLocalIdFor({localId, sentFrom})` 判断原消息是否 Owner 亲手打字（`isOwnerTypedMessage`：`sentFrom` ∈ `OWNER_SENT_FROM`（web/android/ios/mac/mobile，见 10.3a″）且 localId 不带任何保留前缀）。是 → 普通 localId，仍是 Owner 回合；否（very-happy send、自动化、别的会话、团队、按钮点击、来源不明）→ `retry-<nonce>`，CLI 判为 `agent`，标记「「重试」重发的消息」。判定失败一律当非 Owner（fail-closed）。
 - Web 与 CLI 用同一份清单（`OWNER_SENT_FROM`、`NON_OWNER_LOCAL_ID_PREFIXES`），测试断言 `isOwnerTypedMessage` 与 `promptOrigin(...) === 'owner'` 在全部来源上一致。
 - 卡标题（P3-2）：`project_note` 按 kind 写动作——decision「想写项目决定」、finding「想记一条项目发现」、handoff「想写项目交接」。
+
+### 10.3a″ `meta.sentFrom` 盘点（B-924e）
+
+**问题**：Mac 版客户端（Expo app 跑在 Mac Catalyst / iPad 版 on Mac）的 `resolveSentFrom()` 写 `mac`，但 `OWNER_SENT_FROM` 只有 web/mobile/ios/android。Owner 在 Mac 上亲手发的消息被判成非 Owner：收尾、交接被拒（`owner_request_required`），送给模型时还带「不是 Owner 本人发的」标记。
+
+**做法**：happy-wire `promptProvenance.ts` 分三份清单，Web / CLI / 汇报板共用：
+- `CLIENT_SENT_FROM`（web、android、ios、mac）：客户端输入框会写的值。Web 的 `resolveSentFrom()`（`happy-web-v2/src/sync/sentFrom.ts`）返回类型是 `ClientSentFrom`，新增取值不进清单就编译不过；进了清单就自动算 Owner。
+- `OWNER_SENT_FROM` = `CLIENT_SENT_FROM` + `mobile`。
+- `PROGRAM_SENT_FROM`：程序写的值，永远不算 Owner。
+- `sentFromInventory.test.ts` 扫全仓 `packages/*/{src,sources}` 非测试源码里的 `sentFrom` 字面量（赋值、`??` 默认值、`===` 比较、`*_SENT_FROM = '…'` 常量），任何一个值不在 Owner 或程序清单里就失败；两份清单不许重叠；清单里的每个值都必须能被扫到，防止正则失效后测试空转。
+
+| `sentFrom` | 谁写 | 归类 |
+|---|---|---|
+| `web` | Web v2 `resolveSentFrom`（浏览器；Tauri 桌面壳也是 web 运行时）；旧 app 在 web 平台，以及未知平台的兜底值 | Owner |
+| `android` | 旧 app（`happy-app/sources/sync/sync.ts`）/ Web v2 在 Android 上 | Owner |
+| `ios` | 旧 app / Web v2 在 iPhone、iPad 上 | Owner |
+| `mac` | 旧 app 在 Mac Catalyst / iPad 版 on Mac 上（`isRunningOnMac()`）。Web v2 的 `isRunningOnMac` 目前恒为 false，但同一函数已按类型约束 | Owner（**B-924e 补上**） |
+| `mobile` | 现有代码不再写，老版本 app 写过（wire 消息测试里还有） | Owner（兼容旧值） |
+| `cli` | `very-happy send` / `session message`（`sessionMessage.ts`、`sessionDelivery.ts` 默认值）、CLI 自己转发的本地输入（`apiSession.ts`、`MessageAdapter.ts`）、收尾请求（`wrapup/request.ts`） | 程序 |
+| `assistant` | 另一个 agent 的 `sessions_send`（`assistantTools.ts`） | 程序 |
+| `automation` | 自动化 runner | 程序 |
+| `team` | Teams worker / adopt 投递的团队消息 | 程序 |
+| `issue` | Issue 派发 worker（`ISSUE_SENT_FROM`） | 程序 |
+| `session-peer` | 会话间 `session_message` / peer 协调（`SESSION_PEER_SENT_FROM`） | 程序 |
+| `shared` | server 给共享会话的被分享者消息打的戳（`SHARED_SENT_FROM`） | 程序（另一个账号的人，不是 Owner） |
+| `happy-agent` | `happy-agent` 包（`session.ts`） | 程序 |
+| 缺省 / 其他 | — | 非 Owner（fail-closed，标「未标明来源的程序发送」/「程序发送（…）」） |
+
+`sentFrom` 由客户端填写，仍只是诚实客户端之间的来源标注（见 10.3a′、B-927）。`very-happy send` 自称 `web` 时，靠 `remote-send-` 前缀判非 Owner，与本表无关。
 
 ### 10.3b 对话记录里标出「不是 Owner 说的」（B-924d，QA-T on B-924c 复现 2 变体）
 

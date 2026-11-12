@@ -40,7 +40,7 @@ import { syncCurrentPushToken } from './pushRegistration';
 import { syncWebPush } from './webPush';
 import { getNotificationPrefs } from './notificationPrefs';
 import { Platform, AppState, type AppStateStatus } from 'react-native';
-import { isRunningOnMac } from '@/utils/platform';
+import { resolveSentFrom } from './sentFrom';
 import { buildOutboundUserRecord, readOutboundUserRecord } from './outboundUserRecord';
 import { adoptPendingPrompts, applyPromptQueueUpdate, loadPromptQueue, promptQueueStore, promptQueueTranscript, reloadPromptQueue, retryWaitingPrompts, settleDispatchedPrompts } from './promptQueue';
 import { isQueueRow } from './promptQueueOutbox';
@@ -261,15 +261,6 @@ type SendMessageOptions = {
      */
     strictAttachments?: boolean;
 };
-
-/** Which client sent this message — the same answer for a direct send and a queued prompt (B-509). */
-function resolveSentFrom(): string {
-    if (Platform.OS === 'web') return 'web';
-    if (Platform.OS === 'android') return 'android';
-    // Check if running on Mac (Catalyst or Designed for iPad on Mac)
-    if (Platform.OS === 'ios') return isRunningOnMac() ? 'mac' : 'ios';
-    return 'web'; // fallback
-}
 
 class Sync {
     private static readonly BACKGROUND_SEND_TIMEOUT_MS = 30_000;
