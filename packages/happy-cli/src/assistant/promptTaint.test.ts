@@ -201,7 +201,7 @@ describe('B-924g', async () => {
             const other = taintKeys({ to: T4, to_title: '在吗', summary: 'x' }); other.targets[0].titles = ['数据迁移脚本']
             expect(promptTaintHits(other, { ownerText: '在吗？', nonOwner: [R3_BASE] }).map(h => h.kind)).toEqual(['target'])
             expect(titleTokens('T4 构建日志整理')).toEqual(['t4', '构建日志整理'])
-            expect(titleTokens('Very Happy 研发')).toEqual([])
+            expect(titleTokens('Atlas 看板')).toEqual([])
         })
     })
 
