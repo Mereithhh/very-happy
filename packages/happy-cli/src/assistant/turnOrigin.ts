@@ -40,6 +40,7 @@
  *   OWNER_ONLY_TOOLS, ownerOnlyRefusal(), withOwnerOnlyTools(registrar, isOwner)
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks'
 import type { AssistantToolRegistrar } from './assistantTools'
 import { MAIN_AGENT_OWNER_ONLY_TOOLS } from './mainAgentToolPolicy'
 import { ATTENTION_BOARD_LOCAL_ID_PREFIX, NON_OWNER_RETRY_LOCAL_ID_PREFIX, OWNER_SENT_FROM, SUGGESTION_OPTION_LOCAL_ID_PREFIX } from '@slopus/happy-wire'
@@ -102,8 +103,16 @@ export function createTurnOriginTracker(max = 200) {
 let installed: () => TurnOrigin = () => 'unknown'
 /** One main agent per wrapper process: startHappyServer installs the live tracker. Nothing installed = not the owner. */
 export function installMainAgentTurnOrigin(source: () => TurnOrigin): void { installed = source }
-export function mainAgentTurnOrigin(): TurnOrigin { return installed() }
-export function isOwnerTurn(): boolean { return installed() === 'owner' }
+/**
+ * B-924g: the dispatch gate running a call the OWNER approved on its card (dispatch_approved, or the wrapper on
+ * the owner's choice): inside it the tool's own owner checks (session_wrapup / session_handoff / session_restart)
+ * see the owner — the approval of that exact call is the owner's request. Scoped to that one call
+ * (AsyncLocalStorage), so other calls running at the same time are unaffected.
+ */
+const ownerApproved = new AsyncLocalStorage<true>()
+export function runOwnerApproved<T>(fn: () => Promise<T>): Promise<T> { return ownerApproved.run(true, fn) }
+export function mainAgentTurnOrigin(): TurnOrigin { return ownerApproved.getStore() ? 'owner' : installed() }
+export function isOwnerTurn(): boolean { return mainAgentTurnOrigin() === 'owner' }
 
 /**
  * B-924 (QA P2-5): the main agent's turn-end pushes ("It's ready!", turn failed)

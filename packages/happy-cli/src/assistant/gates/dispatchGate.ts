@@ -23,6 +23,7 @@ import type { AssistantToolRegistrar } from '../assistantTools'
 import type { DispatchPolicy } from '@slopus/happy-wire'
 import { effectiveRisk, isRiskLevel, RISK_LEVELS, type OneShotRunner, type RiskLevel } from './risk'
 import { MAIN_AGENT_ASK_TOOLS, MAIN_AGENT_OWNER_ONLY_TOOLS, mainAgentAskAction } from '../mainAgentToolPolicy'
+import { runOwnerApproved } from '../turnOrigin'
 
 /** Dispatch tools and the argument text each hands over (spec §4.2 table). */
 export const DISPATCH_TOOL_PAYLOADS: Readonly<Record<string, (args: Record<string, unknown>) => string>> = {
@@ -362,7 +363,8 @@ export function createDispatchGate(deps: DispatchGateDeps) {
             if (item.ownerChoice !== 'approve') { await release(approvalId); return fail({ error: 'not_approved', boardItemId: item.id }) }
             const handler = handlers.get(pending.toolName)
             if (!handler) { await release(approvalId); return fail({ error: 'tool_unavailable', tool: pending.toolName }) }
-            const result = await handler(withApprovalPrefix(pending.toolName, pending.args, deps.approvalLink(item.id), 'approve'), undefined)
+            // B-924g: the owner approved this exact call — the tool's own owner checks see the owner (turnOrigin.ts).
+            const result = await runOwnerApproved(async () => handler(withApprovalPrefix(pending.toolName, pending.args, deps.approvalLink(item.id), 'approve'), undefined))
             const text = result.content.map(c => c.text).join('\n')
             if (result.isError) await release(approvalId)
             else await writePrivate(donePath(approvalId), { ...pending, result: text.slice(0, 1_000) })

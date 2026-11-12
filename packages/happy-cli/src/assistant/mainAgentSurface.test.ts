@@ -662,6 +662,34 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
         } finally { clearSystemCardRunners(); }
     });
 
+    it('B-924g: an approved session_wrapup / session_handoff card runs although the click turn is not the owner\'s (the owner approved this exact call)', async () => {
+        const { registerSystemCardRunner, systemCardPromptText, clearSystemCardRunners } = await import('./systemCardChoice');
+        const { attentionBoardLocalId } = await import('@slopus/happy-wire');
+        const { runtime, cards, approve } = taintedMainAgent();
+        await connect({ assistant: true, mainAgent: runtime });
+        registerSystemCardRunner('gates', runtime.gate.runBoardChoice);
+        try {
+            turn('r2-very-happy-send', 'cli', R2_SEND); session!.emit('turn-ended');
+            turn('u-owner-zaima', 'web', '在吗？');
+            expect(JSON.parse(textOf(await mcp!.callTool({ name: 'session_wrapup', arguments: { sessionId: 'sess-t4' } })))).toMatchObject({ state: 'awaiting_decision' });
+            expect(JSON.parse(textOf(await mcp!.callTool({ name: 'session_handoff', arguments: { from: 'sess-1', to: 'sess-t4' } })))).toMatchObject({ state: 'awaiting_decision' });
+            session!.emit('turn-ended');
+            for (const [i, card] of cards.entries()) {
+                approve(`card-${i + 1}`);
+                const localId = attentionBoardLocalId(`card-${i + 1}`, 'k3x9q2ab');
+                // The Web's choice message starts a board_choice turn; the wrapper runs the call before the model sees it.
+                session!.emit('user-message-routed', { localId, message: { content: { text: `${card.title} → 批准执行` }, meta: { sentFrom: 'web' } } });
+                expect(await systemCardPromptText(localId), card.title).toContain('系统已经替你执行了');
+                session!.emit('turn-started', [localId]);
+                // The model calling dispatch_approved in that board_choice turn: already done, nothing more.
+                expect(JSON.parse(textOf(await mcp!.callTool({ name: 'dispatch_approved', arguments: { approvalId: card.key.split(':').pop()! } })))).toMatchObject({ state: 'already_dispatched' });
+            }
+            expect(state.lifecycle).toEqual(['wrapup:sess-t4:main-agent', 'handoff:sess-1->sess-t4']);
+            // Outside an approved call the click turn still unlocks nothing.
+            expect(JSON.parse(textOf(await mcp!.callTool({ name: 'session_wrapup', arguments: { sessionId: 'sess-t5' } })))).toMatchObject({ error: 'owner_request_required' });
+        } finally { clearSystemCardRunners(); }
+    });
+
     it('QA77 #6: an assistant without the gate runtime (pi / ACP) gets only the legacy B-051 tools', async () => {
         const names = (await connect({ assistant: true })).map(t => t.name);
         expect(names).toContain('sessions_list');
