@@ -149,6 +149,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   },
   {
     id: '2026-11-13-archive-lands-without-waking',
+    cliVersion: '0.2.213',
     date: '2026-11-13',
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.nov13b.title',
@@ -175,6 +176,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   },
   {
     id: '2026-11-11-very-happy-settings-command',
+    cliVersion: '0.2.213',
     date: '2026-11-11',
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.nov11m.title',
