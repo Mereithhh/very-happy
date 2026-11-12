@@ -12,12 +12,13 @@
  * - The RPC answers immediately (relay RPCs are capped at 30 s); progress and
  *   the outcome are published in daemonState.harnessInstall and logged.
  */
-import { access, constants, lstat } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { access, constants, lstat, readFile } from 'node:fs/promises';
+import { delimiter, dirname, join } from 'node:path';
 import { isHarnessInstallId, type HarnessInstallId, type HarnessInstallState } from '@slopus/happy-wire';
 import { globalPrefixForPackage } from '@/update/installLocation';
 import { HARNESS_INSTALL_CATALOG, harnessInstallArgs, nodeSatisfies } from './installCatalog';
 import type { NpmResult } from '@/update/npmInstall';
+import { probeAgentVersion, stableVersion } from '@/daemon/agentVersions';
 
 export type HarnessInstallRequestResult =
     | { accepted: true; harness: HarnessInstallId }
@@ -41,6 +42,12 @@ export interface HarnessInstallerDependencies {
     /** Re-probe CLI availability and agent versions so the Web enables the harness. */
     afterInstall: () => Promise<void>;
     log: (message: string) => void;
+    /**
+     * B-931: after npm, the version the command on the daemon's PATH (the one a
+     * session will start) really reports, against the version npm put in the
+     * prefix. Returns the failure detail, or null when they agree.
+     */
+    verifyInstalled?: (harness: HarnessInstallId, prefix: string) => Promise<string | null>;
     canWrite?: (path: string) => Promise<boolean>;
     isPlainDirectory?: (path: string) => Promise<boolean>;
     now?: () => number;
@@ -69,6 +76,54 @@ export function summarizeNpmFailure(result: NpmResult): string {
     const code = result.code === null ? 'npm_timeout' : `npm_exit_${result.code}`;
     const safe = redactNpmText(tail).slice(0, 300);
     return safe ? `${code}: ${safe}` : code;
+}
+
+/** B-931: the package whose version a harness's main command reports. */
+export const HARNESS_VERSION_CHECK: Readonly<Record<HarnessInstallId, { package: string; command: string }>> = Object.freeze({
+    claude: { package: '@anthropic-ai/claude-code', command: 'claude' },
+    codex: { package: '@openai/codex', command: 'codex' },
+    gemini: { package: '@google/gemini-cli', command: 'gemini' },
+    pi: { package: '@earendil-works/pi-coding-agent', command: 'pi' },
+});
+
+/**
+ * B-931: what npm installed vs what the session will run. `installed` = the
+ * prefix's package.json, `running` = `<command> --version` on the daemon's
+ * PATH, `resolved` = which file that was. Null = agrees.
+ */
+export function installVerificationFailure(command: string, facts: { installed: string | null; running: string | null; resolved: string | null }): string | null {
+    const where = facts.resolved ? ` (${redactNpmText(facts.resolved)})` : '';
+    if (!facts.installed) return `version_unverified: no ${command} package in the install prefix`;
+    if (!facts.running) return `version_unverified: ${command} --version${where} gave no version`;
+    if (facts.running !== facts.installed) return `version_mismatch: ${command} on PATH${where} runs ${facts.running}, installed ${facts.installed}`;
+    return null;
+}
+
+/** First `command` on `path` that is an executable file (POSIX lookup order). */
+export async function resolveOnPath(command: string, path: string | undefined = process.env.PATH, canExec = defaultCanExec): Promise<string | null> {
+    for (const dir of (path ?? '').split(delimiter)) {
+        if (!dir) continue;
+        const candidate = join(dir, command);
+        if (await canExec(candidate)) return candidate;
+    }
+    return null;
+}
+async function defaultCanExec(path: string): Promise<boolean> {
+    try { await access(path, constants.X_OK); return true; } catch { return false; }
+}
+
+export async function defaultVerifyInstalled(harness: HarnessInstallId, prefix: string): Promise<string | null> {
+    const check = HARNESS_VERSION_CHECK[harness];
+    let installed: string | null = null;
+    try {
+        const pkg = JSON.parse(await readFile(join(prefix, 'lib', 'node_modules', ...check.package.split('/'), 'package.json'), 'utf8')) as { version?: unknown };
+        installed = typeof pkg.version === 'string' ? stableVersion(pkg.version) : null;
+    } catch { installed = null; }
+    const [probe, resolved] = await Promise.all([
+        probeAgentVersion(check.command).catch(() => ({ version: null, missing: false })),
+        process.platform === 'win32' ? Promise.resolve(null) : resolveOnPath(check.command),
+    ]);
+    return installVerificationFailure(check.command, { installed, running: probe.version, resolved });
 }
 
 export function createHarnessInstaller(deps: HarnessInstallerDependencies) {
@@ -118,7 +173,15 @@ export function createHarnessInstaller(deps: HarnessInstallerDependencies) {
                 publish('failed', detail);
                 return;
             }
+            // B-931: npm exit 0 is not "installed" — the binary a session starts must report what npm put there.
+            const mismatch = await (deps.verifyInstalled ?? defaultVerifyInstalled)(harness, prefix)
+                .catch((error) => `version_unverified: ${redactNpmText(String(error)).slice(0, 200)}`);
             await deps.afterInstall().catch((error) => deps.log(`[HARNESS] refresh after ${harness} install failed: ${String(error)}`));
+            if (mismatch) {
+                deps.log(`[HARNESS] ${harness} install not effective: ${mismatch}`);
+                publish('failed', mismatch);
+                return;
+            }
             deps.log(`[HARNESS] ${harness} installed`);
             publish('installed');
         } catch (error) {

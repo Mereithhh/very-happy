@@ -27,6 +27,8 @@ export async function resumeExistingThread(opts: {
     mcpServers: Record<string, unknown>;
     /** B-850b: resume onto this model (an account switch); absent = the thread keeps its own. */
     model?: string;
+    /** B-931: false = no "Resumed Codex thread" line in the chat (automatic in-place restarts). Default true. */
+    announce?: boolean;
 }): Promise<{ threadId: string; model: string }> {
     try {
         const resumedThread = await opts.client.resumeThread({
@@ -41,10 +43,12 @@ export async function resumeExistingThread(opts: {
             codexThreadId: resumedThread.threadId,
         }));
         opts.messageBuffer.addMessage(`Resumed thread ${trimIdent(resumedThread.threadId)}`, 'status');
-        opts.session.sendSessionEvent({
-            type: 'message',
-            message: `Resumed Codex thread ${resumedThread.threadId}`,
-        });
+        if (opts.announce !== false) {
+            opts.session.sendSessionEvent({
+                type: 'message',
+                message: `Resumed Codex thread ${resumedThread.threadId}`,
+            });
+        }
 
         return resumedThread;
     } catch (error) {

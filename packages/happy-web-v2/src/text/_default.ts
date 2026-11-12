@@ -3374,6 +3374,13 @@ export const en = {
                 images: 'On a new chat\'s page (before the session is up) and in the new-chat dialog, images can be pasted, dropped or picked (also on phones). They are uploaded once the session has started and reach Claude or Codex together with the text; a message of images only works too. A reload while it starts keeps them.',
                 noSilentDrop: 'Nothing is dropped silently any more: if the files cannot go out (upload failed, or the session does not take them), you are told why and the text and files are back in the box — send again to retry.',
             },
+            nov13a: {
+                title: 'Codex sessions no longer restart over and over for an update',
+                summary: 'When an automatic restart for a newer Codex leaves a session on the same version, it is not restarted again; installing Codex now checks the version a session will really run.',
+                once: 'If Codex was changed back after an update, or the session starts a different copy of Codex, a session is restarted at most once for that version. It then shows why it stayed behind instead of restarting every ten minutes, also after the daemon restarts. Right before restarting, the daemon asks Codex for its version again, so it never restarts onto a version that is no longer installed.',
+                install: 'After Install / Update Codex, the daemon runs the codex a session would start and compares its version with what was installed. If they differ (for example another copy comes first on PATH), the machine page shows the failure and why, instead of "installed".',
+                quiet: '"Updated Codex to X" appears only when the session really runs X, and an automatic restart no longer adds a "Resumed Codex thread" line to the chat.',
+            },
             nov11w: {
                 title: 'Wrap up now keeps what is worth keeping',
                 summary: 'If you have not set your own wrap-up template, Wrap up now also asks the session to save its documents, turn reusable steps into scripts, and check the facts before committing.',

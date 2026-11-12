@@ -12,12 +12,15 @@ import {
     AUTO_RESTART_MIN_GAP_MS,
     autoRestartNextCheck,
     decideAutoRestart,
+    judgeLanding,
+    noEffectReason,
     recordAttempt,
     statusFromVerdict,
     uncheckedWrapperStatus,
     wrapperReportsIdle,
     wrapperStaleness,
     type AttemptRecord,
+    type AutoRestartLanding,
     type AutoRestartSessionStatus,
     type AutoRestartVerdict,
     type Staleness,
@@ -46,6 +49,17 @@ export interface AutoRestartDeps {
     daemonVersion: string;
     /** Installed agent binary version for this flavor (Codex), from the daemon's agentVersions snapshot. */
     installedAgentVersion: (flavor: string) => string | null;
+    /**
+     * B-931: ask the binary itself, right before an agent restart (the
+     * snapshot is hours old and the install may have been swapped since).
+     * null = could not tell (the snapshot stands).
+     */
+    probeInstalledAgentVersion?: (flavor: string) => Promise<string | null>;
+    /** B-931: successful restarts not yet seen to land, persisted across daemon restarts. */
+    landings?: {
+        read: () => Record<string, AutoRestartLanding>;
+        write: (landings: Record<string, AutoRestartLanding>) => void;
+    };
     tracked: (sessionId: string, pid: number) => AutoRestartTracked | null;
     /** Every live tracked session (for the sweep). */
     liveSessions: () => Array<{ sessionId: string } & AutoRestartTracked>;
@@ -113,6 +127,41 @@ export function createAutoRestart(deps: AutoRestartDeps) {
     let inFlight = 0;
     let lastStartedAt: number | null = null;
     let publishedSignature = '';
+    const landings = new Map<string, AutoRestartLanding>(Object.entries((() => {
+        try { return deps.landings?.read() ?? {}; } catch { return {}; }
+    })()));
+    function saveLandings(): void {
+        try { deps.landings?.write(Object.fromEntries(landings)); }
+        catch (error) { deps.log?.(`[auto-restart] could not persist restart records: ${String(error)}`); }
+    }
+
+    /**
+     * B-931: a restart that already ran for this (session, kind, from, target)
+     * changed nothing. True = leave it to the user (status published, logged
+     * once); never restart it again until it runs something else.
+     */
+    function restartHadNoEffect(sessionId: string, staleness: Staleness | null, agentReported: boolean): boolean {
+        const landing = landings.get(sessionId);
+        const verdict = judgeLanding(landing, staleness);
+        if (verdict !== 'no-effect') {
+            // An agent record needs the agent's own version to be judged; until
+            // the new wrapper reports one, "not stale" proves nothing.
+            const undecided = landing?.kind === 'agent' && !agentReported;
+            if (landing && !undecided) { landings.delete(sessionId); saveLandings(); }
+            return false;
+        }
+        if (!landing!.noEffect) {
+            landings.set(sessionId, { ...landing!, noEffect: true });
+            saveLandings();
+            deps.log?.(`[auto-restart] ${sessionId}: restart onto ${landing!.target} did not change ${landing!.kind} ${landing!.from}; not restarting it again`);
+        }
+        const previous = statuses.get(sessionId);
+        const reason = noEffectReason(landing!);
+        if (previous?.state !== 'failed' || previous.reason !== reason || previous.target !== landing!.target) {
+            setStatus(sessionId, { state: 'failed', reason, since: now(), target: landing!.target });
+        }
+        return true;
+    }
 
     function publish(): void {
         const snapshot = Object.fromEntries([...statuses.entries()].sort(([a], [b]) => a.localeCompare(b)));
@@ -193,9 +242,11 @@ export function createAutoRestart(deps: AutoRestartDeps) {
             if (record) attempts.set(sessionId, record);
             else attempts.delete(sessionId);
             if (result.ok) {
-                deps.log?.(`[auto-restart] ${sessionId} restarted on ${staleness.target}`);
+                deps.log?.(`[auto-restart] ${sessionId} restarted (${staleness.kind} ${staleness.from} → ${staleness.target}); confirmed on its next check-in`);
                 clearSession(sessionId);
                 agentVersions.delete(sessionId);
+                landings.set(sessionId, { kind: staleness.kind, from: staleness.from, target: staleness.target, at: now() });
+                saveLandings();
             } else {
                 deps.log?.(`[auto-restart] ${sessionId} restart failed (attempt ${record?.attempts}): ${result.error}`);
                 const gaveUp = (record?.attempts ?? 0) >= AUTO_RESTART_MAX_ATTEMPTS;
@@ -260,7 +311,13 @@ export function createAutoRestart(deps: AutoRestartDeps) {
         let t = now();
         const tracked = deps.tracked(request.sessionId, request.pid);
         if (request.report.agentVersion) agentVersions.set(request.sessionId, request.report.agentVersion);
-        const staleness = tracked ? stalenessFor(tracked, request.report.agentVersion) : null;
+        let staleness = tracked ? stalenessFor(tracked, request.report.agentVersion) : null;
+        const beforeGuard = statuses.get(request.sessionId);
+        if (tracked && restartHadNoEffect(request.sessionId, staleness, !!request.report.agentVersion)) {
+            noteStuck(request.sessionId, beforeGuard);
+            publish();
+            return { nextCheckMs: null, restarting: false };
+        }
         if (!staleness) {
             const had = statuses.has(request.sessionId);
             clearSession(request.sessionId);
@@ -292,6 +349,23 @@ export function createAutoRestart(deps: AutoRestartDeps) {
         // then every rule again on fresh state (pacing may have moved meanwhile),
         // and the decision and the 'restarting' mark with no await in between.
         let verdict: AutoRestartVerdict = decideAutoRestart({ ...input, resumable: true });
+        if (verdict.ok && staleness.kind === 'agent' && tracked?.flavor && deps.probeInstalledAgentVersion) {
+            // B-931: the snapshot may predate a reinstall / downgrade; the binary decides.
+            const fresh = await deps.probeInstalledAgentVersion(tracked.flavor).catch(() => null);
+            if (fresh) {
+                const rechecked = wrapperStaleness({ wrapperVersion: tracked.wrapperVersion, daemonVersion: deps.daemonVersion, agentVersion: request.report.agentVersion, installedAgentVersion: fresh });
+                if (fresh !== staleness.target) deps.log?.(`[auto-restart] ${request.sessionId}: installed ${tracked.flavor} is ${fresh}, not ${staleness.target}`);
+                if (!rechecked) {
+                    const had = statuses.has(request.sessionId);
+                    clearSession(request.sessionId);
+                    if (had) publish();
+                    return { nextCheckMs: null, restarting: false };
+                }
+                staleness = rechecked;
+                input = { ...input, staleness };
+                verdict = decideAutoRestart({ ...input, resumable: true });
+            }
+        }
         if (verdict.ok) {
             const resumable = await deps.resumable(request.sessionId).catch(() => false);
             t = now();
@@ -315,9 +389,10 @@ export function createAutoRestart(deps: AutoRestartDeps) {
             // second check-in nor another session can start one in parallel.
             inFlight += 1;
             lastStartedAt = t;
-            setStatus(request.sessionId, { state: 'restarting', since: previous?.since ?? t, target: staleness.target });
+            const chosen = staleness;
+            setStatus(request.sessionId, { state: 'restarting', since: previous?.since ?? t, target: chosen.target });
             noteStuck(request.sessionId, previous);
-            setImmediate(() => { void run(request.sessionId, staleness); });
+            setImmediate(() => { void run(request.sessionId, chosen); });
             return { nextCheckMs: null, restarting: true };
         }
         if (input.enabled) setStatus(request.sessionId, statusFromVerdict(verdict, previous, staleness, t, attempt));
@@ -344,8 +419,10 @@ export function createAutoRestart(deps: AutoRestartDeps) {
         for (const session of deps.liveSessions()) {
             seen.add(session.sessionId);
             const staleness = stalenessFor(session, agentVersions.get(session.sessionId));
-            if (!staleness) { clearSession(session.sessionId); continue; }
             if (statuses.get(session.sessionId)?.state === 'restarting') continue;
+            // B-931: only a reported agent version can show an agent restart had no effect.
+            if (staleness && restartHadNoEffect(session.sessionId, staleness, agentVersions.has(session.sessionId))) continue;
+            if (!staleness) { clearSession(session.sessionId); continue; }
             // Live again (Restore, or a wrapper started by hand): an offline failure no longer applies.
             if (offline.delete(session.sessionId)) statuses.delete(session.sessionId);
             if (!enabled) {

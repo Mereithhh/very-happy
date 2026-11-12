@@ -65,7 +65,7 @@ describe('B-911 old-wrapper run intent and markers', () => {
         expect(takeRestartEffort(env)).toBe('xhigh');
         expect(env[RESTART_EFFORT_ENV]).toBeUndefined();
         expect(takeRestartEffort({ [RESTART_EFFORT_ENV]: 'bogus' })).toBeNull();
-        expect(takeAutoRestartedEvent(env)).toEqual({ type: 'message', kind: 'session-restarted-on-request', message: "Restarted in place at the agent's request on Very Happy 0.2.210 (history kept)" });
+        expect(takeAutoRestartedEvent(env, { cliVersion: '0.2.210' })).toEqual({ type: 'message', kind: 'session-restarted-on-request', message: "Restarted in place at the agent's request on Very Happy 0.2.210 (history kept)" });
         expect(env[RESTARTED_ON_REQUEST_ENV]).toBeUndefined();
         expect(takeRestartedOnRequestEvent({})).toBeNull();
     });

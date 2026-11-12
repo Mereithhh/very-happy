@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createAutoRestart, type AutoRestartDeps, type AutoRestartTracked } from './autoRestart';
-import { AUTO_RESTART_BACKOFF_MS, AUTO_RESTART_MIN_GAP_MS, AUTO_RESTART_QUIET_MS, LEGACY_CHECK_IN_GRACE_MS } from '@/update/autoRestartPolicy';
+import { AUTO_RESTART_BACKOFF_MS, AUTO_RESTART_MIN_GAP_MS, AUTO_RESTART_QUIET_MS, LEGACY_CHECK_IN_GRACE_MS, type AutoRestartLanding } from '@/update/autoRestartPolicy';
 import type { WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
 
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve)).then(() => new Promise<void>((resolve) => setImmediate(resolve)));
@@ -420,5 +420,93 @@ describe('B-911 stuck wrappers (manual / no-report, no-check-in) are announced o
         expect(onUnstuck).toHaveBeenCalledWith('team');
         await scheduler.onCheckIn({ sessionId: 'a', pid: 1, report: report({ thinking: true }) });
         expect(onUnstuck).toHaveBeenCalledWith('a');
+    });
+});
+
+describe('B-931 an agent restart that changes nothing is not repeated', () => {
+    const codex = { c: { live: true, wrapperVersion: '0.2.190', flavor: 'codex', capabilities: ['agent-hibernation-v1', 'auto-restart-v1'] } };
+    function memoryStore() {
+        let saved: Record<string, AutoRestartLanding> = {};
+        return { read: () => structuredClone(saved), write: (l: Record<string, AutoRestartLanding>) => { saved = structuredClone(l); }, peek: () => saved };
+    }
+    const codexReport = (r: (o?: Partial<WrapperIdleSnapshot>) => WrapperIdleSnapshot, agentVersion: string) => ({ ...r({ flavor: 'codex' }), agentVersion });
+
+    it('the installed binary never changes: one restart over several check-in cycles, one log line, no repeat after a daemon restart', async () => {
+        const store = memoryStore();
+        const log = vi.fn();
+        const { scheduler, restart, report, advance } = setup({ installedAgentVersion: () => '0.167.2', landings: store, log }, codex);
+        for (let cycle = 0; cycle < 4; cycle++) {
+            await scheduler.onCheckIn({ sessionId: 'c', pid: 1, report: codexReport(report, '0.154.0') });
+            await flush();
+            scheduler.sweep();
+            advance(10 * 60 * 1000);
+        }
+        expect(restart).toHaveBeenCalledTimes(1);
+        expect(scheduler.statuses().c).toMatchObject({ state: 'failed', reason: 'no-effect: still 0.154.0 after a restart onto 0.167.2', target: '0.167.2' });
+        expect(log.mock.calls.filter(([m]) => String(m).includes('did not change')).length).toBe(1);
+        expect(store.peek().c).toMatchObject({ kind: 'agent', from: '0.154.0', target: '0.167.2', noEffect: true });
+
+        // A new daemon (handover / restart) reads the record: still no restart.
+        const next = setup({ installedAgentVersion: () => '0.167.2', landings: store, log }, codex);
+        await next.scheduler.onCheckIn({ sessionId: 'c', pid: 1, report: codexReport(next.report, '0.154.0') });
+        await flush();
+        expect(next.restart).not.toHaveBeenCalled();
+        expect(next.scheduler.statuses().c?.state).toBe('failed');
+    });
+
+    it('the first check-in of the new wrapper without an agent version does not drop the record', async () => {
+        const store = memoryStore();
+        const { scheduler, restart, report } = setup({ installedAgentVersion: () => '0.167.2', landings: store }, codex);
+        await scheduler.onCheckIn({ sessionId: 'c', pid: 1, report: codexReport(report, '0.154.0') });
+        await flush();
+        await scheduler.onCheckIn({ sessionId: 'c', pid: 2, report: report({ flavor: 'codex' }) });
+        scheduler.sweep();
+        expect(store.peek().c).toBeDefined();
+        await scheduler.onCheckIn({ sessionId: 'c', pid: 2, report: codexReport(report, '0.154.0') });
+        await flush();
+        expect(restart).toHaveBeenCalledTimes(1);
+    });
+
+    it('the version really changed: the record is dropped and the next upgrade restarts normally', async () => {
+        const store = memoryStore();
+        let installed = '0.167.2';
+        const { scheduler, restart, report, advance } = setup({ installedAgentVersion: () => installed, landings: store }, codex);
+        await scheduler.onCheckIn({ sessionId: 'c', pid: 1, report: codexReport(report, '0.154.0') });
+        await flush();
+        await scheduler.onCheckIn({ sessionId: 'c', pid: 2, report: codexReport(report, '0.167.2') });
+        expect(scheduler.statuses().c).toBeUndefined();
+        expect(store.peek()).toEqual({});
+        installed = '0.168.0';
+        advance(AUTO_RESTART_MIN_GAP_MS + 1);
+        expect((await scheduler.onCheckIn({ sessionId: 'c', pid: 2, report: codexReport(report, '0.167.2') })).restarting).toBe(true);
+        await flush();
+        expect(restart).toHaveBeenCalledTimes(2);
+    });
+
+    it('a fresh probe that disagrees with the stale snapshot wins: no restart onto a version that is not installed', async () => {
+        const probe = vi.fn(async () => '0.154.0');
+        const { scheduler, restart, report } = setup({ installedAgentVersion: () => '0.167.2', probeInstalledAgentVersion: probe }, codex);
+        expect((await scheduler.onCheckIn({ sessionId: 'c', pid: 1, report: codexReport(report, '0.154.0') })).restarting).toBe(false);
+        await flush();
+        expect(probe).toHaveBeenCalledWith('codex');
+        expect(restart).not.toHaveBeenCalled();
+        expect(scheduler.statuses().c).toBeUndefined();
+    });
+
+    it('a fresh probe that finds an even newer install restarts onto that one', async () => {
+        const { scheduler, restart, report } = setup({ installedAgentVersion: () => '0.167.2', probeInstalledAgentVersion: async () => '0.168.0' }, codex);
+        expect((await scheduler.onCheckIn({ sessionId: 'c', pid: 1, report: codexReport(report, '0.154.0') })).restarting).toBe(true);
+        await flush();
+        expect(restart).toHaveBeenCalledWith('c', { kind: 'agent', from: '0.154.0', target: '0.168.0' });
+    });
+
+    it('the CLI path is unchanged: a cli restart that lands drops its record', async () => {
+        const store = memoryStore();
+        const { scheduler, restart, report } = setup({ landings: store });
+        await scheduler.onCheckIn({ sessionId: 'a', pid: 1, report: report() });
+        await flush();
+        expect(restart).toHaveBeenCalledTimes(1);
+        await scheduler.onCheckIn({ sessionId: 'a', pid: 2, report: report() });
+        expect(store.peek()).toEqual({});
     });
 });

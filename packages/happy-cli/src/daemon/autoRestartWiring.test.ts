@@ -9,6 +9,18 @@ const claude = read('claude', 'runClaude.ts');
 const codex = read('codex', 'runCodex.ts');
 const acp = read('agent', 'acp', 'runAcp.ts');
 
+describe('B-931 restarts that change nothing', () => {
+    it('the daemon re-probes the agent binary and persists restart records', () => {
+        expect(run).toContain("probeInstalledAgentVersion: async (flavor) => {\n        if (flavor !== 'codex') return null;\n        const { version } = await probeAgentVersion('codex');");
+        expect(run).toContain('landings: autoRestartLandingStore(configuration.happyHomeDir),');
+    });
+    it('an automatic / requested restart does not post "Resumed Codex thread"', () => {
+        expect(codex).toContain('announce: !process.env[AUTO_RESTARTED_ENV] && !process.env[RESTARTED_ON_REQUEST_ENV],');
+        // Read before takeAutoRestartedEvent deletes the marker.
+        expect(codex.indexOf('announce: !process.env[AUTO_RESTARTED_ENV]')).toBeLessThan(codex.indexOf('const autoUpdated = takeAutoRestartedEvent('));
+    });
+});
+
 describe('B-852 auto-restart wiring', () => {
     it('the idle check-in decides it; hibernation (exit) wins when both say yes', () => {
         expect(run).toContain('if (reply.hibernate) return reply;\n        const auto = await autoRestartScheduler.onCheckIn(body);');
@@ -51,9 +63,13 @@ describe('B-852 auto-restart wiring', () => {
         expect(run).toContain('publish: (sessions) => { void apiMachineRef?.setAutoRestartSessions(sessions); },');
     });
     it('every runner posts the "updated" line and advertises the capability', () => {
-        for (const src of [claude, codex, acp]) {
-            expect(src).toMatch(/const autoUpdated = takeAutoRestartedEvent\(process\.env(, 'Codex')?\);\n\s+if \(autoUpdated\) session\.sendSessionEvent\(autoUpdated\);/);
+        for (const src of [claude, acp]) {
+            expect(src).toContain('const autoUpdated = takeAutoRestartedEvent(process.env, { cliVersion: packageJson.version });\n');
+            expect(src).toMatch(/takeAutoRestartedEvent\(process\.env, [^\n]*\);\n\s+if \(autoUpdated\) session\.sendSessionEvent\(autoUpdated\);/);
         }
+        // B-931: Codex says "updated" only when the app-server it started reports the target.
+        expect(codex).toContain("const autoUpdated = takeAutoRestartedEvent(process.env, { cliVersion: packageJson.version, agentVersion: codexAgentVersion }, 'Codex');\n        if (autoUpdated) session.sendSessionEvent(autoUpdated);");
+        expect(codex.indexOf('codexAgentVersion = client.serverVersion;')).toBeLessThan(codex.indexOf('const autoUpdated = takeAutoRestartedEvent('));
         expect(claude).toContain('HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY]');
         expect(codex).toContain('HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, CODEX_STEER_CAPABILITY');
         expect(acp).toContain("...(opts.agentName === 'pi' && opts.startedBy === 'daemon' ? [AUTO_RESTART_CAPABILITY] : [])],");

@@ -37,7 +37,8 @@ import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import { checkDaemonHibernation, notifyDaemonSessionStarted } from "@/daemon/controlClient";
-import { AUTO_RESTART_CAPABILITY, takeAutoRestartedEvent } from '@/update/autoRestartPolicy';
+import { AUTO_RESTART_CAPABILITY, AUTO_RESTARTED_ENV, takeAutoRestartedEvent } from '@/update/autoRestartPolicy';
+import { RESTARTED_ON_REQUEST_ENV } from '@/update/idleRestartPolicy';
 import { HIBERNATION_CAPABILITY, evaluateWrapperIdle, latchKeepAwake, resolveCheckMs, type HibernationStamp, type WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
 import { HibernationExitLatch, HibernationProbe, commitHibernation } from '@/hibernation/hibernationProbe';
 import { settleCodexSession } from './codexTermination';
@@ -1240,6 +1241,8 @@ export async function runCodex(opts: {
                     threadId: opts.resumeThreadId,
                     cwd: process.cwd(),
                     mcpServers,
+                    // B-931: a restart the daemon made by itself already posts its own quiet line (or none).
+                    announce: !process.env[AUTO_RESTARTED_ENV] && !process.env[RESTARTED_ON_REQUEST_ENV],
                     // B-850b: after an account switch the thread moves to the
                     // new account's model (its old one is sticky otherwise).
                     ...(accountSwitched && machineDefaultModel ? { model: machineDefaultModel } : {}),
@@ -1354,7 +1357,8 @@ export async function runCodex(opts: {
             hibernationProbe.start();
         }
         // B-852: the daemon restarted this session onto new code by itself — say so, quietly.
-        const autoUpdated = takeAutoRestartedEvent(process.env, 'Codex');
+        // B-931: only when this wrapper really runs the target (CLI, or the Codex app-server it started).
+        const autoUpdated = takeAutoRestartedEvent(process.env, { cliVersion: packageJson.version, agentVersion: codexAgentVersion }, 'Codex');
         if (autoUpdated) session.sendSessionEvent(autoUpdated);
 
         // Idle from the start: a session nobody ever writes to must not hold app-server either.

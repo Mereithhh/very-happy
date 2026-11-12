@@ -1,4 +1,5 @@
-import { startAgentVersionChecks } from './agentVersions';
+import { probeAgentVersion, startAgentVersionChecks } from './agentVersions';
+import { autoRestartLandingStore } from './autoRestartLandingStore';
 import { FS_MKDIR_CAPABILITY_VERSION } from '@/modules/fs/fsMkdir';
 import { resolveRelaunchMetadata } from './relaunchMetadata';
 import { sanitizeSpawnModel } from './spawnModel';
@@ -1878,6 +1879,15 @@ export async function startDaemon(): Promise<void> {
       installedAgentVersion: (flavor) => flavor === 'codex'
         ? latestAgentVersions?.agents.find((agent) => agent.id === 'codex')?.installed ?? null
         : null,
+      // B-931: the binary a restarted wrapper will start (same PATH), asked right before restarting.
+      probeInstalledAgentVersion: async (flavor) => {
+        if (flavor !== 'codex') return null;
+        const { version } = await probeAgentVersion('codex');
+        const cached = latestAgentVersions?.agents.find((agent) => agent.id === 'codex')?.installed ?? null;
+        if (version && version !== cached) void stopAgentVersionChecks.refresh();
+        return version;
+      },
+      landings: autoRestartLandingStore(configuration.happyHomeDir),
       tracked: (sessionId, pid) => {
         const tracked = pidToTrackedSession.get(pid);
         if (!tracked || tracked.happySessionId !== sessionId) return null;
