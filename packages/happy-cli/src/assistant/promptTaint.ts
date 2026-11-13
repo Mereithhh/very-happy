@@ -33,7 +33,13 @@
  *  - a TEXT is tainted when it shares a FRAGMENT_CHARS (12)-char run (whitespace removed) with a window prompt
  *    that the owner's text does not contain (B-924g: or, for a 6–11-char text, is wholly inside one). Naming
  *    the target does not clear copied text — unless the owner refers back to it (「把刚才那个任务交给 T3」),
- *    named every target, and the text is from one of the 5 newest window prompts of the last 30 minutes.
+ *    named every target, and the text is from the OWN REPORT (`reportText`, B-924h) of one of the 5 newest
+ *    window prompts of the last 30 minutes.
+ *  - B-924h (QA-T refer-1:「T4 那个构建日志整理得怎么样了？」after a send naming T4 → handoff_send(T4, the send's
+ *    payload) delivered): a refer-back word never clears content by itself. Only a sender's own report may be
+ *    relayed — the body of a session_message (its sender's words) or the precheck block of an automation (the
+ *    sessions the system listed). A CLI send, an automation's prose, a team message or any other non-owner text
+ *    has no report: what it says stays tainted however the owner refers to it.
  *  - B-924g owner text = this turn + the owner's last 3 messages of the last 30 minutes.
  *  - B-924h (QA-T on #944 R62,「洗白」launder-1: a send made haiku repeat the injected target and payload as its
  *    reply, the owner then typed「好，在吗？」and the repeated reply counted as the owner's): the main agent's reply
@@ -78,7 +84,7 @@ export type TaintPrompt = TurnPrompt & { text?: string | null }
  * automation's precheck listed (早报 / 唤醒「卡住的会话」「可以收尾的会话」). Any other session it names —
  * a third party (「交给 T4」) — stays tainted.
  */
-export type TaintWindowEntry = { text: string; at?: number; releases?: readonly string[]; seq?: number }
+export type TaintWindowEntry = { text: string; at?: number; releases?: readonly string[]; seq?: number; reportText?: string }
 
 export type TaintSnapshot = {
     /** The owner's own text of the current turn; null when the current turn is not the owner's. */
@@ -152,6 +158,26 @@ export function releasesOf(prompt: TaintPrompt, text: string): string[] {
     return []
 }
 
+/**
+ * B-924h: the part of a non-owner prompt the owner may have relayed by referring back to it — the body of a
+ * session_message from a real session (its own report), the precheck block of an automation (what the system
+ * listed). Anything else (CLI send, automation prose, teams, retries, board) = none.
+ */
+export function reportTextOf(prompt: TaintPrompt, text: string): string | undefined {
+    const localId = prompt.localId ?? ''
+    if (localId.startsWith('session-message-')) {
+        const parsed = parsePeerMessage(text)
+        return parsed?.kind === 'message' && parsed.from.sessionId && parsed.from.sessionId !== CLI_PEER_SENDER_ID ? parsed.body : undefined
+    }
+    if (localId.startsWith('automation-')) {
+        const begin = text.indexOf(PRECHECK_BEGIN)
+        if (begin < 0) return undefined
+        const endAt = text.indexOf(PRECHECK_END, begin)
+        return text.slice(begin + PRECHECK_BEGIN.length, endAt < 0 ? undefined : endAt)
+    }
+    return undefined
+}
+
 /** Remembers routed prompt texts by localId; non-owner ones enter the window when routed. */
 export function createPromptTaintTracker(opts: { window?: number; maxSeen?: number; now?: () => number } = {}) {
     const windowSize = opts.window ?? NON_OWNER_WINDOW
@@ -185,7 +211,8 @@ export function createPromptTaintTracker(opts: { window?: number; maxSeen?: numb
                 return
             }
             if (prompt.localId) { if (windowed.has(prompt.localId)) return; windowed.add(prompt.localId) }
-            nonOwner.push({ text: text.slice(0, NON_OWNER_SCAN_CHARS), at: now(), releases: releasesOf(prompt, text), seq: ++seq })
+            const reportText = reportTextOf(prompt, text)?.slice(0, NON_OWNER_SCAN_CHARS)
+            nonOwner.push({ text: text.slice(0, NON_OWNER_SCAN_CHARS), at: now(), releases: releasesOf(prompt, text), seq: ++seq, ...(reportText ? { reportText } : {}) })
             while (nonOwner.length > windowSize) nonOwner.shift()
             while (windowed.size > maxSeen) windowed.delete(windowed.values().next().value as string)
         },
@@ -338,9 +365,9 @@ const entryOf = (e: string | TaintWindowEntry): TaintWindowEntry => typeof e ===
  *    and clears no text fragment;
  *  - a window prompt naming a session it releases (its own sender, a session its precheck listed) does not
  *    taint that session; its text is still checked;
- *  - a text from a recent window prompt is not tainted when the owner refers back to it (「把刚才那个任务交给
- *    T3」) AND typed the name of every target of the call — never for a target only the window or the main
- *    agent's reply named (repro 2);
+ *  - a text from the OWN REPORT of a recent window prompt (B-924h: session_message body / precheck block, never
+ *    a send) is not tainted when the owner refers back to it (「把刚才那个任务交给 T3」) AND typed the name of
+ *    every target of the call — never for a target only the window or the main agent's reply named (repro 2);
  *  - a text of SHORT_TEXT_MIN..FRAGMENT_CHARS chars counts when the whole of it is in a window prompt.
  */
 export function promptTaintHits(keys: TaintKeys, snapshot: TaintSnapshot, unresolved: ReadonlySet<string> = new Set()): TaintHit[] {
@@ -348,7 +375,7 @@ export function promptTaintHits(keys: TaintKeys, snapshot: TaintSnapshot, unreso
     const ownerRaw = snapshot.ownerContext ?? snapshot.ownerText
     const owner = normalizeForTaint(ownerRaw)
     const typed = normalizeForTaint(snapshot.ownerTyped ?? ownerRaw)
-    const entries = snapshot.nonOwner.map(entryOf).map(e => ({ ...e, norm: normalizeForTaint(e.text), squashed: squash(e.text), releases: new Set(e.releases ?? []) }))
+    const entries = snapshot.nonOwner.map(entryOf).map(e => ({ ...e, norm: normalizeForTaint(e.text), squashed: squash(e.text), report: e.reportText ? squash(e.reportText) : '', releases: new Set(e.releases ?? []) }))
     const ownerNames = snapshot.ownerNames?.map(n => ({ norm: normalizeForTaint(n.text), seq: n.seq }))
     const hits: TaintHit[] = []
     let allTargetsTyped = keys.targets.length > 0
@@ -371,7 +398,8 @@ export function promptTaintHits(keys: TaintKeys, snapshot: TaintSnapshot, unreso
     const now = snapshot.now ?? Date.now()
     const referable = Boolean(snapshot.refersBack) && allTargetsTyped
     const recent = (i: number) => i >= entries.length - REFER_BACK_PROMPTS && (entries[i].at === undefined || now - entries[i].at! <= REFER_BACK_MS)
-    const fromWindow = (piece: string) => entries.some((e, i) => e.squashed.includes(piece) && !(referable && recent(i)))
+    // B-924h: a refer-back clears a piece only inside the prompt's own report; the rest of it still taints.
+    const fromWindow = (piece: string) => entries.some((e, i) => e.squashed.includes(piece) && !(referable && recent(i) && e.report.includes(piece)))
     const ownerSquashed = squash(ownerRaw)
     // B-924h: a title argument that IS a looked-up title of a target of this call is a fact about the target
     // (the target check above decides about it), not content the window could have smuggled in.
