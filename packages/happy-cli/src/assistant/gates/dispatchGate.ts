@@ -402,7 +402,8 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         try {
             await mkdir(deps.pendingDir, { recursive: true, mode: 0o700 })
             await writePrivate(pendingPath(approvalId), pending)
-            const card = decisionCard(pending, payload, forced, await titleFor(args))
+            const title = await titleFor(args)
+            const card = decisionCard(pending, payload, forced, title)
             const posted = await deps.board.postDecision(card)
             const id = posted.id
             await writePrivate(pendingPath(approvalId), { ...pending, boardItemId: id, cardSha256: cardFaceHash(posted) })
