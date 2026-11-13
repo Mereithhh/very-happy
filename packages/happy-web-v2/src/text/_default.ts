@@ -3410,6 +3410,11 @@ export const en = {
                 images: 'On a new chat\'s page (before the session is up) and in the new-chat dialog, images can be pasted, dropped or picked (also on phones). They are uploaded once the session has started and reach Claude or Codex together with the text; a message of images only works too. A reload while it starts keeps them.',
                 noSilentDrop: 'Nothing is dropped silently any more: if the files cannot go out (upload failed, or the session does not take them), you are told why and the text and files are back in the box — send again to retry.',
             },
+            nov14a: {
+                title: 'More of the session list fits in the sidebar',
+                summary: 'On short screens such as an iPad in landscape, the sidebar entries now scroll away with the session list, so the list can use almost the whole sidebar.',
+                scroll: 'Main agent, New session and the entry rows scroll together with your sessions; the List / Status / Archived bar stays at the top while you scroll. The entries keep their names.',
+            },
             nov13p: {
                 title: 'Switching a Codex session to another account keeps the conversation on newer Codex',
                 summary: 'On Codex 0.167 and later, moving a Codex session between your machine login and an added account (or between accounts on different providers) continues the conversation instead of cancelling it.',

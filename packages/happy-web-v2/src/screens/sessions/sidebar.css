@@ -975,3 +975,38 @@
 .sb-row-project > svg { flex: none; }
 /* B-762 review: the name (not the flex box) carries the ellipsis — a flex container never shows one. */
 .sb-row-project-name { min-width: 0; max-width: calc(40cqw - 23px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ----- B-935: nav rows + list in one scroller ----- */
+/* Owner 11-14 (iPad 横屏 834pt, coarse): the 44px nav rows and the view bar left
+   the list ~270px (4 rows). The main agent / 新建会话 / capability rows now scroll
+   away with the list; the 列表 / 状态 / 归档 bar sticks to the scroller's top, the
+   header (brand · search · collapse) and the footer stay put. Rows hidden under
+   the stuck bar are not "visible" for reveal / drag scrolling (listScrollBand). */
+.sb-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  display: flex;
+  flex-direction: column;
+  /* the band under the stuck bar: focus / scrollIntoView land below it */
+  scroll-padding-top: 52px;
+}
+.sb-scroll > * { flex: none; }
+.sb-scroll > .sb-list { flex: 1 0 auto; overflow: visible; min-height: auto; }
+.sb-scroll > .sb-list-controls {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-sidebar);
+}
+@media (pointer: coarse) { .sb-scroll { scroll-padding-top: 60px; } }
+/* the shared fade's top band would dissolve the stuck bar: keep only the bottom one */
+@supports (animation-timeline: scroll()) {
+  .sb-scroll.vh-scroll-fade {
+    --vh-fade-top: 0px;
+    animation-name: vh-scroll-fade-bottom;
+    animation-timeline: scroll(self block);
+    animation-range: calc(100% - var(--vh-scroll-fade-size)) 100%;
+  }
+}

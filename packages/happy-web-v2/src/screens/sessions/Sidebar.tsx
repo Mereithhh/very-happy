@@ -102,6 +102,7 @@ import {
   findRevealTarget,
   isGroupCollapsed,
   revealExpandedAfterRoute,
+  listScrollBand,
   nearestScrollTop,
   planReveal,
   setGroupCollapsed,
@@ -434,6 +435,15 @@ export function Sidebar() {
   // disappearing rows are handled). The decision is a pure function so it can
   // be unit-tested; this hook is only the plumbing.
   const listRef = useRef<HTMLDivElement | null>(null);
+  /** B-935: the scroller (nav rows + list) and its sticky view bar; see listScrollBand. */
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const stickyRef = useRef<HTMLDivElement | null>(null);
+  const listBand = () => {
+    const scroller = scrollRef.current;
+    if (!scroller) return null;
+    const sr = scroller.getBoundingClientRect();
+    return { scroller, ...listScrollBand({ scrollerTop: sr.top, scrollerHeight: scroller.clientHeight, stickyBottom: stickyRef.current?.getBoundingClientRect().bottom ?? null }) };
+  };
   const [heldKeys, setHeldKeys] = useState<string[] | null>(null);
   const heldRef = useRef<string[] | null>(null);
   /** Row keys as currently RENDERED — the snapshot taken when the hold arms. */
@@ -888,14 +898,14 @@ export function Sidebar() {
     const STEP = 7;
     const autoScroll = () => {
       if (!state.active) return;
-      const rect = list.getBoundingClientRect();
+      const band = listBand();
       let d = 0;
-      if (state.lastY < rect.top + EDGE) d = -STEP;
-      else if (state.lastY > rect.bottom - EDGE) d = STEP;
-      if (d !== 0) {
-        const before = list.scrollTop;
-        list.scrollTop = before + d;
-        if (list.scrollTop !== before) update(state.lastY);
+      if (band && state.lastY < band.top + EDGE) d = -STEP;
+      else if (band && state.lastY > band.top + band.height - EDGE) d = STEP;
+      if (band && d !== 0) {
+        const before = band.scroller.scrollTop;
+        band.scroller.scrollTop = before + d;
+        if (band.scroller.scrollTop !== before) update(state.lastY);
       }
       state.raf = requestAnimationFrame(autoScroll);
     };
@@ -1203,11 +1213,11 @@ export function Sidebar() {
     const raf = requestAnimationFrame(() => {
       const list = listRef.current;
       const el = list?.querySelector<HTMLElement>(`[data-dragkey="${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(key) : key}"]`);
-      if (!list || !el) return;
-      const lr = list.getBoundingClientRect();
+      const band = listBand();
+      if (!list || !el || !band) return;
       const er = el.getBoundingClientRect();
-      const top = nearestScrollTop({ containerTop: lr.top, containerHeight: list.clientHeight, scrollTop: list.scrollTop, rowTop: er.top, rowHeight: er.height });
-      if (top !== null) list.scrollTop = top;
+      const top = nearestScrollTop({ containerTop: band.top, containerHeight: band.height, scrollTop: band.scroller.scrollTop, rowTop: er.top, rowHeight: er.height });
+      if (top !== null) band.scroller.scrollTop = top;
     });
     return () => cancelAnimationFrame(raf);
   }, [revealSeq, sections, displayRows, isCurrentRow, collapsedGroups, view, selectView, dataReady]);
@@ -1240,10 +1250,12 @@ export function Sidebar() {
       const lr = list.getBoundingClientRect();
       // Phone detail pages keep the list mounted but off screen: not seen yet.
       if (lr.width === 0 || lr.right <= 0 || lr.left >= window.innerWidth || getComputedStyle(list).visibility === 'hidden') return 'missing';
+      const band = listBand();
+      if (!band) return 'missing';
       const er = el.getBoundingClientRect();
-      const top = nearestScrollTop({ containerTop: lr.top, containerHeight: list.clientHeight, scrollTop: list.scrollTop, rowTop: er.top, rowHeight: er.height });
+      const top = nearestScrollTop({ containerTop: band.top, containerHeight: band.height, scrollTop: band.scroller.scrollTop, rowTop: er.top, rowHeight: er.height });
       if (top === null) return 'visible';
-      list.scrollTop = top;
+      band.scroller.scrollTop = top;
       return 'scrolled';
     };
     // The row can still move right after it lands (a member's row re-nests once
@@ -1470,6 +1482,8 @@ export function Sidebar() {
         </div>
       </header>
 
+      {/* B-935: the nav rows scroll away with the list (one scroller); the 列表/状态/归档 bar sticks at its top. */}
+      <div className="sb-scroll vh-scroll-fade" ref={scrollRef}>
       {/* B-916a: the main agent, always first under the header (desktop + phone) */}
       <MainAgentEntry />
 
@@ -1497,7 +1511,7 @@ export function Sidebar() {
         onNavigate={navigate}
       />
 
-      <div className="sb-list-controls">
+      <div className="sb-list-controls" ref={stickyRef}>
       <div className="sb-filter vh-segmented" role="tablist">
         {(['list', 'status', 'archived'] as View[]).map((v) => (
           <button
@@ -1568,7 +1582,7 @@ export function Sidebar() {
           dismissLabel={t('sidebar.tagNoticeDismiss') as string}
         />
       )}
-      <div className={`sb-list vh-scroll-fade${dragKey ? ' is-dragging' : ''}${projectLens ? ' sb-list--tree' : ''}`} ref={listRef} onKeyDown={projectLens ? onTreeKeyDown : undefined}>
+      <div className={`sb-list${dragKey ? ' is-dragging' : ''}${projectLens ? ' sb-list--tree' : ''}`} ref={listRef} onKeyDown={projectLens ? onTreeKeyDown : undefined}>
         <PendingSessionRows />
         {/* B-619: invitations first — they need an answer before anything else shows. */}
         <SharedInvites />
@@ -1908,6 +1922,7 @@ export function Sidebar() {
             ))}
           </div>
         )}
+      </div>
       </div>
 
       {/* B-555: tightest subscription window (renders nothing until reported) */}

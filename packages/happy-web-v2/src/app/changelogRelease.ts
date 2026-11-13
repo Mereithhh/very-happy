@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-14-sidebar-nav-scrolls-with-list',
+    date: '2026-11-14',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov14a.title',
+    summaryKey: 'changelog.releases.nov14a.summary',
+    itemKeys: ['changelog.releases.nov14a.scroll'],
+  },
+  {
     id: '2026-11-13-codex-switch-account-across-providers',
     cliVersion: '0.2.214',
     date: '2026-11-13',
