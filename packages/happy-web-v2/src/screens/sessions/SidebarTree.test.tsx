@@ -124,6 +124,16 @@ describe('按项目: the project tree', () => {
     expect(list(el).querySelector('[data-team-id="t-scout"] .sb-team-unplaced')).not.toBeNull();
   });
 
+  it('B-935: nav rows, the view bar and the list share one scroller; header and footer stay outside', async () => {
+    const el = await mount('atlas', 'project', '/');
+    const scroller = el.querySelector<HTMLElement>('.sb > .sb-scroll')!;
+    expect(scroller).not.toBeNull();
+    for (const sel of ['.sb-cap-nav', '.sb-actions', '.sb-list-controls', '.sb-list']) expect(scroller.querySelector(sel), sel).not.toBeNull();
+    expect([...scroller.children].some((c) => c.classList.contains('sb-list-controls'))).toBe(true); // a direct child, so it can stick
+    expect(scroller.querySelector('.sb-header, .sb-footer')).toBeNull();
+    expect(list(el).classList.contains('vh-scroll-fade')).toBe(false); // the scroller fades, not the list
+  });
+
   it('default folds: a team stays closed unless its page or a member is current', async () => {
     const el = await mount('atlas', 'project', '/');
     const shape = treeShape(el);

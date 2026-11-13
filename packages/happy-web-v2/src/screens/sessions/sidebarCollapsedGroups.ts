@@ -200,6 +200,20 @@ export function nearestScrollTop(input: {
   return Math.max(0, Math.round(input.scrollTop + bottom - input.containerHeight + margin));
 }
 
+/**
+ * B-935: the band of the sidebar scroller where list rows are actually seen.
+ * The nav rows and the list share one scroller and the view bar
+ * (列表/状态/归档) sticks to its top, so a row tucked under the stuck bar is
+ * NOT visible. List rows always sit below the bar, so the band starts at the
+ * bar's bottom (stuck or not) and never above the scroller top. Feed the
+ * result to nearestScrollTop as the container.
+ */
+export function listScrollBand(input: { scrollerTop: number; scrollerHeight: number; stickyBottom: number | null }): { top: number; height: number } {
+  const bottom = input.scrollerTop + input.scrollerHeight;
+  const top = Math.min(bottom, Math.max(input.scrollerTop, input.stickyBottom ?? input.scrollerTop));
+  return { top, height: bottom - top };
+}
+
 // ── temporary reveal expansion + reveal decision (review fixes) ──
 
 /**

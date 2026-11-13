@@ -18,7 +18,8 @@
  *  `#feedback-prompt` shows the feedback prompt card.
  *  B-865: `#search` seeds the one-search-entry scene (searchSeed.ts).
  *  B-873: `#issues` (seeded) / `#issues-empty` / `#issues-off` serve Issues from the in-page fake.
- *  B-916a: `#main-agent*` seeds the main agent scenes (mainAgentSeed.ts). */
+ *  B-916a: `#main-agent*` seeds the main agent scenes (mainAgentSeed.ts).
+ *  B-935: `#sidebar-dense` seeds a busy sidebar (sidebarDenseSeed.ts). */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGlobalBackNav } from '@/app/appBack';
@@ -34,6 +35,7 @@ import { seedLocationTrail } from './LocationTrailHarness';
 import { seedPlainSession } from './plainSessionSeed';
 import { seedSearchScene } from './searchSeed';
 import { seedMainAgentScene } from './mainAgentSeed';
+import { SIDEBAR_DENSE_HASH, seedSidebarDenseScene } from './sidebarDenseSeed';
 import { installIssuesHarness } from './issuesHarness';
 import { installFeedbackApi } from './feedbackHarness';
 import { FeedbackPromptCard } from '@/app/feedback/FeedbackPrompt';
@@ -81,7 +83,10 @@ export function DeviceShellHarness() {
     // B-865: `#search` — a content-search machine (answered in-page) and an offline one.
     const search = location.hash === '#search' ? seedSearchScene() : () => {};
     // B-873: `#issues` / `#issues-empty` / `#issues-off` — Issues against the in-page fake (issuesHarness.ts).
-    const issues = installIssuesHarness(location.hash, 'dev-machine');
+    // B-935: `#sidebar-dense` — main agent + Issues + usage bar + a long list (sidebarDenseSeed.ts).
+    const dense = location.hash === SIDEBAR_DENSE_HASH;
+    if (dense) seedSidebarDenseScene();
+    const issues = installIssuesHarness(dense ? '#issues' : location.hash, 'dev-machine');
     setReady(true);
     // B-801: `#draft` opens a 「新会话」 draft page (the store's real draft record; nothing is spawned).
     if (location.hash === '#draft' && !pendingSessions.list().some((r) => r.state === 'draft')) {

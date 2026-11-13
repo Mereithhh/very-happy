@@ -6,6 +6,7 @@ import {
   flattenOpenGroups,
   getCollapsedGroups,
   isGroupCollapsed,
+  listScrollBand,
   nearestScrollTop,
   parseCollapsedGroups,
   planReveal,
@@ -102,6 +103,25 @@ describe('nearestScrollTop (B-580)', () => {
   it('scrolls down just enough for a row below', () => {
     // row bottom at 100+600-100 → relative bottom 632; overshoot 232 + margin
     expect(nearestScrollTop({ ...box, rowTop: 700, rowHeight: 32 })).toBe(200 + 632 - 400 + 8);
+  });
+});
+
+describe('listScrollBand (B-935)', () => {
+  it('no bar: the band is the whole scroller', () => {
+    expect(listScrollBand({ scrollerTop: 100, scrollerHeight: 600, stickyBottom: null })).toEqual({ top: 100, height: 600 });
+  });
+  it('nav rows still on screen: the band starts under the (not yet stuck) bar — only nav rows sit above it', () => {
+    expect(listScrollBand({ scrollerTop: 100, scrollerHeight: 600, stickyBottom: 460 })).toEqual({ top: 460, height: 240 });
+  });
+  it('bar stuck at the top: rows under it do not count as visible', () => {
+    expect(listScrollBand({ scrollerTop: 100, scrollerHeight: 600, stickyBottom: 160 })).toEqual({ top: 160, height: 540 });
+    // a row whose top is under the bar is scrolled up to just below it
+    const band = listScrollBand({ scrollerTop: 100, scrollerHeight: 600, stickyBottom: 160 });
+    expect(nearestScrollTop({ containerTop: band.top, containerHeight: band.height, scrollTop: 300, rowTop: 140, rowHeight: 40 })).toBe(300 - 20 - 8);
+  });
+  it('bar above the scroller top never widens the band; a bar past the bottom leaves none', () => {
+    expect(listScrollBand({ scrollerTop: 100, scrollerHeight: 600, stickyBottom: 40 })).toEqual({ top: 100, height: 600 });
+    expect(listScrollBand({ scrollerTop: 100, scrollerHeight: 600, stickyBottom: 900 })).toEqual({ top: 700, height: 0 });
   });
 });
 
