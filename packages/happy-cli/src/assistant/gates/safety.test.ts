@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { PRESET_POLICIES, type MainAgentSafetyPolicy } from '@slopus/happy-wire'
-import { compileOutboundDenylist, outboundPreToolUseHook, OUTBOUND_DENY_REASON, TOOL_APPROVAL_UNAVAILABLE_REASON, DEFAULT_OUTBOUND_DENY_PATTERNS } from './outboundDenylist'
+import { compileOutboundDenylist, outboundPreToolUseHook, OUTBOUND_DENY_REASON, OWNER_APPROVED_OUTPUT, TOOL_APPROVAL_UNAVAILABLE_REASON, DEFAULT_OUTBOUND_DENY_PATTERNS } from './outboundDenylist'
 import { createDispatchGate, isReservedCardKey, cardFaceHash, type BoardItemView, type DispatchBoard } from './dispatchGate'
 import { createToolApproval, TOOL_APPROVAL_OPTIONS, toolCardKey } from './toolApproval'
 import { parseMainAgentConfig, persistAllowedTool, resolveMainAgentSafety, loadMainAgentConfig } from './config'
@@ -191,7 +191,7 @@ describe('B-922 gate 1 ask: card → owner → exactly that call', () => {
         const s = await askSetup()
         await s.call({ text: 'hi' })
         s.choose('once')
-        expect(await s.call({ text: 'hi' })).toEqual({ continue: true })
+        expect(await s.call({ text: 'hi' })).toEqual(OWNER_APPROVED_OUTPUT) // B-924g: Claude Code does not ask a second time
         const again = await s.call({ text: 'hi' })
         expect(reasonOf(again)).toContain('item-2')
         expect(s.board.postDecision).toHaveBeenCalledTimes(2)
@@ -203,14 +203,14 @@ describe('B-922 gate 1 ask: card → owner → exactly that call', () => {
         await s.call({ text: 'hi' })
         s.choose('once')
         expect(reasonOf(await s.call({ text: 'hi!' }))).toContain('item-2')
-        expect(await s.call({ text: 'hi' })).toEqual({ continue: true })
+        expect(await s.call({ text: 'hi' })).toEqual(OWNER_APPROVED_OUTPUT) // B-924g: Claude Code does not ask a second time
     })
 
     it('always: runs, joins allowedTools (memory + persisted), no more cards for that tool', async () => {
         const s = await askSetup()
         await s.call({ text: 'hi' })
         s.choose('always')
-        expect(await s.call({ text: 'hi' })).toEqual({ continue: true })
+        expect(await s.call({ text: 'hi' })).toEqual(OWNER_APPROVED_OUTPUT) // B-924g: Claude Code does not ask a second time
         expect(s.persist).toHaveBeenCalledWith('mcp__chat__send_message')
         expect(await s.call({ text: 'other text' })).toEqual({ continue: true })
         expect(s.board.postDecision).toHaveBeenCalledTimes(1)
@@ -242,7 +242,7 @@ describe('B-922 gate 1 ask: card → owner → exactly that call', () => {
         await s.call({ text: 'hi' })
         s.choose('once')
         const outs = await Promise.all([s.call({ text: 'hi' }), s.call({ text: 'hi' }), s.call({ text: 'hi' })])
-        expect(outs.filter(o => 'continue' in o).length).toBe(1)
+        expect(outs.filter(o => o === OWNER_APPROVED_OUTPUT).length).toBe(1)
         expect((await readdir(join(s.dir, 'pending-tool'))).filter(f => f.endsWith('.inflight')).length).toBe(1)
     })
 

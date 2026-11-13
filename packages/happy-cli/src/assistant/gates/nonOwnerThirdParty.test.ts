@@ -60,7 +60,7 @@ async function harness(safety: Record<string, unknown> | null) {
     /** One model tool call as the SDK runs it: PreToolUse first, the MCP server only on continue. */
     const call = async (tool: string, args: Record<string, unknown>) => {
         const verdict = await rt.preToolUse({ hook_event_name: 'PreToolUse', tool_name: `mcp__qa__${tool}`, tool_input: args })
-        if (!('continue' in verdict)) return { denied: verdict.hookSpecificOutput.permissionDecisionReason }
+        if (!('continue' in verdict) && verdict.hookSpecificOutput.permissionDecision !== 'allow') return { denied: verdict.hookSpecificOutput.permissionDecisionReason }
         const r = await qa.client.callTool({ name: tool, arguments: args })
         return { result: (r.content as Array<{ text: string }>)[0].text }
     }
