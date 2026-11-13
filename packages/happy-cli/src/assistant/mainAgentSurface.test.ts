@@ -874,6 +874,38 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
         } finally { installDispatchLedger(null); }
     });
 
+    it('B-925 on B-924g: stuck → 「继续」 in a woken turn is one card; the owner approves → the wrapper sends 「继续」 once, verbatim; dispatch_approved / a second click send nothing', async () => {
+        const { registerSystemCardRunner, systemCardPromptText, clearSystemCardRunners } = await import('./systemCardChoice');
+        const { attentionBoardLocalId } = await import('@slopus/happy-wire');
+        const { runtime, cards, approve } = taintedMainAgent();
+        await connect({ assistant: true, mainAgent: runtime });
+        registerSystemCardRunner('gates', runtime.gate.runBoardChoice);
+        try {
+            turn('automation-wake-follow-st2', 'automation', '[主动唤醒] 1. 会话异常结束（会话 sess-t5 · 退出码 1）');
+            const parked = JSON.parse(textOf(await mcp!.callTool({ name: 'session_send', arguments: { sessionId: 'sess-t5', text: '继续', risk: 'none' } })));
+            expect(parked).toMatchObject({ ok: true, state: 'awaiting_decision' });
+            session!.emit('turn-ended');
+            expect(cards).toHaveLength(1);
+            expect(cards[0].bodyMd).toContain('目标：会话 「T5」（sess-t5）');
+            expect(cards[0].bodyMd).toMatch(/内容：\n继续$/);
+            expect(cards[0].title).toContain('「T5」');
+            expect(state.backend).toEqual([]);
+            approve('card-1');
+            const localId = attentionBoardLocalId('card-1', 'k3x9q2ab');
+            session!.emit('user-message-routed', { localId, message: { content: { text: `${cards[0].title} → 批准执行` }, meta: { sentFrom: 'web' } } });
+            expect(await systemCardPromptText(localId)).toContain('系统已经替你执行了');
+            session!.emit('turn-started', [localId]);
+            expect(state.backend).toHaveLength(1);
+            // Verbatim: 「继续」 exactly, no 「本任务已获批」 line in front (VERBATIM_SEND_TOOLS).
+            expect(state.backend[0]).toMatch(/^deliver:\["sess-t5",.*"继续"/);
+            expect(state.backend[0]).not.toContain('本任务已获批');
+            // The model calling dispatch_approved in the click turn, and the owner clicking again: nothing more goes out.
+            expect(JSON.parse(textOf(await mcp!.callTool({ name: 'dispatch_approved', arguments: { approvalId: cards[0].key.split(':').pop()! } })))).toMatchObject({ state: 'already_dispatched' });
+            expect(await systemCardPromptText(localId)).toContain('已经执行过了');
+            expect(state.backend).toHaveLength(1);
+        } finally { clearSystemCardRunners(); }
+    });
+
     it('QA77 #6: an assistant without the gate runtime (pi / ACP) gets only the legacy B-051 tools', async () => {
         const names = (await connect({ assistant: true })).map(t => t.name);
         expect(names).toContain('sessions_list');
