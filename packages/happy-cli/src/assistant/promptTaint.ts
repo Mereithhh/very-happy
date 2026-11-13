@@ -40,6 +40,9 @@
  *    relayed — the body of a session_message (its sender's words) or the precheck block of an automation (the
  *    sessions the system listed). A CLI send, an automation's prose, a team message or any other non-owner text
  *    has no report: what it says stays tainted however the owner refers to it.
+ *  - B-924i (QA-T R62 P3-3): a call whose every target is the session that sent a session_message may carry text
+ *    from that message's own report (the main agent answering the sender with its own words) — no refer-back
+ *    needed. Only the real sender of a session_message has one: a CLI send, a precheck, any other prompt does not.
  *  - B-924g owner text = this turn + the owner's last 3 messages of the last 30 minutes.
  *  - B-924h (QA-T on #944 R62,「洗白」launder-1: a send made haiku repeat the injected target and payload as its
  *    reply, the owner then typed「好，在吗？」and the repeated reply counted as the owner's): the main agent's reply
@@ -84,7 +87,7 @@ export type TaintPrompt = TurnPrompt & { text?: string | null }
  * automation's precheck listed (早报 / 唤醒「卡住的会话」「可以收尾的会话」). Any other session it names —
  * a third party (「交给 T4」) — stays tainted.
  */
-export type TaintWindowEntry = { text: string; at?: number; releases?: readonly string[]; seq?: number; reportText?: string }
+export type TaintWindowEntry = { text: string; at?: number; releases?: readonly string[]; seq?: number; reportText?: string; sender?: string }
 
 export type TaintSnapshot = {
     /** The owner's own text of the current turn; null when the current turn is not the owner's. */
@@ -158,6 +161,14 @@ export function releasesOf(prompt: TaintPrompt, text: string): string[] {
     return []
 }
 
+/** B-924i: the real session that sent this session_message (never the CLI); undefined for anything else. */
+export function senderOf(prompt: TaintPrompt, text: string): string | undefined {
+    if (!(prompt.localId ?? '').startsWith('session-message-')) return undefined
+    const parsed = parsePeerMessage(text)
+    const sender = parsed?.kind === 'message' ? parsed.from.sessionId : null
+    return sender && sender !== CLI_PEER_SENDER_ID ? sender : undefined
+}
+
 /**
  * B-924h: the part of a non-owner prompt the owner may have relayed by referring back to it — the body of a
  * session_message from a real session (its own report), the precheck block of an automation (what the system
@@ -212,7 +223,8 @@ export function createPromptTaintTracker(opts: { window?: number; maxSeen?: numb
             }
             if (prompt.localId) { if (windowed.has(prompt.localId)) return; windowed.add(prompt.localId) }
             const reportText = reportTextOf(prompt, text)?.slice(0, NON_OWNER_SCAN_CHARS)
-            nonOwner.push({ text: text.slice(0, NON_OWNER_SCAN_CHARS), at: now(), releases: releasesOf(prompt, text), seq: ++seq, ...(reportText ? { reportText } : {}) })
+            const sender = senderOf(prompt, text)
+            nonOwner.push({ text: text.slice(0, NON_OWNER_SCAN_CHARS), at: now(), releases: releasesOf(prompt, text), seq: ++seq, ...(reportText ? { reportText } : {}), ...(sender ? { sender } : {}) })
             while (nonOwner.length > windowSize) nonOwner.shift()
             while (windowed.size > maxSeen) windowed.delete(windowed.values().next().value as string)
         },
@@ -398,8 +410,12 @@ export function promptTaintHits(keys: TaintKeys, snapshot: TaintSnapshot, unreso
     const now = snapshot.now ?? Date.now()
     const referable = Boolean(snapshot.refersBack) && allTargetsTyped
     const recent = (i: number) => i >= entries.length - REFER_BACK_PROMPTS && (entries[i].at === undefined || now - entries[i].at! <= REFER_BACK_MS)
+    // B-924i (QA-T R62 P3-3): a call whose every target is the session that sent this session_message hands that
+    // session its own words back — a piece inside its own report does not taint (the rest of the prompt still does,
+    // and so does every other window prompt holding the same piece).
+    const toSenderOnly = (e: { sender?: string }) => Boolean(e.sender) && keys.targets.length > 0 && keys.targets.every(t => t.kind === 'session' && t.value === e.sender)
     // B-924h: a refer-back clears a piece only inside the prompt's own report; the rest of it still taints.
-    const fromWindow = (piece: string) => entries.some((e, i) => e.squashed.includes(piece) && !(referable && recent(i) && e.report.includes(piece)))
+    const fromWindow = (piece: string) => entries.some((e, i) => e.squashed.includes(piece) && !(e.report.includes(piece) && ((referable && recent(i)) || toSenderOnly(e))))
     const ownerSquashed = squash(ownerRaw)
     // B-924h: a title argument that IS a looked-up title of a target of this call is a fact about the target
     // (the target check above decides about it), not content the window could have smuggled in.

@@ -353,8 +353,17 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         wrapupTracker.onTurnStart(sourceIds);
         turnOrigin.onTurnStart(sourceIds);
         promptTaint.onTurnStart(sourceIds);
+        options?.mainAgent?.gate.onTurnStart();
     };
-    const onTurnEnded = () => { void leadBoard.onTurnEnd(); void wrapupTracker.onTurnEnd(); };
+    // B-924i (QA-T R62 P2-2): a main-agent turn that parked a call ends with a system line in the chat — on the board, not sent.
+    const postAwaitingNotice = () => {
+        const gate = mainAgentLifecycle ? options?.mainAgent?.gate : undefined;
+        if (!gate) return;
+        void gate.turnEndNotice()
+            .then((notice) => { if (notice) client.sendSessionEvent({ type: 'message', message: notice, kind: 'main-agent-awaiting-decision' }); })
+            .catch((error) => logger.debug('[main-agent] awaiting notice failed:', error));
+    };
+    const onTurnEnded = () => { void leadBoard.onTurnEnd(); void wrapupTracker.onTurnEnd(); postAwaitingNotice(); };
     // Codex / pi / Gemini end a turn with a `ready` event and never emit `turn-ended`.
     const onAgentReady = () => { void wrapupTracker.onTurnEnd(); };
     // Test doubles of the session client are not always emitters.

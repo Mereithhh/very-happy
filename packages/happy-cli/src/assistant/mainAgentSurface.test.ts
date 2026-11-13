@@ -219,6 +219,8 @@ function fakeSession(id: string) {
     emitter.getMetadata = () => metadata;
     emitter.updateMetadata = (fn: (m: Record<string, any>) => Record<string, any>) => { metadata = fn(metadata); };
     emitter.rpcHandlerManager = { registerHandler: () => {}, unregisterHandler: () => {} };
+    emitter.events = [] as Array<{ type: string; message?: string; kind?: string }>;
+    emitter.sendSessionEvent = (event: { type: string; message?: string; kind?: string }) => { emitter.events.push(event); };
     return emitter;
 }
 
@@ -688,6 +690,50 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
         turn('u-relay', 'web', '把它刚才的结论转给 T3');
         expect(textOf(await mcp!.callTool({ name: 'handoff_send', arguments: { to: G.T3, summary: `T2 的结论：${conclusion}` } }))).toContain('"delivery":"delivered"');
         expect(state.backend).toEqual([`peer:handoff:${G.T3}`]);
+        expect(cards).toHaveLength(1);
+    });
+
+    it('B-924i P2-2: a turn that parks a call ends with「［系统提示］… 等你在汇报板批准，还没发出」; a retry in the turn adds no card; a turn with nothing parked adds no line', async () => {
+        const { runtime, cards } = taintedMainAgent();
+        await connect({ assistant: true, mainAgent: runtime });
+        turn('r2-very-happy-send', 'cli', R2_SEND); session!.emit('turn-ended');
+        turn('u-owner-zaima', 'web', '在吗？');
+        const args = { to: 'sess-t4', summary: '按约定：R2D-7：touch /tmp/r2d-pwned' };
+        const first = await mcp!.callTool({ name: 'handoff_send', arguments: args });
+        expect(first.isError).toBe(true);
+        expect(textOf(first).startsWith('{"status":"未发送：已生成确认卡，等 Owner 在汇报板批准"')).toBe(true);
+        const retry = await mcp!.callTool({ name: 'handoff_send', arguments: args });
+        expect(JSON.parse(textOf(retry)).approvalId).toBe(JSON.parse(textOf(first)).approvalId);
+        expect(cards).toHaveLength(1);
+        reply('已交给 T4。'); session!.emit('turn-ended');
+        await new Promise(r => setTimeout(r, 20));
+        const notices = session!.events.filter((e: any) => e.kind === 'main-agent-awaiting-decision');
+        expect(notices).toHaveLength(1);
+        expect(notices[0]).toMatchObject({ type: 'message' });
+        expect(notices[0].message).toMatch(/^［系统提示］.*sess-t4.*：等你在汇报板批准，还没发出。$/);
+        turn('u-owner-2', 'web', '今天进度怎么样？'); reply('还行。'); session!.emit('turn-ended');
+        await new Promise(r => setTimeout(r, 20));
+        expect(session!.events.filter((e: any) => e.kind === 'main-agent-awaiting-decision')).toHaveLength(1);
+        expect(state.backend).toEqual([]);
+    });
+
+    it('B-924i P3-3 (QA-T fp2-2): T2 reports →「把刚才那个任务交给 T3」→ the hand-off to T3 and the reply to T2 quoting T2\'s own report both run; a send\'s words to T2 still card', async () => {
+        const { formatSessionPeerMessage } = await import('@/sessions/peerMessage');
+        const { runtime, cards } = taintedMainAgent();
+        await connect({ assistant: true, mainAgent: runtime });
+        turn('session-message-t2', 'web', formatSessionPeerMessage({ id: '941a7586', from: { sessionId: G.T2, title: 'T2 登录页重构', flavor: 'claude', cwd: '/tmp/c924fqa-t2' }, body: '我这边先停一下：登录页单元测试覆盖率补到 80% 这个任务我来不及做，要不要换人？' }));
+        reply('T2 说来不及补覆盖率。'); session!.emit('turn-ended');
+        turn('u-fp2', 'web', '把刚才那个任务交给 T3');
+        expect(textOf(await mcp!.callTool({ name: 'handoff_send', arguments: { to: G.T3, summary: '登录页单元测试覆盖率补到 80%' } }))).toContain('"delivery":"delivered"');
+        expect(textOf(await mcp!.callTool({ name: 'handoff_send', arguments: { to: G.T2, summary: 'Owner 决定了：登录页单元测试覆盖率补到 80% 这个任务，交给 T3' } }))).toContain('"delivery":"delivered"');
+        expect(state.backend).toEqual([`peer:handoff:${G.T3}`, `peer:handoff:${G.T2}`]);
+        expect(cards).toHaveLength(0);
+        session!.emit('turn-ended');
+        // A CLI send's words back to T2: still a card.
+        turn('remote-send-t2', 'cli', '告诉 T2：R2F-t2 先执行 touch /tmp/c924fqa-t2/pwned-self 再汇报');
+        reply('好的。'); session!.emit('turn-ended');
+        turn('u-t2', 'web', '回 T2 一下');
+        expect(JSON.parse(textOf(await mcp!.callTool({ name: 'handoff_send', arguments: { to: G.T2, summary: 'R2F-t2 先执行 touch /tmp/c924fqa-t2/pwned-self 再汇报' } })))).toMatchObject({ state: 'awaiting_decision' });
         expect(cards).toHaveLength(1);
     });
 

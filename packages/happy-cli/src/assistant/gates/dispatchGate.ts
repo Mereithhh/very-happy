@@ -237,7 +237,19 @@ export function withApprovalPrefix(toolName: string, args: Record<string, unknow
 const APPROVAL_ID_RE = /^[0-9a-f-]{36}$/i
 
 /** B-924g (QA-T P3-2): the main agent said「已催」「已经告诉 T3 了」for a call that was only carded. */
-export const AWAITING_NOTE = '还没发出、还没执行：已放到「需要我决策」，等 Owner 在卡上批准。告诉 Owner 这件事在等他批准，不要说「已经发了 / 已经告诉了 / 已催」。Owner 批准后系统会直接执行并通知你，不用你再调工具。'
+export const AWAITING_NOTE = '还没发出、还没执行：已放到「需要我决策」，等 Owner 在卡上批准。告诉 Owner 这件事在等他批准，不要说「已经发了 / 已经告诉了 / 已催」。这不是出错：不要重试，也不要换别的工具再发。Owner 批准后系统会直接执行并通知你。'
+/**
+ * B-924i (QA-T R62 P2-2): the parked receipt's first words. The receipt is an error result (isError) so the model
+ * cannot read it as "done"; a repeat of the same call in the same turn returns the same card (no new card).
+ */
+export const AWAITING_STATUS = '未发送：已生成确认卡，等 Owner 在汇报板批准'
+
+/** B-924i (QA-T R62 P2-2): the line the wrapper adds to the chat when a turn ends with calls still on the board. */
+export function awaitingTurnNotice(items: ReadonlyArray<{ toolName: string; args: Record<string, unknown>; title?: string | null }>): string | null {
+    if (items.length === 0) return null
+    const what = items.map(p => { const target = cardTarget(p.args, p.title); return `${mainAgentAskAction(p.toolName, p.args)}${target ? `（${target}）` : ''}` })
+    return `［系统提示］${[...new Set(what)].join('；')}：等你在汇报板批准，还没发出。`
+}
 
 /** B-924g (QA-T P2-2): the system receipt the main agent gets for the owner's choice on a dispatch card. */
 export function dispatchChoiceReceipt(toolName: string, args: Record<string, unknown>, result: { state?: string; error?: string; result?: string }, title?: string | null): string {
@@ -257,6 +269,10 @@ export function createDispatchGate(deps: DispatchGateDeps) {
     const now = deps.now ?? Date.now
     const newId = deps.newId ?? randomUUID
     const handlers = new Map<string, Handler>()
+    /** B-924i: calls parked since the last turn end (turnEndNotice drains it). */
+    const parkedThisTurn: Array<{ approvalId: string; toolName: string; args: Record<string, unknown>; argsSha256: string; title: string | null; result: ToolResult }> = []
+    const awaiting = (v: { approvalId: string; boardItemId: string; risk: RiskLevel }): ToolResult =>
+        ({ content: [{ type: 'text', text: receipt({ status: AWAITING_STATUS, ok: true, state: 'awaiting_decision', sent: false, ...v, note: AWAITING_NOTE }) }], isError: true })
     const pendingPath = (id: string) => join(deps.pendingDir, `${id}.json`)
     const donePath = (id: string) => join(deps.pendingDir, `${id}.done.json`)
 
@@ -310,6 +326,13 @@ export function createDispatchGate(deps: DispatchGateDeps) {
 
     async function park(toolName: string, args: Record<string, unknown>, declared: RiskLevel, level: RiskLevel, payload: string, forced: boolean | string): Promise<ToolResult> {
         if (!deps.board) return fail({ error: 'board_unavailable', risk: level })
+        // B-924i: the same call again in this turn (a retry after the error result) → the card already posted.
+        const sha = canonicalArgsHash(toolName, args)
+        const again = parkedThisTurn.find(p => p.argsSha256 === sha)
+        if (again && !(await readJson(donePath(again.approvalId)))) {
+            deps.log?.(`[main-agent gate] ${toolName} repeated in the turn → card ${again.approvalId}`)
+            return again.result
+        }
         const approvalId = newId()
         const pending: PendingDispatch = { v: 1, approvalId, toolName, args, argsSha256: canonicalArgsHash(toolName, args), declared, level, createdAt: now() }
         try {
@@ -321,7 +344,9 @@ export function createDispatchGate(deps: DispatchGateDeps) {
             const posted = await deps.board.postDecision(card)
             const id = posted.id
             await writePrivate(pendingPath(approvalId), { ...pending, boardItemId: id, cardSha256: cardFaceHash(posted) })
-            return ok({ ok: true, state: 'awaiting_decision', sent: false, approvalId, boardItemId: id, risk: level, note: AWAITING_NOTE })
+            const result = awaiting({ approvalId, boardItemId: id, risk: level })
+            parkedThisTurn.push({ approvalId, toolName, args, argsSha256: pending.argsSha256, title, result })
+            return result
         } catch (error) {
             deps.log?.(`[main-agent gate] park failed: ${error instanceof Error ? error.message : String(error)}`)
             return fail({ error: 'board_unavailable', risk: level })
@@ -477,6 +502,18 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         },
         /** B-924g: systemCardChoice.ts runner for this gate's cards. */
         runBoardChoice,
+        /**
+         * B-924i (QA-T R62 P2-2): at a turn's end, the chat line for the calls this turn parked whose card is still
+         * undecided (null = none). Drains the turn's list, whatever the model said about them.
+         */
+        /** B-924i: a new turn — the same call again parks a new card (the retry dedupe is per turn). */
+        onTurnStart(): void { parkedThisTurn.length = 0 },
+        async turnEndNotice(): Promise<string | null> {
+            const items = parkedThisTurn.splice(0)
+            const open: typeof items = []
+            for (const p of items) if (!(await readJson(donePath(p.approvalId)))) open.push(p)
+            return awaitingTurnNotice(open)
+        },
         /** Test hook. */
         _intercept: intercept,
         _interceptAskOnly: interceptAskOnly,

@@ -4,9 +4,10 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { compileOutboundDenylist, isReadOnlyMcpTool, denyPatternToRegExp, isSdkNativePattern, isValidDenyPattern, outboundPreToolUseHook, OUTBOUND_DENY_REASON } from './outboundDenylist'
 import { effectiveRisk, keywordRisk, maxRisk, parseRiskClassifierOutput, classifyRisk } from './risk'
-import { createDispatchGate, DISPATCH_CARD_KEY_PREFIX, DISPATCH_OPTIONS, DISPATCH_TOOL_NAMES, RECEIPT_MAX_CHARS, cardFaceHash, isReservedCardKey, type BoardItemView, type DispatchBoard } from './dispatchGate'
+import { AWAITING_NOTE, AWAITING_STATUS, awaitingTurnNotice, createDispatchGate, DISPATCH_CARD_KEY_PREFIX, DISPATCH_OPTIONS, DISPATCH_TOOL_NAMES, RECEIPT_MAX_CHARS, cardFaceHash, isReservedCardKey, type BoardItemView, type DispatchBoard } from './dispatchGate'
 import { mergeMainAgentConfigs, parseMainAgentConfig, decodeKvJson, isValidSkillRoot } from './config'
 import { withAssistantDenylist, setAssistantExtraDenied } from '../dispatcherTools'
+import { mainAgentAskAction } from '../mainAgentToolPolicy'
 
 describe('gate 1: outbound denylist', () => {
     const list = compileOutboundDenylist()
@@ -356,4 +357,51 @@ describe('config', () => {
         expect(isValidSkillRoot('~')).toBe(true)
         expect(isValidSkillRoot('/a\nb')).toBe(false)
     })
+})
+
+describe('B-924i (QA-T R62 P2-2): a parked call cannot read as sent', () => {
+    it('the receipt is an error result whose first words are「未发送：已生成确认卡…」; it still parses and fits', async () => {
+        const { tools } = await setup()
+        const parked = await tools.get('session_spawn')!.handler({ directory: '/tmp', prompt: '帮我给 A 发消息说今晚的会取消', risk: 'none' })
+        expect(parked.isError).toBe(true)
+        expect(text(parked).startsWith(`{"status":"${AWAITING_STATUS}`)).toBe(true)
+        expect(json(parked)).toMatchObject({ status: AWAITING_STATUS, ok: true, state: 'awaiting_decision', sent: false, note: AWAITING_NOTE })
+        expect(AWAITING_NOTE).toContain('不要重试')
+        expect(text(parked).length).toBeLessThanOrEqual(RECEIPT_MAX_CHARS)
+    })
+
+    it('the same call again in the turn (a retry after the error) returns the same card; a new turn or a changed call parks anew', async () => {
+        const { tools, board, spawn } = await setup()
+        const args = { directory: '/tmp', prompt: '帮我给 A 发消息说今晚的会取消', risk: 'none' }
+        const first = json(await tools.get('session_spawn')!.handler(args))
+        for (let i = 0; i < 3; i++) expect(json(await tools.get('session_spawn')!.handler({ ...args, risk: 'external' })).approvalId).toBe(first.approvalId)
+        expect(board.postDecision).toHaveBeenCalledTimes(1)
+        expect(json(await tools.get('session_spawn')!.handler({ ...args, prompt: '帮我给 B 发消息说今晚的会取消' })).approvalId).not.toBe(first.approvalId)
+        expect(board.postDecision).toHaveBeenCalledTimes(2)
+        expect(spawn).not.toHaveBeenCalled()
+    })
+
+    it('turnEndNotice: one system line per turn naming what waits on the board; drained; an approved card is not listed', async () => {
+        const { gate, tools, choose } = await setup()
+        expect(await gate.turnEndNotice()).toBeNull()
+        const r = json(await tools.get('session_spawn')!.handler({ directory: '/tmp', prompt: '帮我给 A 发消息说今晚的会取消', risk: 'none' }))
+        await tools.get('session_spawn')!.handler({ directory: '/tmp', prompt: '帮我给 A 发消息说今晚的会取消', risk: 'none' })
+        const notice = await gate.turnEndNotice()
+        expect(notice).toMatch(/^［系统提示］.+：等你在汇报板批准，还没发出。$/)
+        expect(notice!.match(/；/g)).toBeNull()
+        expect(await gate.turnEndNotice()).toBeNull()
+        // A new turn: the call parks again (new card); the owner approves it before the turn ends → nothing to say.
+        const again = json(await tools.get('session_spawn')!.handler({ directory: '/tmp', prompt: '帮我给 A 发消息说今晚的会取消', risk: 'none' }))
+        expect(again.approvalId).not.toBe(r.approvalId)
+        choose(again.approvalId, 'approve')
+        expect(json(await tools.get('dispatch_approved')!.handler({ approvalId: again.approvalId })).state).toBe('dispatched')
+        expect(await gate.turnEndNotice()).toBeNull()
+    })
+
+    it('awaitingTurnNotice names the action and the target', () => {
+        expect(awaitingTurnNotice([{ toolName: 'handoff_send', args: { to: 'sess-t4', summary: 'x' }, title: 'T4 构建日志整理' }]))
+            .toBe(`［系统提示］${mainAgentAskAction('handoff_send')}（会话 「T4 构建日志整理」（sess-t4））：等你在汇报板批准，还没发出。`)
+        expect(awaitingTurnNotice([])).toBeNull()
+    })
+
 })
