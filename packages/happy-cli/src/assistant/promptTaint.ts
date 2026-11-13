@@ -34,8 +34,14 @@
  *    that the owner's text does not contain (B-924g: or, for a 6–11-char text, is wholly inside one). Naming
  *    the target does not clear copied text — unless the owner refers back to it (「把刚才那个任务交给 T3」),
  *    named every target, and the text is from one of the 5 newest window prompts of the last 30 minutes.
- *  - B-924g owner text = this turn + the owner's last 3 messages of the last 30 minutes + (when this turn is a
- *    confirmation:「对」「好，让它收尾」) the main agent's reply right before it, the question being answered.
+ *  - B-924g owner text = this turn + the owner's last 3 messages of the last 30 minutes.
+ *  - B-924h (QA-T on #944 R62,「洗白」launder-1: a send made haiku repeat the injected target and payload as its
+ *    reply, the owner then typed「好，在吗？」and the repeated reply counted as the owner's): the main agent's reply
+ *    just before this turn counts (`ownerReply`) only when ALL hold — the PREVIOUS turn was the owner's (not a
+ *    send / automation / wake-up / board_choice / chip option / retry of those), its last reply is a question
+ *    to the owner (ends with ? / ？), and this turn is a bare short confirmation (`isConfirmation`:「对」「好的」,
+ *    not「好，在吗？」). Even then it names a target only when no window prompt names that target, and it
+ *    never clears a text fragment: a piece of the reply that a window prompt also has is still the window's.
  *  - a session target whose title cannot be resolved while the window is not empty, and that the owner did
  *    not name by id, is tainted (fail-closed: the window might name it by title).
  *
@@ -78,16 +84,21 @@ export type TaintSnapshot = {
     /** The owner's own text of the current turn; null when the current turn is not the owner's. */
     ownerText: string | null
     /**
-     * B-924g: everything that counts as the owner's words for this turn — `ownerText`, the owner's last
-     * OWNER_HISTORY messages of the last 30 minutes, and, when this turn is a confirmation (「对」「好，…」),
-     * the main agent's reply just before it (the question the owner answered). Default `ownerText`.
+     * B-924g: everything that counts as the owner's words for this turn — `ownerText` and the owner's last
+     * OWNER_HISTORY messages of the last 30 minutes. Default `ownerText`. (B-924h: never the main agent's reply.)
      */
     ownerContext?: string
+    /**
+     * B-924h: the main agent's question this turn confirms — set only when the previous turn was the owner's,
+     * its last reply asks the owner (? / ？) and this turn is a bare short confirmation. It names a target only
+     * when no window prompt names it, and clears no text (see promptTaintHits).
+     */
+    ownerReply?: string
     /** B-924g: the part of `ownerContext` the owner typed (no main-agent reply) — what「刚才那个」needs to name the targets. */
     ownerTyped?: string
     /**
      * B-924g: the owner's words with their arrival order (`seq`, shared with the window entries; this turn's
-     * text and the question it confirms = Infinity). An earlier owner message names a target only against the
+     * text = Infinity). An earlier owner message names a target only against the
      * window prompts that came BEFORE it: the owner saying「T4」at 10:00 does not clear a send at 10:05 that
      * points at T4. Absent = `ownerContext` names targets against every window prompt.
      */
@@ -99,15 +110,19 @@ export type TaintSnapshot = {
     now?: number
 }
 
-/** B-924g: a reply to the main agent's question — 对 / 好 / 是的 / 可以 / ok …, alone or leading (「好，让它收尾」). */
+/**
+ * A reply to the main agent's question: the WHOLE message, punctuation removed, is one of these short words
+ * (≤ CONFIRM_MAX_CHARS). B-924h: a leading word no longer counts —「好，在吗？」「好，让它收尾」are not confirmations.
+ */
 const CONFIRM_WORDS = new Set(['对', '对的', '对啊', '对对', '好', '好的', '好啊', '好吧', '好滴', '是', '是的', '嗯', '嗯嗯', '行', '可以', '可以的', '没错', '没问题', '确认', '同意', '就这样', '去吧', '发吧', '做吧', '可', 'ok', 'okay', 'yes', 'yep', 'y', 'sure'])
+export const CONFIRM_MAX_CHARS = 6
 export function isConfirmation(text: string): boolean {
-    const n = normalizeForTaint(text).trim()
-    const bare = n.replace(/[\s\p{P}\p{S}]/gu, '')
-    if (!bare) return false
-    if (CONFIRM_WORDS.has(bare)) return true
-    const head = n.match(/^([^\s\p{P}\p{S}]+)[\s\p{P}\p{S}]/u)?.[1]
-    return head !== undefined && CONFIRM_WORDS.has(head)
+    const bare = normalizeForTaint(text).replace(/[\s\p{P}\p{S}]/gu, '')
+    return Array.from(bare).length > 0 && Array.from(bare).length <= CONFIRM_MAX_CHARS && CONFIRM_WORDS.has(bare)
+}
+/** B-924h: the main agent's reply asks the owner something — its last line ends with ? / ？ (closing quotes / markdown allowed). */
+export function asksOwner(reply: string): boolean {
+    return /[?？][\s*_`'"”’」』)）\]】]*$/u.test(reply.trim())
 }
 /** B-924g: words that point back at something already said. 「约定」is not one (repro 2: 「按约定办」). */
 const REFERS_BACK = /刚才|刚刚|上面|上述|前面|上一条|上条|那条|这条|那个|这个|那些|这些|它|汇报|报告|早报|唤醒|提到|说的|原话|转给|转交|照着/
@@ -151,6 +166,7 @@ export function createPromptTaintTracker(opts: { window?: number; maxSeen?: numb
     let ownerText: string | null = null
     let ownerContext: string | null = null
     let ownerTyped: string | null = null
+    let ownerReply: string | null = null
     let turnReply: string[] = []
     return {
         onUserMessage(prompt: TaintPrompt): void {
@@ -179,22 +195,26 @@ export function createPromptTaintTracker(opts: { window?: number; maxSeen?: numb
         },
         /** The batch that starts a turn: its owner prompts are the owner's text; any non-owner prompt = not the owner's turn. */
         onTurnStart(sourceIds?: readonly string[]): void {
-            const reply = turnReply.join('\n').slice(-REPLY_CHARS)
+            // B-924h ①: the previous turn's reply is a candidate only when that turn was the owner's; ② only its
+            // last message, and only when it asks the owner something.
+            const previousWasOwner = ownerText !== null
+            const lastReply = (turnReply.at(-1) ?? '').slice(-REPLY_CHARS)
             turnReply = []
             const prompts = (sourceIds ?? []).map(id => seen.get(id) ?? { localId: id, sentFrom: null, text: '' })
             ownerText = prompts.length && prompts.every(p => promptOrigin(p) === 'owner') ? prompts.map(p => p.text ?? '').join('\n') : null
-            if (ownerText === null) { ownerContext = null; ownerTyped = null; ownerNames = []; return }
+            if (ownerText === null) { ownerContext = null; ownerTyped = null; ownerReply = null; ownerNames = []; return }
             const batch = new Set(sourceIds ?? [])
             const at = now()
             const earlier = ownerHistory.filter(h => !batch.has(h.localId) && at - h.at <= OWNER_HISTORY_MS).slice(-OWNER_HISTORY)
-            const confirmed = reply && isConfirmation(ownerText) ? [reply] : []
+            // ③ a bare short confirmation only.
+            ownerReply = previousWasOwner && lastReply.trim() && asksOwner(lastReply) && isConfirmation(ownerText) ? lastReply : null
             ownerTyped = [...earlier.map(h => h.text), ownerText].join('\n')
-            ownerContext = [...earlier.map(h => h.text), ...confirmed, ownerText].join('\n')
-            ownerNames = [...earlier.map(h => ({ text: h.text, seq: h.seq })), ...[...confirmed, ownerText].map(text => ({ text, seq: Infinity }))]
+            ownerContext = ownerTyped
+            ownerNames = [...earlier.map(h => ({ text: h.text, seq: h.seq })), { text: ownerText, seq: Infinity }]
         },
         snapshot: (): TaintSnapshot => ({
             ownerText,
-            ...(ownerText !== null ? { ownerContext: ownerContext ?? ownerText, ownerTyped: ownerTyped ?? ownerText, ownerNames: ownerNames.map(n => ({ ...n })), refersBack: refersBack(ownerText) } : {}),
+            ...(ownerText !== null ? { ownerContext: ownerContext ?? ownerText, ownerTyped: ownerTyped ?? ownerText, ...(ownerReply ? { ownerReply } : {}), ownerNames: ownerNames.map(n => ({ ...n })), refersBack: refersBack(ownerText) } : {}),
             nonOwner: nonOwner.map(e => ({ ...e, releases: [...(e.releases ?? [])] })),
             now: now(),
         }),
@@ -313,7 +333,9 @@ const entryOf = (e: string | TaintWindowEntry): TaintWindowEntry => typeof e ===
  * (ownerText null) = [] here: those turns are already refused / carded by turnOrigin.ts and sendGuard.ts.
  *
  * B-924g:
- *  - owner side = `ownerContext` (this turn + the owner's recent messages + the question a 「对」answers);
+ *  - owner side = `ownerContext` (this turn + the owner's recent messages);
+ *  - B-924h: `ownerReply` (the question a bare「对」answers) names a target only when no window prompt names it,
+ *    and clears no text fragment;
  *  - a window prompt naming a session it releases (its own sender, a session its precheck listed) does not
  *    taint that session; its text is still checked;
  *  - a text from a recent window prompt is not tainted when the owner refers back to it (「把刚才那个任务交给
@@ -339,6 +361,7 @@ export function promptTaintHits(keys: TaintKeys, snapshot: TaintSnapshot, unreso
             ? ownerNames.some(n => (seqOf === undefined || n.seq > seqOf) && named(n.norm))
             : named(owner)
         if (!ownerNames && named(owner)) continue
+        if (snapshot.ownerReply && named(normalizeForTaint(snapshot.ownerReply)) && !entries.some(e => named(e.norm))) continue
         const foreign = entries.filter(e => !e.releases.has(t.value) && !namedAfter(e.seq))
         if (ownerNames && !foreign.length && ownerNames.some(n => named(n.norm))) continue
         const via = ids.find(id => foreign.some(e => mentions(e.norm, id))) ?? t.titles.find(title => foreign.some(e => mentionsTitle(e.norm, title)))
@@ -350,7 +373,10 @@ export function promptTaintHits(keys: TaintKeys, snapshot: TaintSnapshot, unreso
     const recent = (i: number) => i >= entries.length - REFER_BACK_PROMPTS && (entries[i].at === undefined || now - entries[i].at! <= REFER_BACK_MS)
     const fromWindow = (piece: string) => entries.some((e, i) => e.squashed.includes(piece) && !(referable && recent(i)))
     const ownerSquashed = squash(ownerRaw)
-    for (const text of [...keys.texts, ...keys.titleArgs]) {
+    // B-924h: a title argument that IS a looked-up title of a target of this call is a fact about the target
+    // (the target check above decides about it), not content the window could have smuggled in.
+    const realTitles = new Set(keys.targets.flatMap(t => t.titles).map(squash))
+    for (const text of [...keys.texts, ...keys.titleArgs.filter(a => !realTitles.has(squash(a)))]) {
         const s = squash(text)
         if (s.length >= FRAGMENT_CHARS) {
             const f = [...fragments(text)].find(f => !ownerSquashed.includes(f) && fromWindow(f))
