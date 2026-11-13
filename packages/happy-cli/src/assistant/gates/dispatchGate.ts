@@ -20,6 +20,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { approvalClaims, cardFaceHash, clipBytes, DISPATCH_CARD_KEY_PREFIX, isReservedCardKey, ownerDecision, writePrivateJson as writePrivate, type BoardItemView } from '@/attention/ownerApproval'
 import type { AssistantToolRegistrar } from '../assistantTools'
+import type { DispatchPolicy } from '@slopus/happy-wire'
 import { effectiveRisk, isRiskLevel, RISK_LEVELS, type OneShotRunner, type RiskLevel } from './risk'
 
 /** Dispatch tools and the argument text each hands over (spec §4.2 table). */
@@ -82,8 +83,8 @@ const ok = (value: Record<string, unknown>): ToolResult => ({ content: [{ type: 
 const fail = (value: Record<string, unknown>): ToolResult => ({ content: [{ type: 'text', text: receipt({ ok: false, ...value }) }], isError: true })
 
 export type DispatchBoard = {
-    /** Post (upsert by key) the decision card; resolves to the item id. Throws when the board is unavailable. */
-    postDecision(card: { key: string; title: string; bodyMd: string; requestId: string }): Promise<BoardItemView>
+    /** Post (upsert by key) the decision card; resolves to the item id. Throws when the board is unavailable. Default options = DISPATCH_OPTIONS. */
+    postDecision(card: { key: string; title: string; bodyMd: string; requestId: string; options?: ReadonlyArray<{ id: string; label: string; recommended?: boolean }> }): Promise<BoardItemView>
     /** Find the card by key among this session's items (any state). Null = not found. Throws when unavailable. */
     findByKey(key: string): Promise<BoardItemView | null>
     /** The card with this id among this session's items (any state). Null = not found. Throws when unavailable. */
@@ -116,6 +117,13 @@ export type DispatchGateDeps = {
     now?: () => number
     newId?: () => string
     log?: (line: string) => void
+    /** B-922: what each non-none level does (default: ask for both = B-916c). Read per call. */
+    dispatchPolicy?: () => { external: DispatchPolicy; production: DispatchPolicy }
+    /**
+     * Force the decision card whatever the risk (and whatever the dispatch policy). One hook for every such
+     * rule: setup.ts ORs the conditions (B-922: terminal_send while Bash is off). Args are the call's (no risk).
+     */
+    mustAsk?: (toolName: string, args: Record<string, unknown>) => boolean
 }
 
 type Handler = (args: any, extra?: any) => Promise<ToolResult> | ToolResult
@@ -125,7 +133,7 @@ function firstLine(text: string, max: number): string {
     return line.length > max ? `${line.slice(0, max - 1)}…` : line
 }
 
-export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'toolName' | 'declared' | 'level'>, payload: string) {
+export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'toolName' | 'declared' | 'level'>, payload: string, forced = false) {
     const head = firstLine(payload, 60) || pending.toolName
     return {
         key: `${DISPATCH_CARD_KEY_PREFIX}${pending.approvalId}`,
@@ -134,6 +142,7 @@ export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'tool
             `工具：${pending.toolName}`,
             `风险：${pending.level}（声明 ${pending.declared}${pending.declared === pending.level ? '' : `，复核 ${pending.level}`}）`,
             `批准号：${pending.approvalId}`,
+            ...(forced ? ['原因：主 agent 的 Bash 已关闭，往终端里发内容等于直接执行命令，所以每次都先问你。'] : []),
             '',
             '内容：',
             payload.slice(0, 1_500),
@@ -179,14 +188,21 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         const payload = DISPATCH_TOOL_PAYLOADS[toolName]?.(args) ?? ''
         const { level, keyword, classifier } = await effectiveRisk({ toolName, declared: risk, payload, classify: deps.classify })
         deps.log?.(`[main-agent gate] ${toolName} declared=${risk} keyword=${keyword} classifier=${classifier ?? 'n/a'} → ${level}`)
-        if (level === 'none') return handlers.get(toolName)!(args, extra)
+        const forced = deps.mustAsk?.(toolName, args) === true
+        if (level === 'none' && !forced) return handlers.get(toolName)!(args, extra)
+        // B-922: the owner chose "直接派" for this level (default ask = B-916c).
+        const policy = deps.dispatchPolicy?.()
+        if (!forced && level !== 'none' && policy && policy[level] === 'direct') {
+            deps.log?.(`[main-agent gate] ${toolName} ${level} dispatched directly (owner setting)`)
+            return handlers.get(toolName)!(args, extra)
+        }
         if (!deps.board) return fail({ error: 'board_unavailable', risk: level })
         const approvalId = newId()
         const pending: PendingDispatch = { v: 1, approvalId, toolName, args, argsSha256: canonicalArgsHash(toolName, args), declared: risk, level, createdAt: now() }
         try {
             await mkdir(deps.pendingDir, { recursive: true, mode: 0o700 })
             await writePrivate(pendingPath(approvalId), pending)
-            const card = decisionCard(pending, payload)
+            const card = decisionCard(pending, payload, forced)
             const posted = await deps.board.postDecision(card)
             const id = posted.id
             await writePrivate(pendingPath(approvalId), { ...pending, boardItemId: id, cardSha256: cardFaceHash(posted) })

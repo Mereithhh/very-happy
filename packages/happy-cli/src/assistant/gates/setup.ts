@@ -8,7 +8,8 @@
  *  3. build the dispatch gate (gate 2) on the briefing board.
  *
  * Every step degrades on failure except the denylist, which always holds the
- * defaults: a broken KV or file never lifts gate 1.
+ * defaults: a broken KV or file never lifts gate 1 (B-922: an unreadable
+ * safety setting reads as the strict preset).
  */
 
 import { existsSync } from 'node:fs'
@@ -17,16 +18,26 @@ import { dirname, join } from 'node:path'
 import type { AttentionClient } from '@/attention/client'
 import { assistantHome } from '../bootstrap'
 import { installMainAgentSkill, renderManagedSegment, writeManagedSegment } from '../mainAgentSkill'
-import { expandHome, loadMainAgentConfig, type MainAgentConfig } from './config'
+import { MAIN_AGENT_SAFETY_CAPABILITY, PRESET_POLICIES } from '@slopus/happy-wire'
+import type { KvIo } from '../mainAgentPointer'
+import { expandHome, loadMainAgentConfig, persistAllowedTool, type MainAgentConfig, type MainAgentSafetyRuntime } from './config'
 import { compileOutboundDenylist, outboundPreToolUseHook, type CompiledDenylist } from './outboundDenylist'
+import { cardLang, createToolApproval, type CardLang } from './toolApproval'
+import { happyHomeCandidates, MAIN_AGENT_APPROVALS_DIR, protectedPathsFor } from './protectedPaths'
 import { createDispatchGate, DISPATCH_OPTIONS, type DispatchBoard, type DispatchGate } from './dispatchGate'
 import type { OneShotRunner } from './risk'
 import { boardItemView as view } from '@/attention/ownerApproval'
 
 export const MAIN_AGENT_GATES_CAPABILITY = 'main-agent-gates-v1'
+/** B-922: the wrapper enforces the configurable safety setting (presets, ask cards, gate 2 policy). */
+export { MAIN_AGENT_SAFETY_CAPABILITY }
+
+const STRICT_RUNTIME = (): MainAgentSafetyRuntime => ({ safety: { v: 1, preset: 'strict', overrides: {}, allowedTools: [] }, policy: { ...PRESET_POLICIES.strict }, allowedTools: [], failedClosed: true })
 
 export type MainAgentRuntime = {
     config: MainAgentConfig
+    /** B-922: the safety setting in force (strict when it could not be read). */
+    safety: MainAgentSafetyRuntime
     denylist: CompiledDenylist
     /** SDK `hooks.PreToolUse` callback. */
     preToolUse: ReturnType<typeof outboundPreToolUseHook>
@@ -42,7 +53,7 @@ export function attentionDispatchBoard(client: AttentionClient, sessionId: () =>
             const { item } = await client.post({
                 sessionId: sessionId(), source: 'agent', kind: 'decision',
                 title: card.title, bodyMd: card.bodyMd, key: card.key, requestId: card.requestId,
-                options: DISPATCH_OPTIONS.map(o => ({ ...o })),
+                options: (card.options ?? DISPATCH_OPTIONS).map(o => ({ ...o })),
             })
             return view(item)
         },
@@ -59,18 +70,38 @@ export function attentionDispatchBoard(client: AttentionClient, sessionId: () =>
 
 export async function prepareMainAgent(deps: {
     kvGet: (key: string) => Promise<{ value: string } | null>
+    /** B-922: KV writer for "always allow" (machine token). Absent = in-memory only. */
+    kv?: KvIo
     board: DispatchBoard | null
     classify: OneShotRunner | null
     approvalLink: (boardItemId: string) => string
     home?: string
     assistantHomeDir?: string
+    /** HAPPY_HOME (credentials + approval records). Default: the configured one; tests pass a temp dir. */
+    happyHomeDir?: string
+    /** B-922 card language ('zh' | 'en'); default from the account preferredLanguage, unset → 'zh' (runClaude). */
+    lang?: 'zh' | 'en'
     log?: (line: string) => void
 }): Promise<MainAgentRuntime> {
     const home = deps.home ?? homedir()
     const aHome = deps.assistantHomeDir ?? assistantHome()
-    const config = await loadMainAgentConfig({ assistantHome: aHome, kvGet: deps.kvGet }).catch(() => ({ skillRoots: [], deniedTools: [], dropped: 0 }))
+    // Test isolation: a given assistant home without a HAPPY_HOME keeps everything inside it.
+    const happyHome = deps.happyHomeDir ?? (deps.assistantHomeDir ? aHome : dirname(assistantHome()))
+    // QA P2-2: approval records live outside the assistant home (the agent's cwd, which it greps).
+    const approvalsDir = join(happyHome, MAIN_AGENT_APPROVALS_DIR)
+    const config: MainAgentConfig = await loadMainAgentConfig({ assistantHome: aHome, kvGet: deps.kvGet }).catch(() => ({ skillRoots: [], deniedTools: [], dropped: 0 }))
     if (config.dropped > 0) deps.log?.(`[main-agent] dropped ${config.dropped} invalid config item(s)`)
-    const denylist = compileOutboundDenylist(config.deniedTools)
+    const safety = config.safety ?? STRICT_RUNTIME()
+    if (safety.failedClosed) deps.log?.('[main-agent] safety setting unreadable or not understood: strict')
+    const denylist = compileOutboundDenylist(config.deniedTools, { policy: safety.policy, allowedTools: safety.allowedTools })
+    const approval = createToolApproval({
+        pendingDir: join(approvalsDir, 'pending-tool'),
+        lang: deps.lang ?? cardLang(null),
+        board: deps.board,
+        allowAlways: (tool) => denylist.allowAlways(tool),
+        persistAlways: deps.kv ? (tool) => persistAllowedTool(deps.kv!, tool) : undefined,
+        log: deps.log,
+    })
     const roots = config.skillRoots.map(r => { const path = expandHome(r, home); return { path, exists: existsSync(path) } })
     let skillPath: string | null = null
     try {
@@ -81,20 +112,49 @@ export async function prepareMainAgent(deps: {
         deps.log?.(`[main-agent] managed segment failed: ${error instanceof Error ? error.message : String(error)}`)
     }
     const gate = createDispatchGate({
-        pendingDir: join(aHome, 'pending-dispatch'),
+        pendingDir: join(approvalsDir, 'pending-dispatch'),
         board: deps.board,
         classify: deps.classify,
         approvalLink: deps.approvalLink,
         log: deps.log,
+        dispatchPolicy: () => ({ external: safety.policy.dispatchExternal, production: safety.policy.dispatchProduction }),
+        // Calls that always park, whatever their risk. OR further conditions in here (one hook, not several).
+        mustAsk: (tool) => mustAskTerminal(tool, safety.policy.bash),
     })
     return {
         config,
+        safety,
         denylist,
-        preToolUse: outboundPreToolUseHook(denylist, (tool) => deps.log?.(`[main-agent gate] denied ${tool}`)),
+        // QA P2-2: HAPPY_HOME is closed to the file tools (read allowlist: CLAUDE.md, memory/, chat uploads).
+        preToolUse: outboundPreToolUseHook(denylist, (tool) => deps.log?.(`[main-agent gate] denied ${tool}`), approval.ask,
+            protectedPathsFor(happyHomeCandidates(deps.happyHomeDir ?? dirname(assistantHome())), { home })),
         // The managed skills live outside the assistant home: mount the whole Very Happy share root
         // (`~/.local/share/very-happy`), or every Read / Grep of the handbook asks for permission in
         // the default mode (isolated probe; QA77 #7: a Grep one level up asked too).
         extraDirectories: [...(skillPath ? [dirname(dirname(dirname(skillPath)))] : []), ...roots.filter(r => r.exists).map(r => r.path)],
         gate,
     }
+}
+
+/**
+ * B-922 (QA P3): the gate-1 card language — the account's `preferredLanguage`
+ * (the same setting the Web uses); unset or unreadable → Chinese (QA-U r2 P3-2).
+ */
+export async function accountCardLang(timeoutMs = 5_000): Promise<CardLang> {
+    try {
+        const { accountKey, createAccountStore } = await import('@/settings/stores')
+        const key = await accountKey()
+        if (!key) return cardLang(null)
+        const read = createAccountStore(key).read()
+        const settings = await Promise.race([read, new Promise<null>((r) => setTimeout(() => r(null), timeoutMs).unref?.())])
+        const preferred = settings && typeof settings.settings.preferredLanguage === 'string' ? settings.settings.preferredLanguage : null
+        return cardLang(preferred)
+    } catch {
+        return cardLang(null)
+    }
+}
+
+/** QA P2-2: with Bash off, a terminal is the shell the main agent is not supposed to have — every send asks. */
+export function mustAskTerminal(toolName: string, bashAllowed: boolean): boolean {
+    return toolName === 'terminal_send' && !bashAllowed
 }

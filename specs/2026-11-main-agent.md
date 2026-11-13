@@ -64,6 +64,13 @@
   "v": 1,
   "skillRoots": ["~/skills"],             // ≤16 项；每项 ≤512 字符；绝对路径或 ~ 开头
   "deniedTools": ["mcp__*__*archive*"],   // 闸 1 的追加模式，≤64 项；格式见 §4.1
+  "safety": {                             // B-922，见 §4.4；缺省 = 宽松
+    "v": 1,
+    "preset": "loose",                    // strict | standard | loose
+    "overrides": { "bash": false },       // 可选，逐项覆盖预设
+    "allowedTools": ["mcp__chat__send_message"] // 「以后都允许」的工具全名，≤64 项
+  },
+  "quietHours": { "enabled": true, "start": "00:30", "end": "08:30", "tz": null }, // B-924；缺省 = 00:30–08:30 启用，tz null = 主 agent 机器本地时间
   "updatedAt": 1794334927713
 }
 ```
@@ -72,6 +79,8 @@
 - 本机补充文件 `~/.happy/assistant/config.json`，同一格式。两处**取并集**：`skillRoots` 去重合并，`deniedTools` 去重合并。没有任何一处能减少默认禁用表。
 - 公开仓里的默认值是**空**：`skillRoots: []`，`deniedTools: []`。
 - 不合法的项单独丢弃并在 wrapper 日志里记一行（不回显内容），其余照常生效。
+- `quietHours`（B-924）：宽松读法，单项不合法就用默认值；schema 在 happy-wire `parseMainAgentQuietHours`。它不是安全设置，服务端「改松」检查不比较它。
+- `safety` 段例外（B-922）：它的 schema 在 happy-wire `mainAgentSafety.ts`，读法是 **fail-closed**——`v≠1`、未知 preset、未知字段、非法取值、KV 请求失败或值不是 JSON，整段按「严格」处理（`allowedTools` 也不算）。本机 `config.json` 里的 `safety` 只能逐项改严，它的 `allowedTools` 不生效（主 agent 若开了 Bash，可能自己写这个文件）。B-916c 及更早的 CLI 不认识这段，照旧按严格运行。
 
 ## 3. 工具面（B-916b 实现，B-916c 加闸）
 
@@ -144,7 +153,7 @@ mcp__*__*create_issue* mcp__*__*pull_request* mcp__*__*rollback*
 
 - **VH 自己的 MCP server（`mcp__happy__*`）不受默认表约束**：它的会话间派活由闸 2 管。用户在设置里追加的模式对所有工具生效（包括 `mcp__happy__*`）。
 - **其他 MCP server 默认拒绝（fail-closed，QA77 #5）**：动词子串表会漏掉 `create_or_update_file`、`kubectl_apply`、`execute_sql`、`browser_click`、`tweet` 这类名字。主 agent 的定位是只读、只派活，所以 `mcp__<非 happy>__<tool>` 只有同时满足以下条件才放行：`<tool>` 的第一个词（按 `_`、`-`、camelCase 切分）是只读动词 `list / get / search / read / query / describe / fetch / find / show / view / lookup / count` 之一；名字里任何位置都不含写类动词（`create / update / upsert / delete / remove / write / set / put / patch / post / send / reply / publish / deploy / apply / exec / execute / run / push / merge / upload / invite / share / add / edit / move / rename / approve / close / archive / click / type / fill / submit / tweet / comment / notify / forward / install / kill / stop / start / restart / rollback / release / scale / drop / truncate / insert / grant`，例：`get_or_create_label` 仍拒）；默认表与用户表都不命中。
-- 生效表 = 内建禁用（B-063 的 5 个）∪ 默认表 ∪ 第三方 MCP 默认拒绝 ∪ KV `deniedTools` ∪ 本机 `config.json` `deniedTools`。只能加严，没有放行配置。
+- 生效表 = 内建禁用（B-063 的 5 个）∪ 默认表 ∪ 第三方 MCP 默认拒绝 ∪ KV `deniedTools` ∪ 本机 `config.json` `deniedTools`。`deniedTools` 只能加严。B-922 起，默认表与第三方 MCP 的处理由 §4.4 的安全设置决定（严格预设 = 本节原样）；内建禁用和用户追加的模式始终硬拒。
 
 **执行点**（两层，都在 SDK 层，与权限模式无关）：
 
@@ -186,7 +195,7 @@ risk: 'none' | 'external' | 'production'
 
 **决策卡**。最终等级为 `none` → 直接执行。否则不执行，改为：
 
-1. 把调用（工具名 + 参数 + 最终等级）存到 `~/.happy/assistant/pending-dispatch/<approvalId>.json`（0600），`approvalId` 为随机 UUID，记录参数的 sha256。
+1. 把调用（工具名 + 参数 + 最终等级）存到 `~/.happy/main-agent-approvals/pending-dispatch/<approvalId>.json`（0600；B-922 起移出主 agent 的工作目录 `~/.happy/assistant`），`approvalId` 为随机 UUID，记录参数的 sha256。
 2. 往汇报板发一张卡（W0 `AttentionItemPost`）：
 
 ```jsonc
@@ -230,8 +239,67 @@ risk: 'none' | 'external' | 'production'
 
 - 被派会话如果是 `bypassPermissions`，它自己能不能对外发送 VH 管不住；闸 2 只保证「派之前用户看过」。被派会话的 PreToolUse 出站拦截放 P3。
 - 关键词和 haiku 都可能漏判：用户的决策卡是最后一道人工关口，但前提是有一道判成非 `none`。
-- 账号 token 在机器上，理论上能直接调 owner-respond；主 agent 没有 Bash，也没有任何工具暴露这个接口。
+- owner-respond 只接受浏览器登录（B-921 `requireHumanOwner`）：机器上的账号 token 调它会被拒（403 `owner_login_required`），所以本机进程不能替 Owner 在卡上做选择。
+- B-922：开了 Bash 的主 agent 能直接调外部接口，出站分类管不住它；Web 在该项旁写明风险，默认关。
+- B-922：**本机审批记录的边界**。闸 1 / 闸 2 的 pending 记录和 `.inflight` 标记都在本机（`~/.happy/main-agent-approvals/`），同一个 OS 用户的进程能伪造或删除后重放；拿机器 token 走 REST 也能自己发一张保留前缀的卡并互换标签（`RESERVED_CARD_KEY_PREFIXES` 含 `main-agent-tool:` 只挡 `owner_board_*` 工具，不挡 REST）。
+  - **主 agent 自己伪造不了**，前提是 Bash 和改文件都关着（三档默认）。B-922 为此补了两条（QA P2-2）：① Bash 关时 `terminal_send` 无论 risk 怎么判一律出卡——往打开的 Web 终端里发内容等于有了 shell；② 任何档位下，**整个 HAPPY_HOME（`~/.happy` 与 `$HAPPY_HOME_DIR`，按真实路径解析，防 `..` 与符号链接；目标还不存在的悬空软链也跟过去检查，最多 8 跳，QA-U r2 P3-3）对主 agent 的文件工具关闭**：读（Read / Grep / Glob）只放行 `assistant/CLAUDE.md`、`assistant/memory/**`（含 journal）和 `uploads/chat/**`（聊天附件），Grep / Glob 的搜索根（Glob 含 pattern 的固定前缀）不在这些路径里、或包含 HAPPY_HOME（`~`、`/`、不带 path 时的工作目录 `assistant/`）一律拒绝；写（Edit / Write / MultiEdit / NotebookEdit）在 HAPPY_HOME 下全部拒绝，白名单也不能写（`memory_update` / `journal_append` 是 wrapper 里写的 MCP 工具，不受影响）。凭据（access.key、agent.key）、daemon 状态、审批记录、收尾卡 hash（`wrapup-cards/`）、跟进台账（`followups.json`）、precheck 账本等都被覆盖，以后新增的记录文件也自动受保护；token 和 secret 不会进模型上下文。审批记录挪到 `~/.happy/main-agent-approvals/`。
+  - 打开 Bash 或改文件后，主 agent 就具备上面这些能力，本机审批记录和「先问我」卡片都不再可靠；只有服务端检查（机器 token 不能改松配置、always 授权有时效且只兑现一次）和 Owner 本人在 Web 上的批准还算数。Web 的开关说明如实写了这一点。
+  - 已知边界：**硬链接**和原文件是同一个 inode，路径上看不出来，hook 拦不住（QA-U r2 实测 Read/Grep 能经硬链接读到 `followups.json`）。建硬链接需要 shell，所以这和「打开 Bash 后本机记录不可靠」是同一条边界，不单独处理。
+  - 同一个系统用户下的其他进程仍然可以伪造本机审批记录；服务端加固（保留前缀与卡面绑定在服务端校验）归 B-927。
+  - 严格档因此有两处有意的变化（相对 B-916c）：`terminal_send` 在 `risk=none` 时也出卡；HAPPY_HOME 对文件工具关闭（只读白名单）。其余逐字不变。
+- B-922：「人 vs 机器」用 B-921 的 `requestTokenKind`（token 带登录会话 = 人）；登录会话出现前签发的旧 Web token 算机器，只能改严，Web 会提示去已登录的浏览器里改或重新登录。
 - 闸只装在 Claude 主 agent 上（`runClaude` 构建运行时）。pi / ACP 的 assistant variant 不注册主 agent 账号级工具和上限，只保留 B-051 的旧会话工具（QA77 #6）。
+
+### 4.4 安全设置：预设、逐项覆盖与 ask（B-922）
+
+Owner 11-11：「主 agent 的安全阀太严格了……可以让用户配置」。配置在 §2.2 的 `safety` 段。
+
+**工具分类**（只对非 `mcp__happy__*` 的 MCP 工具；内建和用户追加模式不受影响）：
+
+- 只读：§4.1 的只读判定通过，且不命中默认表 → 永远直接用。
+- 生产类：`<tool>` 含 `deploy / release / rollback / publish`，或按词切分后含 `apply / scale / drop / truncate / migrate / rollout / terminate / destroy`。
+- 出站类：命中 §4.1 默认表，且不是生产类。
+- 其他写：上面都不是、又不是只读的第三方 MCP 工具。
+- 只读名字里碰巧含默认表动词（如 `list_deployments`）：这一类设为「禁用」时拒，否则直接用。
+
+**各预设的行为**：
+
+| 类别 | 严格（= B-916c） | 标准 | 宽松（新默认，Owner 11-11） |
+|---|---|---|---|
+| 内建 Bash | 禁用 | 禁用 | 禁用（高级里可开） |
+| 内建 Edit / Write / MultiEdit / NotebookEdit | 禁用 | 禁用 | 禁用（高级里可开） |
+| 用户追加的 `deniedTools` | 禁用 | 禁用 | 禁用 |
+| `mcp__happy__*` | 直接用（闸 2 管派活） | 同左 | 同左 |
+| 第三方只读工具 | 直接用 | 直接用 | 直接用 |
+| 第三方生产类 | 禁用 | 先问 | 先问 |
+| 第三方出站类 | 禁用 | 先问 | 直接用 |
+| 第三方其他写 | 禁用 | 先问 | 直接用 |
+| 闸 2 `risk=external` | 先问 | 先问 | 直接派 |
+| 闸 2 `risk=production` | 先问 | 先问 | 先问 |
+
+没有 `safety` 段的账号用默认「宽松」；保存过档位的按保存的走。`automation_run / resume / fire` 三档都不过闸 2（只运行 Owner 已建好的自动化；严格档必须与 B-916c 逐字一致，而它们在 B-916c 本来就不过闸）；`automation_create / update` 维持 §4.2 的 risk 规则。
+
+逐项覆盖（`overrides`）键：`production / outbound / thirdPartyWrite`（`deny|ask|allow`）、`dispatchExternal / dispatchProduction`（`ask|direct`）、`bash / fileEdits`（布尔）。`allowedTools` 只把「先问」变成「直接用」，永远不解除「禁用」。
+
+与派工描述的边界调整（理由）：宽松档的「先问」不只看 deploy / release / rollback / publish 四个子串，还加了 `apply / scale / drop / truncate / migrate / rollout / terminate / destroy` 这些整词——`kubectl_apply`、`drop_table` 这类名字不含那四个词，但同样是生产写；宽松档的 Bash 默认仍关，只能在高级里手动打开（Bash 能绕过所有出站规则）。
+
+**ask（闸 1）**。PreToolUse 判为「先问」时：
+
+1. 参数 `tool_input` 按闸 2 的 `canonicalArgsHash(tool, input)` 取指纹；`~/.happy/main-agent-approvals/pending-tool/<hash>.json` 没有记录 → 发卡并拒绝本次调用。卡：`key = main-agent-tool:<approvalId>:<toolName>`，标题「主 agent 想调用 <tool>」，正文 = 工具名、参数指纹前 12 位、参数 JSON 摘要（≤1,500 字），选项 `once 批准这一次 / always 以后都允许这个工具 / deny 拒绝`；卡面文字跟账号的 `preferredLanguage`（没设即「自动」或读不到 → 中文，与闸 2 卡、原因行一致；不看本机 locale，daemon 常是 `LANG=C.UTF-8`，QA-U r2 P3-2），选项 id 不变。拒绝原因告诉模型「已出卡，先停下告诉用户；批准后用完全相同的参数再调一次」。
+2. 再次同参数调用：用闸 2 与 `very-happy settings` 共用的校验（`attention/ownerApproval.ts` 的 `ownerDecision`：key、已关闭、`cardFaceHash` 不变、`resolvedBy='owner'`）。还开着 → 仍拒（等待）；卡没了 / 被改 / 不是 Owner 关的 → 作废并重新出卡。
+3. `once` / `always` → 用 `O_EXCL` 建 `<approvalId>.inflight`（共用的 `approvalClaims`），建成才放行，**只放这一次**，记录随即删除，同参数下一次重新出卡；并发同参数调用只有一个通过。`always` 另把工具加进内存 allow 集，并以机器 token 写入 KV `safety.allowedTools`（`persistAllowedTool`，乐观并发；段读不懂时不写）。`deny` → 拒绝并提示不要重试。
+4. 汇报板不可用或抛错 → 拒绝（fail-closed），原因写明没执行。
+5. `main-agent-tool:` 与 `main-agent-dispatch:`、`settings-change:` 同为保留前缀（`RESERVED_CARD_KEY_PREFIXES`）：主 agent 的 `owner_board_*` 不能新建、修改或关闭这类卡。
+
+**闸 2**。`effectiveRisk` 得出 `external` / `production` 后，对应项为 `direct` 时直接执行原 handler（日志记一行），否则照 §4.2 出卡。
+
+**真正的边界是服务端检查 + Owner 的批准卡**：本机 `config.json` 只能逐项改严（主 agent 若开了 Bash 能改这个文件，所以它不能放松任何东西）；放松只能通过账号 KV，而账号 KV 的放松只接受浏览器登录的 Owner，或 Owner 在卡上选了「以后都允许」的那个工具。
+
+**只有 Owner 本人能改松**。server `POST /v1/kv`：请求 token 被 `requestTokenKind`（`app/auth/tokenKind.ts`，B-921 定义，与 owner-respond 共用：token 带登录会话 id 即为人）判为机器时，对 `vh.main-agent-config.*` 的每个写入用 happy-wire `mainAgentConfigLoosening(旧值, 新值)` 比较：任何一项变松、删掉 `deniedTools`、删除整个值（回落到默认宽松）、写入非 JSON / 非对象、`safety` 段读不懂（未知版本、字段或取值，按「更宽松」处理）→ `422 {error:'main_agent_config_owner_only', key}`。唯一例外：只新增 `allowedTools`，且每个新增工具都有本账号一张 `main-agent-tool:*:<tool>` 卡被 Owner 以 `always` 关闭（这就是第 3 步的写入）。收紧不限；`quietHours`、`skillRoots` 等其他字段不比较。**always 授权有时效且只兑现一次**（QA P2-1）：服务端自持 KV 记录 `vh.main-agent-grants.v1`（任何客户端 token 写它都 `422 server_owned_kv_key`），记着已兑现的卡 id，以及人类写入「收回」了什么：`toolRevokedAt[key][tool]` = 最近一次把该工具从 `allowedTools` 移除的时间，`humanWriteAt[key]` = 最近一次整体收紧该 key 的时间（预设/单项改严、新增 `deniedTools`、删除整个值、写入读不懂的值）。一张 always 卡只有 `resolvedAt` 晚于这两个时间、且没兑现过时才算数；没收回该工具的人类写入（改 quietHours、移除别的工具、改松）不作废旧卡（QA-U r2 P3-1：Owner 点了「以后都允许」、主 agent 重试前改了一次设置，授权照样写进去）。人类写入前先记时间（之后写失败也只会让旧卡提前作废，更严），机器写入成功后再记兑现。Owner 在 Web 上移除一个已允许的工具后，旧卡再也加不回它；CLI 写入被 422 拒绝时日志记 `persist: refused`（不是 `unavailable`）。`POST /v1/kv/bulk` 是批量读，不写，无需检查。用 422 而不是 403：Web 的 `isAuthFailure` 把 401/403 都当认证失败处理（403 不会登出，但也不是「写入被拒」的语义）。
+
+**能力位**。wrapper 在 session `capabilities` 加 `main-agent-safety-v2`，daemon 在 `daemonState` 加 `mainAgentSafety`。Web 设置 → 主 agent → 安全只在主 agent 所在机器有 `mainAgentSafety` 时显示预设与高级项，否则提示升级 CLI（旧 CLI 按严格运行）。
+
+**生效时机**。主 agent wrapper 启动时读取（新开对话即新进程）；「以后都允许」在当前进程立即生效。
 
 ## 5. Skills（B-916c）
 
@@ -284,10 +352,14 @@ risk: 'none' | 'external' | 'production'
 | 新 Web + 新 CLI + 旧 server（无 KV / 无汇报板） | Web 退回 `assistantMachineId`；闸 2 遇到非 `none` 一律 `board_unavailable` 拒绝 |
 | 旧 Web + 新 CLI | 旧 `/assistant` 照常；新工具与闸在会话内生效 |
 | 存量旧 wrapper | 没有新工具和闸；随 B-911 / 自动重启换到新版本 |
+| B-922 新 Web + 旧 CLI（无 `mainAgentSafety`） | 安全一节提示升级；旧 CLI 不认 `safety` 段，按严格运行 |
+| B-922 新 CLI + 旧 server（无守卫） | 设置照常生效；机器 token 改松不会被拒（守卫随 server 发布） |
+| B-922 新 CLI + 旧 Web（B-916a） | 旧 Web 写配置时保留未知字段，`safety` 不丢；没有设置入口，默认宽松 |
+| B-922 新 server + 旧 CLI | 旧 CLI 只读配置，不受影响 |
 
 - 不改 wire schema、不加 server 路由、不加迁移：KV 用现有 `/v1/kv`，汇报板用现有 `source='agent'`；派给 Lead 是投递进 Lead 会话（B-506 链路），**不改 reducer、不走 owner actor 的 teams actions**。
 - **一处 server 权限放宽**（B-916b）：主 agent 会话（以 KV `vh.main-agent.v1.sessionId` 判定）可在本账号任意项目以自己身份写 project note。旧 server 上该写入被拒，工具回执 `{ok:false, error:'project_not_member'}`，不回退成 Owner 身份。
-- 发布顺序：Web 与 CLI 可独立发布；默认先 server/Web 后 CLI。
+- 发布顺序：Web 与 CLI 可独立发布；默认先 server/Web 后 CLI。B-922 必须先 server/Web（守卫先在），再 CLI（新默认「宽松」随 CLI 生效）。
 
 ## 9. P1 验收（不含语音）
 

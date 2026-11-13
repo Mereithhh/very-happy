@@ -31,7 +31,7 @@ export function withAssistantDenylist(
     isAssistant: boolean,
 ): string[] | undefined {
     if (!isAssistant) return current;
-    const merged = new Set<string>([...(current ?? []), ...ASSISTANT_DISALLOWED_TOOLS, ...extraDenied]);
+    const merged = new Set<string>([...(current ?? []), ...ASSISTANT_DISALLOWED_TOOLS.filter(t => !builtinsAllowed.has(t)), ...extraDenied]);
     return [...merged];
 }
 
@@ -43,4 +43,19 @@ export function withAssistantDenylist(
 let extraDenied: readonly string[] = [];
 export function setAssistantExtraDenied(names: readonly string[]): void {
     extraDenied = [...new Set(names)];
+}
+
+/**
+ * B-922 (spec §4.4): built-ins the main agent's safety setting turned on —
+ * `bash` → Bash, `fileEdits` → Edit / Write / MultiEdit / NotebookEdit. Off by
+ * default in every preset. Set once per process by the main agent start-up
+ * (only the main agent; other assistant sessions keep all five denied).
+ */
+const FILE_EDIT_TOOLS: readonly string[] = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'];
+export function assistantBuiltinsAllowedBy(policy: { bash: boolean; fileEdits: boolean }): string[] {
+    return [...(policy.bash ? ['Bash'] : []), ...(policy.fileEdits ? FILE_EDIT_TOOLS : [])];
+}
+let builtinsAllowed: ReadonlySet<string> = new Set();
+export function setAssistantBuiltinsAllowed(names: readonly string[]): void {
+    builtinsAllowed = new Set(names.filter(n => (ASSISTANT_DISALLOWED_TOOLS as readonly string[]).includes(n)));
 }

@@ -388,6 +388,15 @@ export const DaemonStateSchema = z.object({
     rpcAvailable: z.boolean(),
     detectedAt: z.number(),
   }).optional(),
+  /**
+   * B-922 capability flag: the main agent runs the configurable safety setting
+   * (`vh.main-agent-config.v1.safety`: presets, ask cards, gate 2 policy). The
+   * web shows the safety settings only for a machine that sets it.
+   */
+  mainAgentSafety: z.object({
+    rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+  }).optional(),
   /** B-877b capability flag: this daemon answers `team-exit-session` (same trust rule). */
   teamExit: z.object({
     rpcAvailable: z.boolean(),
