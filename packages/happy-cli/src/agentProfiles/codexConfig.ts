@@ -145,6 +145,31 @@ export function codexProcessProviderArgs(overrides: { modelProvider?: string; co
     if (!id || !/^[A-Za-z0-9_-]+$/.test(id)) return [];
     const args = ['-c', `model_provider=${JSON.stringify(id)}`];
     const table = (overrides.config?.model_providers as Record<string, unknown> | undefined)?.[id];
-    if (table && typeof table === 'object') args.push('-c', `model_providers.${id}=${tomlInlineValue(table)}`);
+    if (table && typeof table === 'object') args.push('-c', `model_providers.${id}=${tomlInlineValue(withoutSecretLookingEntries(table as Record<string, unknown>))}`);
     return args;
+}
+
+/** A header or query parameter name that usually carries a credential. */
+const SECRET_LOOKING_NAME = /auth|key|token|secret|passw|cookie|signature|credential|session/i;
+
+/**
+ * Pure (B-934b): the provider table for argv. `-c` flags are world-readable in
+ * `/proc/<pid>/cmdline`, and config.toml's `http_headers` / `query_params`
+ * pass through as they are — an `Authorization` header or `?api-key=` would
+ * show in `ps`. Entries with a credential-looking name stay out of argv; the
+ * thread config (sent over stdio) still carries the full table and is what
+ * the model requests use (measured on 0.167.2, vh-team-B-934b/probe). The key
+ * itself is never in either (the `auth` command reads a file; only its path
+ * shows, which is an accepted risk: the file is 0600).
+ */
+export function withoutSecretLookingEntries(table: Record<string, unknown>): Record<string, unknown> {
+    const out: Record<string, unknown> = { ...table };
+    for (const field of ['http_headers', 'query_params']) {
+        const value = table[field];
+        if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+        const kept = Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([name]) => !SECRET_LOOKING_NAME.test(name)));
+        if (Object.keys(kept).length > 0) out[field] = kept;
+        else delete out[field];
+    }
+    return out;
 }

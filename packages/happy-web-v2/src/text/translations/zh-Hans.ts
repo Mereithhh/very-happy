@@ -3541,6 +3541,12 @@ export const zhHans: TranslationStructure = {
                 images: '新会话页（会话还没建好时）和新建会话对话框里都能粘贴、拖入或选择图片（手机也能选图）。会话启动后自动上传，和文字一起交给 Claude 或 Codex；只发图片也行。启动中刷新页面，图片也会保留并继续发送。',
                 noSilentDrop: '不再悄悄丢消息：文件发不出去时（上传失败、会话不支持这些文件）会说明原因，文字和文件放回输入框，再点发送即可重试。',
             },
+            nov13p: {
+                title: 'Codex 会话切换账号后，在新版 Codex 上也能接着聊',
+                summary: '在 Codex 0.167 及以后的版本上，把 Codex 会话在本机登录和已添加账号之间切换（或者换到另一个 provider 的账号）后，对话会接着进行，不会再被取消。',
+                codex: '新版 Codex 会把对话固定在创建时用的 provider 上。新账号用的是另一个 provider 时，会话会在一份历史相同的对话副本里继续，并在对话里说明。',
+                failure: '如果 Codex 还是接不上这段对话，会话会说明原因和下一步（切回原账号，或新开一个会话），不再只显示「已取消」。',
+            },
             nov13c: {
                 title: '用已添加账号的 Codex 会话支持新版 Codex',
                 summary: '在 Very Happy 里绑定了账号的 Codex 会话，在 Codex 0.167 及以后的版本上可以正常新建和恢复。',
