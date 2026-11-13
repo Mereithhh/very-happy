@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { appHeightOverride, hasTouchScreen, keyboardViewport, shouldResetRootScroll, viewportVars } from './viewportVars';
+import { appHeightOverride, hasTouchScreen, KEYBOARD_MIN_PX, keyboardViewport, shouldResetRootScroll, viewportVars } from './viewportVars';
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
@@ -86,16 +86,16 @@ describe('shouldResetRootScroll (B-855)', () => {
 describe('viewportVars (B-797)', () => {
     it('keyboard up: the app is the visible area', () => {
         expect(viewportVars(657, { open: true, height: 380, top: 120 })).toEqual({
-            '--app-h': '380px', '--vv-h': '380px', '--vv-top': '120px', keyboardOpen: true,
+            '--app-h': '380px', '--vv-h': '380px', '--vv-top': '120px', keyboardOpen: true, keyboardPane: 'root',
         });
     });
 
     it('keyboard down: the clamp (or the CSS value) and nothing else — fully restored', () => {
         expect(viewportVars(657, { open: false, height: 657, top: 0 })).toEqual({
-            '--app-h': '657px', '--vv-h': null, '--vv-top': null, keyboardOpen: false,
+            '--app-h': '657px', '--vv-h': null, '--vv-top': null, keyboardOpen: false, keyboardPane: null,
         });
         expect(viewportVars(null, { open: false, height: 852, top: 0 })).toEqual({
-            '--app-h': null, '--vv-h': null, '--vv-top': null, keyboardOpen: false,
+            '--app-h': null, '--vv-h': null, '--vv-top': null, keyboardOpen: false, keyboardPane: null,
         });
     });
 });
@@ -123,5 +123,62 @@ describe('root document never scrolls on app screens (B-797)', () => {
         expect(read('./useKeyboardViewportPin.ts')).not.toMatch(/requestAnimationFrame|style\.height/);
         // B-855: residue cleanup lives in one place (viewportVars), not per screen.
         expect(read('./useKeyboardViewportPin.ts')).not.toMatch(/window\.scrollTo/);
+    });
+
+    it('B-936: split layout keeps #root full height and sizes only the content row; the order wins the cascade', () => {
+        const pinRoot = baseCss.indexOf('html[data-root-lock][data-keyboard-open] #root {');
+        const detailRoot = baseCss.search(/html\[data-root-lock\]\[data-keyboard-open\]\[data-keyboard-pane='detail'\] #root \{\s*height: var\(--app-h\);/);
+        expect(pinRoot).toBeGreaterThan(0);
+        expect(detailRoot).toBeGreaterThan(pinRoot);
+        expect(baseCss).toMatch(/html\[data-keyboard-open\]\[data-keyboard-pane='detail'\] \.app-shell > \.app-main-row \{\s*align-self: start;\s*height: var\(--vv-h, 100%\);\s*--sa-b: 0px;/);
+        // the sidebar keeps its home-indicator inset (it is not cut by the keyboard pin)
+        expect(baseCss.indexOf("html[data-keyboard-open][data-keyboard-pane='detail'] {\n  --sa-b: env(safe-area-inset-bottom, 0px);")).toBeGreaterThan(baseCss.indexOf('html[data-keyboard-open] {\n  --sa-b: 0px;'));
+        // AppShell marks the split layout; viewportVars reads the mark
+        expect(read('../screens/AppShell.tsx')).toContain('useSplitPaneMark(expanded);');
+        expect(read('./viewportVars.ts')).toContain("viewportVars(appH, kb, root.dataset.splitPane === 'true')");
+    });
+});
+
+/**
+ * B-936 (iPad landscape, Owner 11-14): split layout × soft keyboard / the
+ * hardware-keyboard shortcut bar × with / without iOS's reveal-pan. In the
+ * split layout the sidebar keeps the full height (`--app-h` untouched) and
+ * only the content pane takes the visible height; the single pane keeps the
+ * B-797 / B-855 whole-root behaviour.
+ */
+describe('keyboard avoidance by layout (B-936)', () => {
+    const H = 834; // iPad 11" landscape
+    const KEYBOARDS = { soft: 436, shortcutBar: 764 } as const; // vv height: a full soft keyboard / the ~70pt bar
+    const PANS = { noPan: 0, pan: 140 } as const;
+    const avoid = (split: boolean, vvHeight: number, offsetTop: number, appH: number | null = null) =>
+        viewportVars(appH, keyboardViewport({ touch: true, vvHeight, vvOffsetTop: offsetTop, vvScale: 1, layoutHeight: H }), split);
+
+    for (const [kbName, vvHeight] of Object.entries(KEYBOARDS)) {
+        for (const [panName, top] of Object.entries(PANS)) {
+            const clamped = Math.min(top, H - vvHeight);
+            it(`split · ${kbName} · ${panName}: the content pane avoids it, the sidebar keeps the full height`, () => {
+                expect(avoid(true, vvHeight, top)).toEqual({
+                    '--app-h': null, '--vv-h': `${vvHeight}px`, '--vv-top': `${clamped}px`, keyboardOpen: true, keyboardPane: 'detail',
+                });
+                // a standalone-WebKit clamp stays the full height too
+                expect(avoid(true, vvHeight, top, 834)['--app-h']).toBe('834px');
+            });
+            it(`single · ${kbName} · ${panName}: unchanged — the whole app is the visible area`, () => {
+                expect(avoid(false, vvHeight, top)).toEqual({
+                    '--app-h': `${vvHeight}px`, '--vv-h': `${vvHeight}px`, '--vv-top': `${clamped}px`, keyboardOpen: true, keyboardPane: 'root',
+                });
+            });
+        }
+    }
+
+    it('the shortcut bar (~70pt) counts as a keyboard: the composer under it must be revealed', () => {
+        expect(keyboardViewport({ touch: true, vvHeight: H - 70, vvOffsetTop: 0, vvScale: 1, layoutHeight: H }).open).toBe(true);
+        expect(keyboardViewport({ touch: true, vvHeight: H - KEYBOARD_MIN_PX + 1, vvOffsetTop: 0, vvScale: 1, layoutHeight: H }).open).toBe(false);
+    });
+
+    it('keyboard down: both layouts return to the base height with no pane mark and no offset', () => {
+        for (const split of [true, false]) {
+            expect(avoid(split, H, 0)).toEqual({ '--app-h': null, '--vv-h': null, '--vv-top': null, keyboardOpen: false, keyboardPane: null });
+        }
     });
 });

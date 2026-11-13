@@ -37,6 +37,19 @@
  *    event re-checks `shouldResetRootScroll` and returns the document to 0 —
  *    except while the keyboard is up or something still overlays the visual
  *    viewport, where iOS's pan is followed through `--vv-top`, never fought.
+ *
+ * 5. B-936 (iPad landscape, Owner 11-14): with the sidebar pinned beside the
+ *    content (AppShell mode `expanded`), shrinking `--app-h` / #root to the
+ *    visible area shrank and moved the sidebar too — even for the ~70pt
+ *    shortcut bar iPadOS shows over a hardware keyboard, which also counts as
+ *    a keyboard (> KEYBOARD_MIN_PX; the composer under it has to be revealed).
+ *    In the split layout (`<html data-split-pane>`, set by AppShell) only the
+ *    content pane avoids the keyboard: `--app-h` keeps the full height, #root
+ *    is still pinned to the visual viewport's top (iOS's pan followed through
+ *    `--vv-top`, as before), and base.css sizes `.app-main-row` to `--vv-h`
+ *    (`<html data-keyboard-pane="detail">`). The single pane (phones, a
+ *    collapsed sidebar, the drawer) keeps the whole-root behaviour above
+ *    (`data-keyboard-pane="root"`).
  */
 import { useEffect } from 'react';
 
@@ -87,12 +100,21 @@ export function keyboardViewport(s: {
     return { open: true, height: Math.round(s.vvHeight), top: Math.round(top) };
 }
 
-/** The CSS variables / attribute the state above maps to (null = remove). */
-export function viewportVars(appH: number | null, kb: KeyboardViewport): Record<'--app-h' | '--vv-h' | '--vv-top', string | null> & { keyboardOpen: boolean } {
+/** Which box avoids the keyboard: the whole app (single pane) or only the content pane (B-936). */
+export type KeyboardPane = 'root' | 'detail';
+
+/**
+ * The CSS variables / attributes the state above maps to (null = remove).
+ * `split` = the sidebar is pinned beside the content (AppShell `expanded`):
+ * then `--app-h` keeps the full height and only the content pane takes `--vv-h`.
+ */
+export function viewportVars(appH: number | null, kb: KeyboardViewport, split = false): Record<'--app-h' | '--vv-h' | '--vv-top', string | null> & { keyboardOpen: boolean; keyboardPane: KeyboardPane | null } {
+    const base = appH === null ? null : `${appH}px`;
     if (kb.open) {
-        return { '--app-h': `${kb.height}px`, '--vv-h': `${kb.height}px`, '--vv-top': `${kb.top}px`, keyboardOpen: true };
+        const keyboardPane: KeyboardPane = split ? 'detail' : 'root';
+        return { '--app-h': split ? base : `${kb.height}px`, '--vv-h': `${kb.height}px`, '--vv-top': `${kb.top}px`, keyboardOpen: true, keyboardPane };
     }
-    return { '--app-h': appH === null ? null : `${appH}px`, '--vv-h': null, '--vv-top': null, keyboardOpen: false };
+    return { '--app-h': base, '--vv-h': null, '--vv-top': null, keyboardOpen: false, keyboardPane: null };
 }
 
 /** Visual-viewport shortfall (px) still treated as "nothing overlays the page". */
@@ -188,7 +210,7 @@ export function installViewportVars(): void {
             const { lvh, safeTop } = measureCss();
             appH = appHeightOverride({ standaloneWebKit, lvh, innerHeight: window.innerHeight, safeTop });
         }
-        const vars = viewportVars(appH, kb);
+        const vars = viewportVars(appH, kb, root.dataset.splitPane === 'true');
         for (const name of ['--app-h', '--vv-h', '--vv-top'] as const) {
             const value = vars[name];
             if (value === null) root.style.removeProperty(name);
@@ -196,6 +218,8 @@ export function installViewportVars(): void {
         }
         if (vars.keyboardOpen) root.dataset.keyboardOpen = 'true';
         else delete root.dataset.keyboardOpen;
+        if (vars.keyboardPane) root.dataset.keyboardPane = vars.keyboardPane;
+        else delete root.dataset.keyboardPane;
         const reset = shouldResetRootScroll({
             rootLocked: root.dataset.rootLock === 'true',
             keyboardOpen: kb.open,
@@ -216,10 +240,32 @@ export function installViewportVars(): void {
     const schedule = () => {
         if (!frame) frame = requestAnimationFrame(update);
     };
+    refresh = schedule;
     for (const type of ROOT_SCROLL_GUARD_EVENTS.window) window.addEventListener(type, schedule, { passive: true });
     for (const type of ROOT_SCROLL_GUARD_EVENTS.document) document.addEventListener(type, schedule);
     for (const type of ROOT_SCROLL_GUARD_EVENTS.visualViewport) window.visualViewport?.addEventListener(type, schedule);
     update();
+}
+
+let refresh: () => void = () => {};
+
+/**
+ * B-936: AppShell marks the split layout (sidebar pinned beside the content)
+ * on <html> while it is mounted, and re-runs the measurement so an open
+ * keyboard switches between whole-root and content-pane avoidance at once
+ * (rotation / collapsing the sidebar with the keyboard up).
+ */
+export function useSplitPaneMark(split: boolean): void {
+    useEffect(() => {
+        const root = document.documentElement;
+        if (split) root.dataset.splitPane = 'true';
+        else delete root.dataset.splitPane;
+        refresh();
+        return () => {
+            delete root.dataset.splitPane;
+            refresh();
+        };
+    }, [split]);
 }
 
 let lockCount = 0;

@@ -99,6 +99,22 @@ html[data-root-lock][data-keyboard-open] #root {
   min-height: 0;
   overflow: hidden;
 }
+/* B-936: split layout (sidebar pinned beside the content, viewportVars.ts §5):
+   #root stays pinned to the visual viewport's top but keeps the full height,
+   so the sidebar neither shrinks nor moves; only the content row (session,
+   composer, notes, main agent column) ends at the keyboard. The sidebar keeps
+   its home-indicator inset; the content row, ending at the keyboard, does not. */
+html[data-root-lock][data-keyboard-open][data-keyboard-pane='detail'] #root {
+  height: var(--app-h);
+}
+html[data-keyboard-open][data-keyboard-pane='detail'] {
+  --sa-b: env(safe-area-inset-bottom, 0px);
+}
+html[data-keyboard-open][data-keyboard-pane='detail'] .app-shell > .app-main-row {
+  align-self: start;
+  height: var(--vv-h, 100%);
+  --sa-b: 0px;
+}
 
 body {
   margin: 0;

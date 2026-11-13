@@ -119,6 +119,7 @@ export function collectKeyboardSnapshot(): KeyboardSnapshot {
         appH: appH > 0 ? appH : null,
         appHOverride: root.style.getPropertyValue('--app-h').trim(),
         keyboardOpen: root.dataset.keyboardOpen === 'true',
+        keyboardPane: root.dataset.keyboardPane ?? null,
         rootLock: root.dataset.rootLock === 'true',
         pointer: window.matchMedia('(pointer: coarse)').matches ? 'coarse' : window.matchMedia('(pointer: fine)').matches ? 'fine' : 'none',
         maxTouchPoints: navigator.maxTouchPoints ?? 0,

@@ -15,6 +15,9 @@
  *   A 键盘弹出（vv 缩 + 平移）后收起   B 无键盘时程序化滚动（focus / scrollIntoView）
  *   C 横竖屏旋转带残留                 D 后台→前台（visibilitychange + pageshow）带残留
  *   E 键盘弹出期间：不与 iOS 平移打架（不 scrollTo）、#root 钉在可见区
+ *   F（B-936）分栏（侧栏常驻）× 软键盘 436 / 硬件键盘快捷栏 764 × 有无 iOS 平移：侧栏顶在 0、全高 834 不动，
+ *     只有内容区（.app-main-row）缩到可见高度、composer 贴在键盘上；收起后回到 0 偏移、内容区回到全高、无空白带
+ *   G（B-936）单栏（侧栏收起）× 快捷栏：保持 B-797/B-855 行为——整个 #root 缩到可见高度
  * 另跑 Android Chromium（resizes-content：innerHeight 缩，vv 同步）回归：不判键盘、不滚、composer 贴底。
  * iPhone / Duo 回归用 ios-viewport-sim.mjs。
  *
@@ -96,9 +99,10 @@ const IPAD_LAND = { width: 1194, height: 834 };
 const IPAD_PORT = { width: 834, height: 1194 };
 const PATH = '/dev/device/session/dev-board';
 
-async function open(browser, pointer, size) {
+async function open(browser, pointer, size, { collapsed = false } = {}) {
     const context = await browser.newContext({ viewport: size, deviceScaleFactor: 2, hasTouch: true, userAgent: IPAD_UA, locale: 'zh-CN' });
     await context.addInitScript(simulateIpad, { pointer });
+    if (collapsed) await context.addInitScript(() => localStorage.setItem('vh.sidebar.collapsed', '1'));
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message.slice(0, 200)));
@@ -118,6 +122,9 @@ const layout = (page) => page.evaluate(() => {
         rootTop: Math.round(r('#root').top), footBottom: Math.round(r('.sd-foot').bottom),
         keyboardOpen: root.dataset.keyboardOpen ?? null, rootLock: root.dataset.rootLock ?? null,
         rootPos: getComputedStyle(document.getElementById('root')).position,
+        rootH: Math.round(r('#root').height), pane: root.dataset.keyboardPane ?? null,
+        sbTop: r('.app-sidebar') ? Math.round(r('.app-sidebar').top) : null, sbH: r('.app-sidebar') ? Math.round(r('.app-sidebar').height) : null,
+        mainBottom: r('.app-main-row') ? Math.round(r('.app-main-row').bottom) : null,
     };
 });
 
@@ -188,8 +195,46 @@ try {
         await page.evaluate(() => window.__simKeyboardClose());
         await settle(page);
         restored(await layout(page), 'E keyboard closed again');
+
+        // F — B-936: split layout. Only the content pane avoids the keyboard; the sidebar never moves or shrinks.
+        for (const [kb, vvH] of [['soft', 436], ['bar', 764]]) {
+            for (const pan of [0, 120]) {
+                const label = `F split · ${kb === 'soft' ? 'soft keyboard' : 'shortcut bar'} · ${pan ? `pan ${pan}` : 'no pan'}`;
+                await page.locator('.sd-foot textarea').first().focus();
+                await page.evaluate(([h, p]) => window.__simKeyboard(h, p), [vvH, pan]);
+                await settle(page);
+                const f = await layout(page);
+                check(f.pane === 'detail' && f.sbTop === 0 && f.sbH === IPAD_LAND.height,
+                    `${label}: sidebar stays at 0, full height`, { pane: f.pane, sbTop: f.sbTop, sbH: f.sbH, rootH: f.rootH });
+                check(Math.abs(f.footBottom - vvH) <= 1 && Math.abs(f.mainBottom - vvH) <= 1,
+                    `${label}: content pane ends at the keyboard, composer on it`, { footBottom: f.footBottom, mainBottom: f.mainBottom, vvH });
+                await shot(page, `ipad-${pointer}-F-${kb}-${pan ? 'pan' : 'nopan'}`);
+                await page.evaluate(() => window.__simKeyboardClose());
+                await settle(page);
+                const fc = await layout(page);
+                restored(fc, `${label} → closed`);
+                check(fc.pane === null && fc.sbH === IPAD_LAND.height && fc.mainBottom === IPAD_LAND.height,
+                    `${label} → closed: no pane mark, sidebar and content back to full height (no blank band)`, { pane: fc.pane, sbH: fc.sbH, mainBottom: fc.mainBottom });
+            }
+        }
         check(errors.length === 0, 'no page errors', errors);
         await context.close();
+
+        // G — B-936: single pane (sidebar collapsed) keeps the whole-root behaviour
+        console.log(`\n[iPad Pro 11, pointer: ${pointer}, sidebar collapsed]`);
+        const single = await open(browser, pointer, IPAD_LAND, { collapsed: true });
+        await single.page.locator('.sd-foot textarea').first().focus();
+        await single.page.evaluate(() => window.__simKeyboard(764, 0));
+        await settle(single.page);
+        const g = await layout(single.page);
+        check(g.pane === 'root' && g.rootPos === 'fixed' && g.rootH === 764 && Math.abs(g.footBottom - 764) <= 1,
+            'G single pane · shortcut bar: the whole app is the visible area (unchanged)', { pane: g.pane, rootH: g.rootH, footBottom: g.footBottom });
+        await shot(single.page, `ipad-${pointer}-G-single-bar`);
+        await single.page.evaluate(() => window.__simKeyboardClose());
+        await settle(single.page);
+        restored(await layout(single.page), 'G closed');
+        check(single.errors.length === 0, 'no page errors (single pane)', single.errors);
+        await single.context.close();
     }
 } finally {
     await browser.close();

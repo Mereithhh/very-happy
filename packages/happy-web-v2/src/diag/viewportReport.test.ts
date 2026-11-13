@@ -80,4 +80,9 @@ describe('viewport diag report', () => {
         expect(formatKeyboardLine({ vvHeight: 834, vvOffsetTop: 0, scrollY: 0, innerHeight: 834, appH: 834, appHOverride: '', keyboardOpen: false, rootLock: true, pointer: 'fine', maxTouchPoints: 5, scrollResets: 3 }))
             .toBe('keyboard: vv.h=834 vv.top=0 scrollY=0 inner=834 · --app-h=834 (css) open=no root-lock=yes · pointer=fine touch-points=5 scroll-resets=3');
     });
+
+    it('B-936 keyboard line: which pane avoids the keyboard (split layout → detail)', () => {
+        expect(formatKeyboardLine({ vvHeight: 764, vvOffsetTop: 0, scrollY: 0, innerHeight: 834, appH: 834, appHOverride: '', keyboardOpen: true, keyboardPane: 'detail', rootLock: true }))
+            .toBe('keyboard: vv.h=764 vv.top=0 scrollY=0 inner=834 · --app-h=834 (css) open=yes root-lock=yes pane=detail');
+    });
 });
