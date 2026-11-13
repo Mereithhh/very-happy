@@ -106,6 +106,7 @@ export type ForkConversationParams = {
     threadSource?: unknown | null;
     /** B-851 (Codex ≥ 0.154): fork through this turn, inclusive; later turns are omitted. Older Codex ignores it. */
     lastTurnId?: string | null;
+    excludeTurns?: boolean;
 };
 
 export type ForkConversationResponse = {

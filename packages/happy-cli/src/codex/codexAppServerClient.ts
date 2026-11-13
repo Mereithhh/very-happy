@@ -1098,6 +1098,8 @@ export class CodexAppServerClient {
         sandbox?: SandboxMode;
         mcpServers?: Record<string, unknown>;
         lastTurnId?: string;
+        /** B-934b: the caller does not read the turns (they can be hundreds of MB, B-901). */
+        excludeTurns?: boolean;
     }): Promise<{ threadId: string; model: string; thread: Thread }> {
         await this.ensureConnected();
         const defaults = this.threadDefaults ?? {};
@@ -1114,6 +1116,7 @@ export class CodexAppServerClient {
             ephemeral: false,
             threadSource: null,
             ...(opts.lastTurnId ? { lastTurnId: opts.lastTurnId } : {}),
+            ...(opts.excludeTurns ? { excludeTurns: true } : {}),
         };
 
         const result = await this.request('thread/fork', params) as ForkConversationResponse;

@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-13-codex-switch-account-across-providers',
+    cliVersion: '0.2.214',
+    date: '2026-11-13',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov13p.title',
+    summaryKey: 'changelog.releases.nov13p.summary',
+    itemKeys: ['changelog.releases.nov13p.codex', 'changelog.releases.nov13p.failure'],
+  },
+  {
     id: '2026-11-13-cli-codex-account-provider-0-2-213',
     cliVersion: '0.2.213',
     date: '2026-11-13',

@@ -3402,6 +3402,12 @@ export const en = {
                 images: 'On a new chat\'s page (before the session is up) and in the new-chat dialog, images can be pasted, dropped or picked (also on phones). They are uploaded once the session has started and reach Claude or Codex together with the text; a message of images only works too. A reload while it starts keeps them.',
                 noSilentDrop: 'Nothing is dropped silently any more: if the files cannot go out (upload failed, or the session does not take them), you are told why and the text and files are back in the box — send again to retry.',
             },
+            nov13p: {
+                title: 'Switching a Codex session to another account keeps the conversation on newer Codex',
+                summary: 'On Codex 0.167 and later, moving a Codex session between your machine login and an added account (or between accounts on different providers) continues the conversation instead of cancelling it.',
+                codex: 'Newer Codex keeps a chat on the provider it started on. When the new account uses another provider, the session now continues in a copy of the chat with the same history, and says so in the conversation.',
+                failure: 'If Codex still cannot pick the conversation back up, the session now says why and what to do (switch back, or start a new session) instead of showing only "cancelled".',
+            },
             nov13c: {
                 title: 'Codex sessions on an added account work with newer Codex',
                 summary: 'Codex sessions that run on an account you added in Very Happy start and resume again on Codex 0.167 and later.',

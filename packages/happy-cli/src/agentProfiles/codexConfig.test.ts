@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from 'smol-toml';
-import { accountProviderId, buildCodexProviderTable, codexProcessProviderArgs, parseCodexDefaultProvider, parseCodexProviders, tomlInlineValue } from './codexConfig';
+import { accountProviderId, buildCodexProviderTable, codexProcessProviderArgs, parseCodexDefaultProvider, parseCodexProviders, tomlInlineValue, withoutSecretLookingEntries } from './codexConfig';
 
 const TOML = `
 model = "gpt-5.6-sol"
@@ -75,6 +75,21 @@ describe('B-934 process-level provider flags', () => {
     it('machine login passes nothing (config.toml decides)', () => {
         expect(codexProcessProviderArgs({})).toEqual([]);
         expect(codexProcessProviderArgs({ modelProvider: 'bad id' })).toEqual([]);
+    });
+
+    it('B-934b: credential-looking headers and query params stay out of argv', () => {
+        const secretTable = { ...table, http_headers: { 'X-Team': 'a', Authorization: 'Bearer S1', 'X-Api-Key': 'S2' }, query_params: { 'api-version': 'v1', 'api-key': 'S3' } };
+        const args = codexProcessProviderArgs({ modelProvider: 'vh-team', config: { model_providers: { 'vh-team': secretTable } } });
+        const parsed = (parse(`v = ${args[3].slice(args[3].indexOf('=') + 1)}`) as { v: Record<string, unknown> }).v;
+        expect(parsed.http_headers).toEqual({ 'X-Team': 'a' });
+        expect(parsed.query_params).toEqual({ 'api-version': 'v1' });
+        for (const secret of ['S1', 'S2', 'S3']) expect(args.join(' ')).not.toContain(secret);
+        // The thread config keeps the full table (it goes over stdio).
+        expect(secretTable.http_headers.Authorization).toBe('Bearer S1');
+    });
+
+    it('B-934b: a header map left empty is dropped, other fields kept', () => {
+        expect(withoutSecretLookingEntries({ name: 'X', http_headers: { 'X-Session-Token': 't' }, query_params: 'odd' })).toEqual({ name: 'X', query_params: 'odd' });
     });
 
     it('inline TOML values round-trip', () => {
