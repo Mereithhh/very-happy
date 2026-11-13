@@ -24,10 +24,10 @@ export function eventsFromBoard(items: ReadonlyArray<Pick<AttentionItem, 'id' | 
     for (const item of items) {
         if (!isAttentionActive(item.state) || item.sessionId === ctx.mainAgentSessionId) continue
         if (item.source === 'team' && item.kind === 'decision') {
-            out.push({ key: `team:${item.id}:${item.repostCount ?? 0}`, kind: 'team_submitted', title: item.title, detail: `卡片 ${item.id}${item.teamId ? ` · 团队 ${item.teamId}` : ''} · 会话 ${item.sessionId}`, at: ctx.now })
+            out.push({ key: `team:${item.id}:${item.repostCount ?? 0}`, kind: 'team_submitted', title: item.title, sessionId: item.sessionId, detail: `卡片 ${item.id}${item.teamId ? ` · 团队 ${item.teamId}` : ''} · 会话 ${item.sessionId}`, at: ctx.now })
         } else if (item.source === 'agent' && item.kind === 'blocked' && ctx.now - item.createdAt >= ctx.requestHumanMs) {
             const minutes = Math.round((ctx.now - item.createdAt) / 60_000)
-            out.push({ key: `rh:${item.id}:${item.repostCount ?? 0}`, kind: 'request_human_stale', title: item.title, detail: `已等 ${minutes} 分钟 · 会话 ${item.sessionId} · 卡片 ${item.id}`, at: ctx.now })
+            out.push({ key: `rh:${item.id}:${item.repostCount ?? 0}`, kind: 'request_human_stale', title: item.title, sessionId: item.sessionId, detail: `已等 ${minutes} 分钟 · 会话 ${item.sessionId} · 卡片 ${item.id}`, at: ctx.now })
         }
     }
     return out
@@ -39,7 +39,7 @@ export function eventsFromRuns(runs: ReadonlyArray<Pick<AutomationRun, 'id' | 'a
         .map(r => ({
             key: `run:${r.id}`, kind: 'automation_failed' as const,
             title: `${r.automationName}：${oneLine(r.error ?? r.attentionReason ?? 'failed', 90)}`,
-            detail: `run ${r.id}${r.sessionId ? ` · 会话 ${r.sessionId}` : ''}`, at: ctx.now,
+            detail: `run ${r.id}${r.sessionId ? ` · 会话 ${r.sessionId}` : ''}`, sessionId: r.sessionId ?? null, at: ctx.now,
         }))
 }
 
@@ -65,7 +65,7 @@ export function eventFromSessionExit(x: SessionExitInfo, now: number): WakeEvent
     const crashed = (x.code !== null && !STOP_CODES.has(x.code)) || (x.signal !== null && CRASH_SIGNALS.has(x.signal))
     if (!crashed) return null
     return {
-        key: `exit:${x.sessionId}:${x.pid}`, kind: 'session_error', title: x.title,
+        key: `exit:${x.sessionId}:${x.pid}`, kind: 'session_error', title: x.title, sessionId: x.sessionId,
         // B-924's hourly check posts the stuck card; same key → the same card, never a second one.
         detail: `会话 ${x.sessionId} · ${x.code !== null ? `退出码 ${x.code}` : `信号 ${x.signal}`} · 发卡用 key main-agent-stuck:${x.sessionId}`,
         at: now,
@@ -78,7 +78,7 @@ export function eventFromFollowup(kind: FollowupEventKind, item: Followup, now: 
         : `会话 ${item.sessionId ?? '?'}`
     const suffix = kind === 'followup_blocked' ? 'blocked' : kind === 'followup_done' ? 'done' : 'stuck'
     return {
-        key: `followup:${item.id}:${suffix}`, kind, title: item.title || item.id,
+        key: `followup:${item.id}:${suffix}`, kind, title: item.title || item.id, sessionId: item.kind === 'issue' ? null : item.sessionId ?? null,
         detail: [`跟进 ${item.id}`, target, item.result ? oneLine(item.result, 80) : ''].filter(Boolean).join(' · '),
         at: now,
     }

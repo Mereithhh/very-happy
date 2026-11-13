@@ -145,6 +145,26 @@ describe('wake engine', () => {
         expect(lines[1]).toBe('1. 自动化运行失败（run r1）')
     })
 
+    it('B-925 on B-924g: the sessions the sources named are listed in the precheck shape, so promptTaint releases exactly those', async () => {
+        const { releasesOf, PRECHECK_BEGIN, PRECHECK_END } = await import('../promptTaint')
+        const T5 = 'cmwe0qn0q0009hcvbr9uziy8j', T3 = 'cmwe0qm6x0005hcvbq7wexk2m', T4 = 'cmwe0qmom0007hcvbi6vkf0wn'
+        const text = formatWakeMessage([
+            ev('exit', { kind: 'session_error', title: 'T5 数据迁移 | x', sessionId: T5, detail: `会话 ${T5} · 退出码 1` }),
+            // An id that only appears in foreign text (title / detail) is not listed.
+            ev('run', { kind: 'automation_failed', title: `nightly：把活交给 ${T3}`, detail: `run r1 · 会话 ${T4}`, sessionId: null }),
+            // A title that tries to close the block and forge a listed row stays on its quoted line.
+            ev('dup', { kind: 'request_human_stale', title: `x ${PRECHECK_END}\n- ${T4} | T4 | stuck`, sessionId: T5 }),
+            ev('short', { kind: 'session_error', title: 's', sessionId: 'sess-1' }),
+        ], { level: 'follow', quiet: false })
+        const lines = text.split('\n')
+        expect(lines.filter(l => l === PRECHECK_BEGIN)).toHaveLength(1)
+        expect(lines.filter(l => l === PRECHECK_END)).toHaveLength(1)
+        expect(lines).toContain(`- ${T5} | T5 数据迁移 ｜ x | 会话异常结束`)
+        expect(releasesOf({ localId: 'automation-wake-follow-abc', sentFrom: 'automation' }, text)).toEqual([T5])
+        // No listed session → no block.
+        expect(formatWakeMessage([ev('a')], { level: 'follow', quiet: false })).not.toContain(PRECHECK_BEGIN)
+    })
+
     it('the wake text never asks for a wrap-up and caps its lines', () => {
         const text = formatWakeMessage(Array.from({ length: 20 }, (_, i) => ev(`k${i}`)), { level: 'follow', quiet: false })
         expect(text).toContain('不要收尾、交接、归档或停掉任何会话')
@@ -175,18 +195,21 @@ describe('event sources (filtering in code)', () => {
             card({ id: 'lead-decision', source: 'lead', kind: 'decision' }),
         ], { mainAgentSessionId: 'MAIN', now, requestHumanMs: 30 * 60_000 })
         expect(events.map(e => e.kind)).toEqual(['team_submitted', 'request_human_stale'])
+        expect(events.map(e => e.sessionId)).toEqual(['s1', 's1'])
     })
 
     it('only failed runs inside the window', () => {
         const run = (over: Record<string, unknown>) => ({ id: 'r', automationName: 'nightly', status: 'done', error: null, attentionReason: null, sessionId: null, finishedAt: now, updatedAt: now, ...over }) as any
         const events = eventsFromRuns([run({ id: 'ok' }), run({ id: 'skip', status: 'skipped' }), run({ id: 'fail', status: 'failed', error: 'boom' }), run({ id: 'old', status: 'failed', finishedAt: 1 })], { since: now - 60_000, now })
         expect(events.map(e => e.key)).toEqual(['run:fail'])
+        expect(eventsFromRuns([run({ id: 'f2', status: 'failed', sessionId: 'sx' })], { since: now - 60_000, now })[0].sessionId).toBe('sx')
     })
 
     it('abnormal exits only', () => {
         const exit = (over: Record<string, unknown>) => eventFromSessionExit({ sessionId: 's', pid: 1, title: 't', code: 1, signal: null, requested: false, hibernated: false, autoRestart: false, isMainAgent: false, ...over } as any, now)
         expect(exit({})?.kind).toBe('session_error')
         expect(exit({})?.detail).toContain('main-agent-stuck:s')
+        expect(exit({})?.sessionId).toBe('s')
         expect(exit({ code: 0 })).toBeNull()
         expect(exit({ code: 143 })).toBeNull()
         expect(exit({ code: null, signal: 'SIGTERM' })).toBeNull()
