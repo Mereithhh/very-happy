@@ -329,3 +329,27 @@ Orca 允许逐行隐藏，但这需要新的设置字段、迁移和设置页 UI
 
 - 中：侧栏入口带上了名字：「新建会话」下面那排图标改成一列带文字的入口（Issues、运行看板、项目、团队），其余的在「更多 ▾」，「更多 ▾ → 调整入口」可以选哪些常驻。
 - EN: Sidebar entries have names: the icon row under New session is now a labelled list (Issues, Agent board, Projects, Teams), the rest are under More ▾, and More ▾ → Edit entries picks which rows stay.
+
+## B-935 修订：入口随列表滚动（Owner 11-14，iPad 横屏）
+
+问题：iPad 11 寸横屏（1210×834，coarse）下入口行各 44px，主 agent + 新建会话 + 4 行入口 + 更多 + 视图栏占到列表上方约 460px，再扣掉用量条和底栏，列表只剩约 270px（4 行），而且列表是唯一能滚的区域。
+
+改法：侧栏头（品牌 · 搜索 · 收起）和底部（用量条 · 更新入口 · 底栏）不动；主 agent、新建会话、入口行、「列表 / 状态 / 归档」视图栏和会话列表放进同一个滚动容器 `.sb-scroll`。往下滑时入口行滚走，视图栏 `position: sticky` 留在顶部（底色 `--surface-sidebar`）。入口文字不变（B-926 口径）。手机单栏同样生效（芯片行随列表滚走）。
+
+- 定位当前会话 / 派发后滚到新行 / 拖拽边缘自动滚动，都改为滚 `.sb-scroll`；「可见」按 `listScrollBand` 计算：从视图栏底边到滚动容器底边，被吸顶视图栏盖住的行不算可见。拖拽插入线仍相对 `.sb-list` 定位（列表本身不再滚动，`scrollTop` 恒为 0，公式不变）。
+- 共享的 `vh-scroll-fade` 移到 `.sb-scroll`，只保留底部渐隐：顶部渐隐会把吸顶的视图栏也淡掉。
+- 未做「矮屏 coarse 压缩入口行高」和「用量条改单行」：单滚动容器后列表可见高度已从 270px 到 554px；用量条本来就是单行（coarse 44px 触控高度）。
+
+实测（`/dev/device/session/dev-board#sidebar-dense`，同一组假数据，列表滚到 400px 后量列表可见高度 / 完整可见行数）：
+
+| 视口 | 修前 | 修后 |
+| --- | --- | --- |
+| 1210×834 coarse（iPad 横屏） | 270px / 5 行 | 554px / 10 行 |
+| 1210×834 fine（iPad + 触控板） | 419px / 12 行 | 607px / 18 行 |
+| 390×844 coarse（手机） | 468px / 9 行 | 564px / 12 行 |
+| 1440×900 fine（桌面） | 449px / 13 行 | 709px / 21 行 |
+
+未滚动时布局与修前一致。纯 Web，无协议 / 存储变化。
+
+- 中：在 iPad 横屏这类较矮的屏幕上，侧边栏的入口会随会话列表一起滚走，「列表 / 状态 / 归档」留在顶部，列表能显示的会话多了一倍。
+- EN: On short screens such as an iPad in landscape, the sidebar entries scroll away with the session list while List / Status / Archived stays on top, so about twice as many sessions fit.
