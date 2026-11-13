@@ -56,6 +56,8 @@ export type MainAgentProactiveDeps = {
     nudge: (sessionId: string, text: string, localId: string) => Promise<boolean>
     /** The session is in a turn right now (this machine only). */
     busy: (sessionId: string) => boolean
+    /** A session's own title (wake PRECHECK title column for follow-ups, QA-T R62 P3-1); null = unknown, left empty. */
+    sessionTitle?: (sessionId: string) => string | null
     schedule?: (fn: () => void, ms: number) => { cancel: () => void }
     log?: (line: string) => void
 }
@@ -123,7 +125,7 @@ export function createMainAgentProactive(deps: MainAgentProactiveDeps) {
         if (!existsSync(ledger)) return { events, nudges }
         await mutateFollowups(ledger, items => items.map(item => {
             const s = fn(item)
-            if (s.event) events.push(eventFromFollowup(s.event, s.item, now()))
+            if (s.event) events.push(eventFromFollowup(s.event, s.item, now(), s.item.kind !== 'issue' && s.item.sessionId ? deps.sessionTitle?.(s.item.sessionId) : null))
             if (s.nudge) nudges.push(s.item)
             return s.item
         }), now())

@@ -58,7 +58,7 @@ import { createPromptTaintTracker, installMainAgentPromptTaint } from "@/assista
 import { installTaintTitlesOf } from "@/assistant/gates/taintGate";
 import { liveTitlesOf } from "@/assistant/gates/taintTitles";
 import { installDispatchLedger, withNonOwnerProvenance } from "@/assistant/sendGuard";
-import { proactiveDispatchLedger, registerFollowupsTool, withTurnGuards, withMainAgentProactive, type ProactiveSurfaceDeps } from "@/assistant/proactive/surface";
+import { FOLLOWUPS_LIST_TOOL, proactiveDispatchLedger, registerFollowupsTool, withTurnGuards, withMainAgentProactive, type ProactiveSurfaceDeps } from "@/assistant/proactive/surface";
 import { createWakeUsageTracker, proactiveUsagePath, wakeTurnLevel } from "@/assistant/proactive/usage";
 import { followupsPath } from "@/assistant/proactive/ledger";
 import { readProactiveConfigCache } from "@/assistant/proactive/configCache";
@@ -622,7 +622,9 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             ...WRAPUP_TOOL_NAMES,
             // Auto-allow only; the tools themselves appear for a lead on a board server.
             ...OWNER_BOARD_TOOL_NAMES,
-            ...(isMainAgentSession(options) ? [...ASSISTANT_TOOL_NAMES, ...MAIN_AGENT_TOOL_NAMES, DISPATCH_APPROVED_TOOL] : []),
+            // B-925 (QA-T R62 P2-1): followups_list is registered on every main agent (wakeUsage above);
+            // left out here it raised Claude Code's permission prompt and hung the woken turn.
+            ...(isMainAgentSession(options) ? [...ASSISTANT_TOOL_NAMES, ...MAIN_AGENT_TOOL_NAMES, DISPATCH_APPROVED_TOOL, FOLLOWUPS_LIST_TOOL] : []),
             ...(isLegacyAssistantSession(options) ? ASSISTANT_TOOL_NAMES : []),
         ],
         leadBoard,

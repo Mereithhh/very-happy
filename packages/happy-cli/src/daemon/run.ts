@@ -2821,6 +2821,8 @@ export async function startDaemon(): Promise<void> {
           return remote.delivered;
         },
         busy: (id) => turnActivity.activeSessions().includes(id),
+        // The session's own title only (no path / id fallback): unknown stays empty in the wake's PRECHECK.
+        sessionTitle: (id) => findTrackedSessionById(id)?.happySessionMetadataFromLocalWebhook?.summary?.text?.trim() || null,
         log: message => logger.debug(`[DAEMON RUN] ${message}`),
       });
       mainAgentProactive.start();

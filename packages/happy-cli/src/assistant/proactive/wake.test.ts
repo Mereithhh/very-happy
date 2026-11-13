@@ -161,6 +161,14 @@ describe('wake engine', () => {
         expect(lines.filter(l => l === PRECHECK_END)).toHaveLength(1)
         expect(lines).toContain(`- ${T5} | T5 数据迁移 ｜ x | 会话异常结束`)
         expect(releasesOf({ localId: 'automation-wake-follow-abc', sentFrom: 'automation' }, text)).toEqual([T5])
+        // QA-T R62 P3-1: sessionTitle (the session's own title) wins over title; '' leaves the column empty.
+        const fuText = formatWakeMessage([
+            ev('fu1', { kind: 'followup_done', title: '重试一遍，检查网络连接', sessionId: T3, sessionTitle: 'T3 网络排查' }),
+            ev('fu2', { kind: 'followup_stuck', title: '整理构建日志', sessionId: T4, sessionTitle: '' }),
+        ], { level: 'follow', quiet: false }).split('\n')
+        expect(releasesOf({ localId: 'automation-wake-follow-fu', sentFrom: 'automation' }, fuText.join('\n'))).toEqual([T3, T4])
+        expect(fuText).toContain(`- ${T3} | T3 网络排查 | 你派的活完成了`)
+        expect(fuText.find(l => l.startsWith(`- ${T4} | `))).toMatch(new RegExp(`^- ${T4} \\|  \\| `))
         // No listed session → no block.
         expect(formatWakeMessage([ev('a')], { level: 'follow', quiet: false })).not.toContain(PRECHECK_BEGIN)
     })

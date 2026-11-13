@@ -355,6 +355,16 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
         expect(names.length).toBe(Object.keys(MAIN_AGENT_TOOL_POLICY).length);
     });
 
+    it('B-925 (QA-T R62 P2-1): every tool the policy table classes allow is in the auto-allow list — a missing one raises Claude Code\'s permission prompt and hangs a woken turn', async () => {
+        const names = (await connect({ assistant: true, mainAgent: gatedMainAgent([]) })).map(t => t.name);
+        const autoAllowed = new Set(happy!.toolNames);
+        const allow = Object.keys(MAIN_AGENT_TOOL_POLICY).filter(n => mainAgentToolClass(n) === 'allow');
+        expect(allow).toContain('followups_list');
+        expect(allow.filter(n => !autoAllowed.has(n)), 'add these to startHappyServer toolNames').toEqual([]);
+        // owner_only / ask are gated by the wrapper (refusal / decision card), so a CC prompt on top would only hang the turn too.
+        expect(names.filter(n => !autoAllowed.has(n)), 'registered on the main agent but not auto-allowed').toEqual([]);
+    });
+
     it('B-924b: in a turn the owner did not type, every owner_only tool refuses and every ask tool parks a card; nothing reaches a backend', async () => {
         const cards: Array<{ title: string; bodyMd: string }> = [];
         const tools = await connect({ assistant: true, mainAgent: gatedMainAgent(cards) });

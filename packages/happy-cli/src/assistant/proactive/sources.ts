@@ -72,13 +72,15 @@ export function eventFromSessionExit(x: SessionExitInfo, now: number): WakeEvent
     }
 }
 
-export function eventFromFollowup(kind: FollowupEventKind, item: Followup, now: number): WakeEvent {
+/** `sessionTitle`: the dispatched session's own title (PRECHECK title column, QA-T R62 P3-1); unknown → ''. */
+export function eventFromFollowup(kind: FollowupEventKind, item: Followup, now: number, sessionTitle?: string | null): WakeEvent {
     const target = item.kind === 'lead' ? `团队 ${item.teamId ?? '?'} · Lead 会话 ${item.sessionId ?? '?'}`
         : item.kind === 'issue' ? `issue ${item.issueKey ?? item.issueId ?? '?'}`
         : `会话 ${item.sessionId ?? '?'}`
     const suffix = kind === 'followup_blocked' ? 'blocked' : kind === 'followup_done' ? 'done' : 'stuck'
     return {
         key: `followup:${item.id}:${suffix}`, kind, title: item.title || item.id, sessionId: item.kind === 'issue' ? null : item.sessionId ?? null,
+        sessionTitle: sessionTitle?.trim() ?? '',
         detail: [`跟进 ${item.id}`, target, item.result ? oneLine(item.result, 80) : ''].filter(Boolean).join(' · '),
         at: now,
     }
