@@ -102,6 +102,7 @@ export const MAIN_AGENT_TOOL_POLICY = {
     owner_board_post: ['allow', 'the main agent\'s own board cards (gate cards are reserved); marked in a non-owner turn'],
     owner_board_update: ['allow', 'the main agent\'s own board cards; marked in a non-owner turn'],
     owner_board_resolve: ['allow', 'the main agent\'s own board cards'],
+    followups_list: ['allow', 'read (B-925 follow-up ledger)'],
     wrapup_suggest: ['allow', 'posts a checklist card; wraps up nothing'],
     wrapup_selected: ['allow', 'runs only what the owner ticked on a hash-bound card'],
     wrapup_report: ['allow', 'the main agent\'s own wrap-up card; closes nothing'],

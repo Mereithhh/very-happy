@@ -34,7 +34,8 @@
  *    that the owner's text does not contain (B-924g: or, for a 6–11-char text, is wholly inside one). Naming
  *    the target does not clear copied text — unless the owner refers back to it (「把刚才那个任务交给 T3」),
  *    named every target, and the text is from the OWN REPORT (`reportText`, B-924h) of one of the 5 newest
- *    window prompts of the last 30 minutes.
+ *    window prompts of the last 30 minutes. B-924j: a session_message's report also covers its header's sender id,
+ *    cwd and machine (`reportFieldsOf`), never its title.
  *  - B-924h (QA-T refer-1:「T4 那个构建日志整理得怎么样了？」after a send naming T4 → handoff_send(T4, the send's
  *    payload) delivered): a refer-back word never clears content by itself. Only a sender's own report may be
  *    relayed — the body of a session_message (its sender's words) or the precheck block of an automation (the
@@ -87,7 +88,7 @@ export type TaintPrompt = TurnPrompt & { text?: string | null }
  * automation's precheck listed (早报 / 唤醒「卡住的会话」「可以收尾的会话」). Any other session it names —
  * a third party (「交给 T4」) — stays tainted.
  */
-export type TaintWindowEntry = { text: string; at?: number; releases?: readonly string[]; seq?: number; reportText?: string; sender?: string }
+export type TaintWindowEntry = { text: string; at?: number; releases?: readonly string[]; seq?: number; reportText?: string; reportFields?: readonly string[]; sender?: string }
 
 export type TaintSnapshot = {
     /** The owner's own text of the current turn; null when the current turn is not the owner's. */
@@ -189,6 +190,31 @@ export function reportTextOf(prompt: TaintPrompt, text: string): string | undefi
     return undefined
 }
 
+/**
+ * B-924j (QA-T R62 P2-1: T2 reports by session_message → owner「把刚才那个任务交给 T3」→ the hand-off says「T2 的代码在
+ * /tmp/c924fqa-t2」→ card, 3/3): the header of a session_message is in the window too, and its sender's cwd is
+ * what a hand-off naturally repeats. The header fields relayed like the sender's report — under exactly the same
+ * conditions as its body (refer-back + every target typed + recent, or answering the sender itself):
+ *  - sender session id: written by the sending wrapper (its own ApiSessionClient id; the CLI's VH_PEER_SESSION_ID);
+ *    already released as a target — this lets a text carry it too (「T2（cmwe…）的任务」).
+ *  - cwd: the sender session's metadata path (its spawn directory, fixed by the wrapper; the model cannot change it
+ *    for a running session). On the CLI fallback / remote paths it is the caller's — at worst as sender-controlled
+ *    as the body, which is already relayable under the same conditions, so this opens no path the body did not.
+ *  - machine: the sender's host (B-506), same trust as cwd.
+ * Not relayed — still external text:
+ *  - title: the sender's summary, which its model rewrites at will (change_title) and which outlives this message;
+ *    a title argument that IS a looked-up title of a target is handled by the target check (`realTitles`).
+ *  - agent / message id / re / kind: wrapper-written but too short (< SHORT_TEXT_MIN or < FRAGMENT_CHARS) to be
+ *    what a call copies; left as they are.
+ * A CLI send (`cli` sender), a forged header in a send / automation / team message: no report, so no fields.
+ */
+export function reportFieldsOf(prompt: TaintPrompt, text: string): string[] {
+    if (!(prompt.localId ?? '').startsWith('session-message-')) return []
+    const parsed = parsePeerMessage(text)
+    if (parsed?.kind !== 'message' || !parsed.from.sessionId || parsed.from.sessionId === CLI_PEER_SENDER_ID) return []
+    return [parsed.from.sessionId, parsed.from.cwd, parsed.from.machine].filter((f): f is string => Boolean(f && f.trim()))
+}
+
 /** Remembers routed prompt texts by localId; non-owner ones enter the window when routed. */
 export function createPromptTaintTracker(opts: { window?: number; maxSeen?: number; now?: () => number } = {}) {
     const windowSize = opts.window ?? NON_OWNER_WINDOW
@@ -224,7 +250,8 @@ export function createPromptTaintTracker(opts: { window?: number; maxSeen?: numb
             if (prompt.localId) { if (windowed.has(prompt.localId)) return; windowed.add(prompt.localId) }
             const reportText = reportTextOf(prompt, text)?.slice(0, NON_OWNER_SCAN_CHARS)
             const sender = senderOf(prompt, text)
-            nonOwner.push({ text: text.slice(0, NON_OWNER_SCAN_CHARS), at: now(), releases: releasesOf(prompt, text), seq: ++seq, ...(reportText ? { reportText } : {}), ...(sender ? { sender } : {}) })
+            const reportFields = reportFieldsOf(prompt, text)
+            nonOwner.push({ text: text.slice(0, NON_OWNER_SCAN_CHARS), at: now(), releases: releasesOf(prompt, text), seq: ++seq, ...(reportText ? { reportText } : {}), ...(reportFields.length ? { reportFields } : {}), ...(sender ? { sender } : {}) })
             while (nonOwner.length > windowSize) nonOwner.shift()
             while (windowed.size > maxSeen) windowed.delete(windowed.values().next().value as string)
         },
@@ -254,7 +281,7 @@ export function createPromptTaintTracker(opts: { window?: number; maxSeen?: numb
         snapshot: (): TaintSnapshot => ({
             ownerText,
             ...(ownerText !== null ? { ownerContext: ownerContext ?? ownerText, ownerTyped: ownerTyped ?? ownerText, ...(ownerReply ? { ownerReply } : {}), ownerNames: ownerNames.map(n => ({ ...n })), refersBack: refersBack(ownerText) } : {}),
-            nonOwner: nonOwner.map(e => ({ ...e, releases: [...(e.releases ?? [])] })),
+            nonOwner: nonOwner.map(e => ({ ...e, releases: [...(e.releases ?? [])], ...(e.reportFields ? { reportFields: [...e.reportFields] } : {}) })),
             now: now(),
         }),
     }
@@ -387,7 +414,7 @@ export function promptTaintHits(keys: TaintKeys, snapshot: TaintSnapshot, unreso
     const ownerRaw = snapshot.ownerContext ?? snapshot.ownerText
     const owner = normalizeForTaint(ownerRaw)
     const typed = normalizeForTaint(snapshot.ownerTyped ?? ownerRaw)
-    const entries = snapshot.nonOwner.map(entryOf).map(e => ({ ...e, norm: normalizeForTaint(e.text), squashed: squash(e.text), report: e.reportText ? squash(e.reportText) : '', releases: new Set(e.releases ?? []) }))
+    const entries = snapshot.nonOwner.map(entryOf).map(e => ({ ...e, norm: normalizeForTaint(e.text), squashed: squash(e.text), report: [e.reportText ?? '', ...(e.reportFields ?? [])].map(squash).filter(Boolean), releases: new Set(e.releases ?? []) }))
     const ownerNames = snapshot.ownerNames?.map(n => ({ norm: normalizeForTaint(n.text), seq: n.seq }))
     const hits: TaintHit[] = []
     let allTargetsTyped = keys.targets.length > 0
@@ -415,7 +442,8 @@ export function promptTaintHits(keys: TaintKeys, snapshot: TaintSnapshot, unreso
     // and so does every other window prompt holding the same piece).
     const toSenderOnly = (e: { sender?: string }) => Boolean(e.sender) && keys.targets.length > 0 && keys.targets.every(t => t.kind === 'session' && t.value === e.sender)
     // B-924h: a refer-back clears a piece only inside the prompt's own report; the rest of it still taints.
-    const fromWindow = (piece: string) => entries.some((e, i) => e.squashed.includes(piece) && !(e.report.includes(piece) && ((referable && recent(i)) || toSenderOnly(e))))
+    // B-924j: the report = the body plus the header's sender id / cwd / machine, each matched on its own (never joined).
+    const fromWindow = (piece: string) => entries.some((e, i) => e.squashed.includes(piece) && !(e.report.some(r => r.includes(piece)) && ((referable && recent(i)) || toSenderOnly(e))))
     const ownerSquashed = squash(ownerRaw)
     // B-924h: a title argument that IS a looked-up title of a target of this call is a fact about the target
     // (the target check above decides about it), not content the window could have smuggled in.

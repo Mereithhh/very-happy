@@ -229,7 +229,7 @@ risk: 'none' | 'external' | 'production'
 4. 要求 `resolvedBy='owner'`，否则 `not_approved`；参数 sha256 与 pending 不一致 → `approval_mismatch`（防止批 A 派 B）。
 5. **只派一次**（QA77 #4）：先用 `O_EXCL` 建 `<approvalId>.inflight`，建不成 → `{ok:true, state:'already_dispatched'}`；派发失败（工具回错或抛错）删掉标记，可重试；成功后写 `<approvalId>.done.json`，再调回执上一次结果。
 6. 按选择执行：
-   - `ownerChoice='approve'` → 原样执行存下的调用，payload 前加一行 `本任务已获批：<链接>`；
+   - `ownerChoice='approve'` → 原样执行存下的调用。开新工作的（session_spawn 首条 prompt、Lead / 团队派活、自动化 prompt）payload 前加一行 `本任务已获批：<链接>`，接手方靠它知道 Owner 批过；发进**已有**会话 / 终端的（session_send / session_message / terminal_send）一字不加，对端收到的就是卡上「内容」那段（B-925，QA-T B-924c P2-1：前缀让被卡住的会话看不懂「继续」，进终端还会被当成命令）。批准记录留在汇报板和 pending / done 记录里；
    - `ownerChoice='draft'` → **不派会话**，回执 `{ok:true, state:'draft_only'}`，主 agent 在对话里给出草稿（只出草稿 = 什么都不交给别的执行者）；
    - `ownerChoice='drop'` → 不执行，回执 `{ok:true, state:'dropped'}`；
    - 其他选择 → `not_approved`。

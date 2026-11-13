@@ -39,3 +39,4 @@ export * from './accountSettings';
 export * from './machineSettings';
 export * from './mainAgentSafety';
 export * from './mainAgentAutomations';
+export * from './mainAgentProactive';

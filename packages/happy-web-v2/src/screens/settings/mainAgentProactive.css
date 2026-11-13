@@ -1,0 +1,26 @@
+/* Settings → Main agent → 主动程度 (B-925) */
+.map-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3) var(--sp-3);
+  min-width: 0;
+}
+.map-caps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--sp-3);
+}
+.map-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+.map-note {
+  flex: 1 1 200px;
+  min-width: 0;
+  color: var(--text-faint);
+  font-size: var(--fs-12);
+}

@@ -315,7 +315,7 @@ describe('public documentation registry', () => {
     // B-916b/c: the assistant surface is the main agent's (assistant variant outside any team scope,
     // with the gate runtime); a pi / ACP assistant keeps the B-051 session tools only (QA77 #6).
     expect(managedClaude).toContain('return options?.assistant === true && !env.VH_TEAM_SCOPE_FILE && options.mainAgent !== undefined;');
-    expect(managedClaude).toContain('...(isMainAgentSession(options) ? [...ASSISTANT_TOOL_NAMES, ...MAIN_AGENT_TOOL_NAMES, DISPATCH_APPROVED_TOOL] : [])');
+    expect(managedClaude).toContain('...(isMainAgentSession(options) ? [...ASSISTANT_TOOL_NAMES, ...MAIN_AGENT_TOOL_NAMES, DISPATCH_APPROVED_TOOL, FOLLOWUPS_LIST_TOOL] : [])');
     expect(managedClaude).toContain('...(isLegacyAssistantSession(options) ? ASSISTANT_TOOL_NAMES : [])');
     // The standalone server inlines three tools: clipboard (always),
     // terminal preview and title, which exists only inside a Very Happy web

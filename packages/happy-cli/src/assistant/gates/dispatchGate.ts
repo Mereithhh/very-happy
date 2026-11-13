@@ -150,11 +150,17 @@ export type DispatchGateDeps = {
      * came from recent non-owner prompts and not from the owner's text; null otherwise. Checked after `mustAsk`.
      */
     taint?: (toolName: string, args: Record<string, unknown>) => Promise<string | null>
-    /** B-924g (QA-T P3-1): the title of the card's session / team target, for the 目标 line; null = unknown. */
+    /**
+     * B-924g (QA-T P3-1): the title of the card's session / team target, for the 目标 line; null = unknown.
+     * B-925: best effort — a throw or no answer within TARGET_LABEL_TIMEOUT_MS keeps the raw id. The line is part
+     * of the card face, so it is covered by the face hash; the target itself is in the hashed args.
+     */
     targetTitle?: (kind: 'session' | 'team', id: string) => Promise<string | null>
     /** B-924g (QA-T P2-2): retry pause while the owner's choice is not readable yet (default 400 ms × 3). */
     settleDelayMs?: number
 }
+export const TARGET_LABEL_TIMEOUT_MS = 3_000
+
 /** false / null / undefined = no; true = yes (generic reason); a string = yes, and it is the card's 原因 line (B-924b). */
 export type MustAskVerdict = boolean | string | null | undefined
 
@@ -164,6 +170,9 @@ function firstLine(text: string, max: number): string {
     const line = (text.split('\n').find(l => l.trim()) ?? '').trim().replace(/\s+/g, ' ')
     return line.length > max ? `${line.slice(0, max - 1)}…` : line
 }
+
+/** B-925: one line, no line breaks or quote marks that could fake another field of the card. */
+const cleanLabel = (label: string) => label.replace(/[\r\n「」`]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
 
 /** B-924g: the session / team a card's 目标 line names (the one whose title the gate looks up). */
 export function cardTargetRef(args: Record<string, unknown> | undefined): { kind: 'session' | 'team'; id: string } | null {
@@ -177,10 +186,11 @@ export function cardTargetRef(args: Record<string, unknown> | undefined): { kind
 }
 
 /** B-924c: the card's 目标 line — who receives the text (session / Lead / terminal / team / issue / automation). B-924g: with its title when known. */
-function cardTarget(args: Record<string, unknown> | undefined, title?: string | null): string | null {
+export function cardTarget(args: Record<string, unknown> | undefined, title?: string | null): string | null {
     if (!args) return null
     const pick = (...keys: string[]) => keys.map(k => str(args[k])).find(Boolean) ?? ''
-    const named = (id: string) => title ? `「${title.replace(/\s+/g, ' ').slice(0, 60)}」（${id}）` : id
+    const clean = title ? cleanLabel(title) : ''
+    const named = (id: string) => clean ? `「${clean}」（${id}）` : id
     const session = pick('sessionId', 'session_id', 'to') || (Array.isArray(args.session_ids) ? args.session_ids.map(str).filter(Boolean).join(', ') : '')
     if (session) return `会话 ${pick('sessionId', 'session_id', 'to') ? named(session) : session}`
     const terminal = pick('terminalId')
@@ -193,13 +203,29 @@ function cardTarget(args: Record<string, unknown> | undefined, title?: string | 
     return automation ? automation : null
 }
 
+/**
+ * B-925 (QA-S P3-1): the target's short name for the card TITLE, so two 「继续」 cards to different sessions are
+ * told apart in the board list. Same flattening as the 目标 line (no line breaks / 「」 / backticks), capped at
+ * 20 chars; the short id when no name is known. Only for receivers that are not already the title's head
+ * (session / terminal / team); null otherwise.
+ */
+export function cardTitleTarget(args: Record<string, unknown> | undefined, title?: string | null): string | null {
+    const ref = cardTargetRef(args) ?? (args && str(args.terminalId) ? { kind: 'terminal' as const, id: str(args.terminalId) } : null)
+    if (!ref) return null
+    const name = title && ref.kind !== 'terminal' ? cleanLabel(title) : ''
+    if (name) return `「${name.length > 20 ? `${name.slice(0, 19)}…` : name}」`
+    return ref.id.length > 12 ? ` ${ref.id.slice(0, 8)}…` : ` ${ref.id}`
+}
+
 export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'toolName' | 'declared' | 'level'> & { args?: Record<string, unknown> }, payload: string, forced: boolean | string = false, targetTitle?: string | null) {
     const head = firstLine(payload, 60) || pending.toolName
     const target = cardTarget(pending.args, targetTitle)
+    const titleTarget = cardTitleTarget(pending.args, targetTitle) ?? ''
     return {
         key: `${DISPATCH_CARD_KEY_PREFIX}${pending.approvalId}`,
         // B-924c (QA-T P3-2): the title names the action (想恢复自动化 / 想写项目决定 …), not always 派活.
-        title: `主 agent 想${mainAgentAskAction(pending.toolName, pending.args)}（${pending.level}${forced ? '，需你确认' : ''}）：${head}`.slice(0, 120),
+        // B-925 (QA-S P3-1): …and whom it goes to (想给会话发消息「修 sum.js」).
+        title: `主 agent 想${mainAgentAskAction(pending.toolName, pending.args)}${titleTarget}（${pending.level}${forced ? '，需你确认' : ''}）：${head}`.slice(0, 120),
         bodyMd: clipBytes([
             `工具：${pending.toolName}`,
             ...(target ? [`目标：${target}`] : []),
@@ -214,6 +240,7 @@ export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'tool
             payload.slice(0, 1_500),
         ].join('\n'), 7_900),
         requestId: `dispatch-${pending.approvalId}`,
+        options: dispatchOptions(pending.toolName, pending.level),
     }
 }
 
@@ -223,8 +250,32 @@ export const DISPATCH_OPTIONS = [
     { id: 'drop', label: '放弃' },
 ] as const
 
-/** Prefix the approved call's payload; drafts get the do-not-send variant. */
+/**
+ * B-925 (QA-T B-924c P3): which option the card recommends. A risk-none message into an existing session
+ * (session_send / session_message — e.g. 「继续」 to a stuck session) is fully on the card: the target line and the
+ * exact text, both hash-bound, sent verbatim. There 批准执行 is the useful default. Everything else (spawns,
+ * team / Lead work, automations, terminals, external / production) keeps 只出草稿.
+ */
+export function dispatchOptions(toolName: string, level: RiskLevel): ReadonlyArray<{ id: string; label: string; recommended?: boolean }> {
+    if (level === 'none' && (toolName === 'session_send' || toolName === 'session_message')) {
+        return DISPATCH_OPTIONS.map(o => ({ id: o.id, label: o.label, ...(o.id === 'approve' ? { recommended: true } : {}) }))
+    }
+    return DISPATCH_OPTIONS
+}
+
+/**
+ * B-925 (QA-T B-924c P2-1): a message into an EXISTING session or terminal goes out exactly as the card showed it.
+ * The receiver is mid-conversation; a 「本任务已获批：<url>」 line in front of 「继续」 read as a new instruction it
+ * could not place, and in a terminal it would be typed into the shell. The approval stays on the board and in the
+ * pending / done records. Work that STARTS somewhere new (a spawn's first prompt, a Lead / team goal, an
+ * automation's prompt) keeps the line: that executor has no conversation with the owner and the line is how it
+ * knows the owner approved an outbound / production step.
+ */
+export const VERBATIM_SEND_TOOLS: ReadonlySet<string> = new Set(['session_send', 'session_message', 'terminal_send'])
+
+/** Prefix the approved call's payload; drafts get the do-not-send variant. Verbatim sends are left as approved. */
 export function withApprovalPrefix(toolName: string, args: Record<string, unknown>, link: string, choice: 'approve' | 'draft'): Record<string, unknown> {
+    if (choice === 'approve' && VERBATIM_SEND_TOOLS.has(toolName)) return args
     const line = choice === 'approve' ? `本任务已获批：${link}` : `本任务已获批，但只出草稿、不得发送或发布：${link}`
     const field = PAYLOAD_FIELD[toolName]
     if (field) return { ...args, [field]: `${line}\n\n${str(args[field])}` }
@@ -308,6 +359,19 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         return park(toolName, args, 'none', 'none', askOnlyPayload(args), verdict)
     }
 
+    /** B-925: the target's title for the card, or null (no lookup, a throw, or no answer within TARGET_LABEL_TIMEOUT_MS). */
+    async function titleFor(args: Record<string, unknown>): Promise<string | null> {
+        const ref = cardTargetRef(args)
+        if (!ref || !deps.targetTitle) return null
+        let timer: ReturnType<typeof setTimeout> | undefined
+        try {
+            return await Promise.race([
+                deps.targetTitle(ref.kind, ref.id),
+                new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), TARGET_LABEL_TIMEOUT_MS); timer.unref?.() }),
+            ])
+        } catch { return null } finally { if (timer) clearTimeout(timer) }
+    }
+
     /** `mustAsk` first (sync rules), then the B-924f taint hook. */
     async function verdictOf(toolName: string, args: Record<string, unknown>): Promise<MustAskVerdict> {
         const verdict = deps.mustAsk?.(toolName, args)
@@ -338,8 +402,7 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         try {
             await mkdir(deps.pendingDir, { recursive: true, mode: 0o700 })
             await writePrivate(pendingPath(approvalId), pending)
-            const ref = cardTargetRef(args)
-            const title = ref && deps.targetTitle ? await deps.targetTitle(ref.kind, ref.id).catch(() => null) : null
+            const title = await titleFor(args)
             const card = decisionCard(pending, payload, forced, title)
             const posted = await deps.board.postDecision(card)
             const id = posted.id
@@ -424,9 +487,7 @@ export function createDispatchGate(deps: DispatchGateDeps) {
             out = parse(await approved({ approvalId }))
         }
         deps.log?.(`[main-agent gate] card ${itemId} chosen → ${out.state ?? out.error}`)
-        const ref = cardTargetRef(pending.args)
-        const title = ref && deps.targetTitle ? await deps.targetTitle(ref.kind, ref.id).catch(() => null) : null
-        return dispatchChoiceReceipt(pending.toolName, pending.args, out, title)
+        return dispatchChoiceReceipt(pending.toolName, pending.args, out, await titleFor(pending.args))
     }
 
     /** The approval whose pending record names this card (the gate's own records only). */

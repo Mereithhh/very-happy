@@ -66,7 +66,9 @@ describe('B-916c main agent gate wiring', () => {
 
     it('startHappyServer routes every dispatch-tool family through the gate', () => {
         const server = src('claude/utils/startHappyServer.ts')
-        expect(server).toContain('const dispatchRegistrar = mainAgent ? options!.mainAgent!.gate.wrap(mcp) : mcp;')
+        // B-925: the follow-up ledger / wake-turn guard wraps the gate's registrar from outside (the gate keeps that handler).
+        expect(server).toContain('const gated = mainAgent ? options!.mainAgent!.gate.wrap(mcp) : mcp;')
+        expect(server).toContain('const dispatchRegistrar = mainAgent && options?.mainAgentProactive ? withMainAgentProactive(gated, options.mainAgentProactive) : gated;')
         // QA77 #6: the main agent needs the gate runtime; QA77 #2: its owner_board_* go through the gate's write guard
         expect(server).toContain('return options?.assistant === true && !env.VH_TEAM_SCOPE_FILE && options.mainAgent !== undefined;')
         expect(server).toContain('registerOwnerBoardTools(options!.mainAgent!.gate.wrap(withNonOwnerProvenance(withToolOutputCaps(mcp, MAIN_AGENT_LIST_VIEWS))), leadBoard);')

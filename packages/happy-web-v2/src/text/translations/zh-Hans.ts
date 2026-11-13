@@ -3521,6 +3521,14 @@ export const zhHans: TranslationStructure = {
                 skill: '新增 `very-happy skill`：能力地图覆盖会话、终端、项目、团队、自动化、Issues 与待办、账号、机器、分享、通知、面板和设置，每块一页（如 `very-happy skill automations`）。会话里只多一行指向它，问 agent「给这个项目加一个每天 9 点的自动化」就能拿到正确命令。本机副本在 ~/.local/share/very-happy/skills/very-happy，你改过的文件不会被覆盖。',
                 autoProject: '`very-happy auto create|edit --project <id>|current` 可把自动化挂到项目上（`--no-project` 取消）；以前只能在 Web 上设。',
             },
+            nov11r: {
+                title: '主 agent 会主动开口了：事件唤醒与跟进台账',
+                summary: '主 agent 不再只等你发消息：有值得你知道的事就自己醒来、核实、汇报；派出去的活会一直跟到完成。',
+                wake: '团队任务等你验收、会话以错误结束、有会话求助很久没人理、自动化运行失败、它派出去的活完成或卡住时，主 agent 会收到一条简短汇总（相近的事件合成一条，同一件事只唤醒一次），核实后决定上板还是直接告诉你。没有值得看的事件时不唤醒，不花 token。',
+                followups: '主 agent 派出去的每件活（交给 Lead、开新会话、给会话发消息、指派 issue）都记进本机的跟进台账（`followups_list` 可查）。完成了给你一句结果；没动静就先催一次，再不动就告诉你卡住了。',
+                conduct: '主 agent 手册新增主动性准则：聊完一件事给出下一步建议；安全阀允许的事先做完再报告，不先问；只有真正要你拍板的才出决定卡。被唤醒的那一轮不会收尾、交接或归档任何会话。',
+                settings: '设置 → 主 agent → 主动程度：关 / 只汇报 / 主动跟进，另可设每天的唤醒次数和 token 上限（超了当天就停，并在汇报板上说明）。夜间免打扰时段只上板，不推送。',
+            },
             nov11t: {
                 title: '弹窗的标题和 × 不再滚走，点外面就能关',
                 summary: '任务详情这类长弹窗，标题和关闭按钮不会再跟着内容滚走；点弹窗外面即可关闭。',

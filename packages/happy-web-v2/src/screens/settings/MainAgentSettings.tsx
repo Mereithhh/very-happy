@@ -25,6 +25,7 @@ import { useMainAgentActions, useMainAgentPointerSync, useMainAgentState } from 
 import { MainAgentAutomationsSection } from './MainAgentAutomationsSection';
 import '@/screens/mainAgent/mainAgent.css';
 import { MainAgentSafetySection } from './MainAgentSafetySection';
+import { MainAgentProactiveSettings } from './MainAgentProactiveSettings';
 
 export function MainAgentSettings() {
     const { lang } = useTranslation();
@@ -113,6 +114,8 @@ export function MainAgentSettings() {
                     })}
                     {actions.spawnError && <Item title={<span className="tg-error">{actions.spawnError}</span>} />}
                 </ItemGroup>
+
+                <MainAgentProactiveSettings />
 
                 <ItemGroup settingId="mainAgent.skillRoots" title={copy.settingsSkillRoots} footer={copy.settingsSkillRootsHint}>
                     <div className="ma-settings-field">
