@@ -16,6 +16,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { lastUserMessage, sessionTurnFailure } from '@/sync/turnFailure';
+import { retryLocalIdFor } from '@slopus/happy-wire';
 import './mirror.css';
 
 export function TurnFailureBanner({ sessionId }: { sessionId: string }) {
@@ -32,7 +33,10 @@ export function TurnFailureBanner({ sessionId }: { sessionId: string }) {
         if (!last || retrying) return;
         setRetrying(true);
         try {
-            await sync.sendMessage(sessionId, last.text, { source: 'chat', ...(last.displayText ? { displayText: last.displayText } : {}) });
+            // B-924d (QA-T P1-3): a retry keeps the original's provenance — a message the owner did not type
+            // (a send, an automation, a peer) goes out with a `retry-` localId, so it is not the owner's turn.
+            const localId = retryLocalIdFor({ localId: last.localId, sentFrom: last.meta?.sentFrom });
+            await sync.sendMessage(sessionId, last.text, { source: 'chat', ...(last.displayText ? { displayText: last.displayText } : {}), ...(localId ? { localId } : {}) });
             // The wrapper clears the failure when it takes the message; until
             // then this tab already knows the retry went out.
             setHiddenAt(failure.at);

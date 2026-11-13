@@ -33,6 +33,8 @@ export const SPAWN_AGENT_LABELS: Record<(typeof SPAWN_AGENTS)[number], string> =
 export const SPAWN_PERMISSION_MODES = ['', 'default', 'acceptEdits', 'plan', 'yolo', 'bypassPermissions'] as const;
 /** B-548: a precheck is one shell line or an argv (split like the script command) */
 export const PRECHECK_MODES = ['shell', 'argv'] as const;
+/** B-924: a send goes to one session, or to the account's main agent (resolved by the server at run time). */
+export const SEND_TARGETS = ['session', 'main-agent'] as const;
 
 export interface AutomationDraft {
   /** B-649: sessions this automation spawns join this project ('' = none). */
@@ -58,6 +60,8 @@ export interface AutomationDraft {
   agentProfile?: AgentProfileRef | null;
   prompt: string;
   sendSessionId: string;
+  /** B-924 `session` = `sendSessionId`; `main-agent` = `target: 'main-agent'` (no session id). */
+  sendTarget: (typeof SEND_TARGETS)[number];
   /** one shell-ish line; see splitArgv */
   scriptCommand: string;
   scriptCwd: string;
@@ -103,6 +107,7 @@ export function emptyDraft(over: Partial<AutomationDraft> = {}): AutomationDraft
     stickyKey: '',
     prompt: '',
     sendSessionId: '',
+    sendTarget: 'session',
     scriptCommand: '',
     scriptCwd: '',
     concurrency: 'skip',
@@ -289,7 +294,8 @@ export function draftFromAutomation(a: Automation): AutomationDraft {
     if (act.agentProfile !== undefined) d.agentProfile = act.agentProfile;
     d.prompt = act.prompt;
   } else if (act.kind === 'send') {
-    d.sendSessionId = act.sessionId;
+    if (act.target === 'main-agent') d.sendTarget = 'main-agent';
+    else d.sendSessionId = act.sessionId ?? '';
     d.prompt = act.prompt;
   } else {
     d.scriptCommand = joinArgv(act.command);
@@ -341,7 +347,7 @@ export function validateDraft(d: AutomationDraft): DraftErrors {
     if (!d.directory.trim()) e.directory = 'directory';
     if (!d.prompt.trim()) e.prompt = 'prompt';
   } else if (d.actionKind === 'send') {
-    if (!d.sendSessionId.trim()) e.sendSessionId = 'session';
+    if (d.sendTarget !== 'main-agent' && !d.sendSessionId.trim()) e.sendSessionId = 'session';
     if (!d.prompt.trim()) e.prompt = 'prompt';
   } else {
     const argv = splitArgv(d.scriptCommand);
@@ -402,7 +408,9 @@ export function actionFromDraft(d: AutomationDraft): AutomationAction {
         ...(d.agentProfile !== undefined ? { agentProfile: d.agentProfile } : {}),
       };
     case 'send':
-      return { kind: 'send', sessionId: d.sendSessionId.trim(), prompt: d.prompt };
+      return d.sendTarget === 'main-agent'
+        ? { kind: 'send', target: 'main-agent', prompt: d.prompt }
+        : { kind: 'send', sessionId: d.sendSessionId.trim(), prompt: d.prompt };
     case 'script':
     default:
       return {

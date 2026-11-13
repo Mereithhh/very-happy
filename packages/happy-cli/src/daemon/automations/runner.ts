@@ -27,7 +27,7 @@ import { homedir } from 'node:os';
 import { join, isAbsolute } from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import {
-    AUTOMATION_CLAIM_MAX_RUNS, AUTOMATION_DAEMON_CAPABILITY_PRECHECK, AUTOMATION_DEFAULT_LEASE_MS, AUTOMATION_SUMMARY_MAX_CHARS, isAutomationRunTerminal, resolveLaunchAgentProfile,
+    AUTOMATION_CLAIM_MAX_RUNS, AUTOMATION_DAEMON_CAPABILITY_MAIN_AGENT, AUTOMATION_DAEMON_CAPABILITY_PRECHECK, AUTOMATION_DEFAULT_LEASE_MS, AUTOMATION_SUMMARY_MAX_CHARS, isAutomationRunTerminal, resolveLaunchAgentProfile,
     type AutomationAction, type AutomationClaimedRun, type AutomationReport,
 } from '@slopus/happy-wire';
 import { configuration } from '@/configuration';
@@ -45,7 +45,7 @@ import { clipAutomationReport, clipText, renderAction, renderTemplate, type Temp
 import { prepareTeamWorktree } from '@/daemon/teams/worktree';
 import { readReceipts, writeReceipt, type AutomationReceipt } from './receipts';
 import { runScript as defaultRunScript, terminateScriptTree, type ScriptRunOptions, type ScriptRunResult } from './script';
-import { appendPrecheckOutput, defaultPrecheckCwd, evaluatePrecheck, precheckTimeoutMs, runPrecheck as defaultRunPrecheck, type PrecheckResult, type PrecheckRunOptions } from './precheck';
+import { appendPrecheckOutput, defaultPrecheckCwd, selfCommand, evaluatePrecheck, precheckTimeoutMs, runPrecheck as defaultRunPrecheck, type PrecheckResult, type PrecheckRunOptions } from './precheck';
 
 export const AUTOMATION_TICK_MS = 5_000;
 export const AUTOMATION_LEASE_RENEW_MS = 30_000;
@@ -286,7 +286,7 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         const result: PrecheckResult = isAbsolute(cwd)
             ? await runPrecheck({
                 // argv renders templates like a script; a shell line never does (payload only via $VH_AUTOMATION_PAYLOAD).
-                ...(precheck.shell !== undefined ? { shell: precheck.shell } : { command: (precheck.command ?? []).map((part) => renderTemplate(part, context)) }),
+                ...(precheck.shell !== undefined ? { shell: precheck.shell } : { command: selfCommand((precheck.command ?? []).map((part) => renderTemplate(part, context))) }),
                 cwd, timeoutMs, env, onStart: (child) => { item.child = child; },
             })
             : { exitCode: null, signal: null, timedOut: false, stdout: '', output: '', error: `working directory must be absolute: ${rawCwd}`, durationMs: 0 };
@@ -397,6 +397,8 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         }
 
         if (action.kind === 'send') {
+            // B-924: a `target` send arrives with the server-resolved sessionId; without one (an older server) it cannot run.
+            if (!action.sessionId) { await failNow(claimed, 'send', 'This automation sends to the main agent, but the server did not resolve it to a session (upgrade the server)', 'main_agent_unavailable'); return; }
             if (wakeable(action.sessionId)) { wakeThenSend(claimed, action.sessionId, `${header}\n${action.prompt}`); return; }
             if (!deps.live(action.sessionId)) { await failNow(claimed, 'send', `Session ${action.sessionId} is not running on this machine`, 'session_not_live', action.sessionId); return; }
             persist({ runId: run.id, automationId: automation.id, kind: 'send', phase: 'running', claimId: run.claimId, sessionId: action.sessionId });
@@ -565,7 +567,7 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
             const capacity = AUTOMATION_MAX_CONCURRENT - tracked.size;
             if (now() >= disabledUntil && capacity > 0) {
                 try {
-                    const claimed = await client.claim({ machineId: deps.machineId, limit: capacity, leaseMs: AUTOMATION_DEFAULT_LEASE_MS, capabilities: [AUTOMATION_DAEMON_CAPABILITY_PRECHECK] });
+                    const claimed = await client.claim({ machineId: deps.machineId, limit: capacity, leaseMs: AUTOMATION_DEFAULT_LEASE_MS, capabilities: [AUTOMATION_DAEMON_CAPABILITY_PRECHECK, AUTOMATION_DAEMON_CAPABILITY_MAIN_AGENT] });
                     // Concurrent: one slow spawn (key wait, worktree) must not delay the others.
                     await Promise.all(claimed.runs.map((entry) => closed ? Promise.resolve() : execute(entry).catch((error) => deps.log(`Automation run ${entry.run.id} failed to start: ${error instanceof Error ? error.message : String(error)}`))));
                 } catch (error) {

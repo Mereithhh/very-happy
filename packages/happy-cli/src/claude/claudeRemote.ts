@@ -62,6 +62,8 @@ export async function claudeRemote(opts: {
     additionalDirectories?: string[],
     /** B-916c: main agent gate 1 — runs before every tool call, in every permission mode. */
     preToolUseHook?: (input: any) => Promise<any>,
+    /** B-924d: main agent only — appended after Very Happy's system prompt (who said what). */
+    extraSystemPrompt?: string,
     signal?: AbortSignal,
     canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: Parameters<CanUseTool>[2]) => Promise<PermissionResult>,
     onElicitation?: OnElicitation,
@@ -220,6 +222,7 @@ export async function claudeRemote(opts: {
 
     // Everything query() fixes at creation, from ONE mode. The cold path and
     // the warm Query both come through here — see claudePrewarm.ts.
+    const happySystemPrompt = opts.extraSystemPrompt ? `${systemPrompt}\n\n${opts.extraSystemPrompt}` : systemPrompt;
     const buildSdkOptions = (creationMode: EnhancedMode, io: { settingsPath: string; abort?: AbortSignal }): QueryOptions => {
         const sdkOptions: QueryOptions = {
             cwd: opts.path,
@@ -232,8 +235,8 @@ export async function claudeRemote(opts: {
             allowDangerouslySkipPermissions: true,
             model: creationMode.model,
             fallbackModel: creationMode.fallbackModel,
-            customSystemPrompt: creationMode.customSystemPrompt ? creationMode.customSystemPrompt + '\n\n' + systemPrompt : undefined,
-            appendSystemPrompt: creationMode.appendSystemPrompt ? creationMode.appendSystemPrompt + '\n\n' + systemPrompt : systemPrompt,
+            customSystemPrompt: creationMode.customSystemPrompt ? creationMode.customSystemPrompt + '\n\n' + happySystemPrompt : undefined,
+            appendSystemPrompt: creationMode.appendSystemPrompt ? creationMode.appendSystemPrompt + '\n\n' + happySystemPrompt : happySystemPrompt,
             allowedTools: creationMode.allowedTools ? creationMode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
             additionalDirectories: opts.additionalDirectories,
             disallowedTools: creationMode.disallowedTools,

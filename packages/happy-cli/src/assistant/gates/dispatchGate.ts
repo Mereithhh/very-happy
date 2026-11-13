@@ -20,7 +20,10 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { approvalClaims, cardFaceHash, clipBytes, DISPATCH_CARD_KEY_PREFIX, isReservedCardKey, ownerDecision, writePrivateJson as writePrivate, type BoardItemView } from '@/attention/ownerApproval'
 import type { AssistantToolRegistrar } from '../assistantTools'
+import type { DispatchPolicy } from '@slopus/happy-wire'
 import { effectiveRisk, isRiskLevel, RISK_LEVELS, type OneShotRunner, type RiskLevel } from './risk'
+import { MAIN_AGENT_ASK_TOOLS, MAIN_AGENT_OWNER_ONLY_TOOLS, mainAgentAskAction } from '../mainAgentToolPolicy'
+import { runOwnerApproved } from '../turnOrigin'
 
 /** Dispatch tools and the argument text each hands over (spec §4.2 table). */
 export const DISPATCH_TOOL_PAYLOADS: Readonly<Record<string, (args: Record<string, unknown>) => string>> = {
@@ -37,10 +40,29 @@ export const DISPATCH_TOOL_PAYLOADS: Readonly<Record<string, (args: Record<strin
 }
 export const DISPATCH_TOOL_NAMES = Object.keys(DISPATCH_TOOL_PAYLOADS)
 
+/**
+ * B-924b: class-② tools (mainAgentToolPolicy.ts) that are not dispatch tools: no `risk`, no change in the
+ * owner's turn. The gate still intercepts them, so a `mustAsk` call (a turn the owner did not type) parks
+ * as a decision card and runs only through dispatch_approved — automation_run / fire / resume / pause /
+ * delete, issue_assign / issue_comment, project_note, team_* writes.
+ */
+export const ASK_ONLY_TOOLS: readonly string[] = MAIN_AGENT_ASK_TOOLS.filter(n => !(n in DISPATCH_TOOL_PAYLOADS))
+/**
+ * B-924f: owner_only tools (mainAgentToolPolicy.ts ①) pass through the gate too. A turn the owner did not type
+ * never gets here (withOwnerOnlyTools refuses first); in the owner's turn a call the taint hook flags parks as a
+ * decision card and runs only through dispatch_approved.
+ */
+export const OWNER_ONLY_GATED_TOOLS: readonly string[] = MAIN_AGENT_OWNER_ONLY_TOOLS
+function askOnlyPayload(args: Record<string, unknown>): string {
+    const head = ['name', 'id', 'issue', 'key', 'issueId', 'teamId', 'taskId', 'title'].map(k => str(args[k])).find(Boolean) ?? ''
+    return [head, JSON.stringify(args).slice(0, 1_400)].filter(Boolean).join('\n')
+}
+
 /** Which argument receives the approval prefix when a parked call runs. */
 const PAYLOAD_FIELD: Readonly<Record<string, string>> = {
     session_spawn: 'prompt', session_send: 'text', terminal_send: 'text', team_delegate: 'goal',
     team_message: 'body', session_message: 'body', lead_delegate: 'goal', lead_message: 'body',
+    handoff_send: 'summary',
 }
 
 export const DISPATCH_APPROVED_TOOL = 'dispatch_approved'
@@ -82,8 +104,8 @@ const ok = (value: Record<string, unknown>): ToolResult => ({ content: [{ type: 
 const fail = (value: Record<string, unknown>): ToolResult => ({ content: [{ type: 'text', text: receipt({ ok: false, ...value }) }], isError: true })
 
 export type DispatchBoard = {
-    /** Post (upsert by key) the decision card; resolves to the item id. Throws when the board is unavailable. */
-    postDecision(card: { key: string; title: string; bodyMd: string; requestId: string }): Promise<BoardItemView>
+    /** Post (upsert by key) the decision card; resolves to the item id. Throws when the board is unavailable. Default options = DISPATCH_OPTIONS. */
+    postDecision(card: { key: string; title: string; bodyMd: string; requestId: string; options?: ReadonlyArray<{ id: string; label: string; recommended?: boolean }> }): Promise<BoardItemView>
     /** Find the card by key among this session's items (any state). Null = not found. Throws when unavailable. */
     findByKey(key: string): Promise<BoardItemView | null>
     /** The card with this id among this session's items (any state). Null = not found. Throws when unavailable. */
@@ -116,7 +138,25 @@ export type DispatchGateDeps = {
     now?: () => number
     newId?: () => string
     log?: (line: string) => void
+    /** B-922: what each non-none level does (default: ask for both = B-916c). Read per call. */
+    dispatchPolicy?: () => { external: DispatchPolicy; production: DispatchPolicy }
+    /**
+     * Force the decision card whatever the risk (and whatever the dispatch policy). One hook for every such
+     * rule: setup.ts ORs the conditions (B-922: terminal_send while Bash is off). Args are the call's (no risk).
+     */
+    mustAsk?: (toolName: string, args: Record<string, unknown>) => MustAskVerdict
+    /**
+     * B-924f taint gate (taintGate.ts): in the owner's turn, the card's 原因 line when the call's key arguments
+     * came from recent non-owner prompts and not from the owner's text; null otherwise. Checked after `mustAsk`.
+     */
+    taint?: (toolName: string, args: Record<string, unknown>) => Promise<string | null>
+    /** B-924g (QA-T P3-1): the title of the card's session / team target, for the 目标 line; null = unknown. */
+    targetTitle?: (kind: 'session' | 'team', id: string) => Promise<string | null>
+    /** B-924g (QA-T P2-2): retry pause while the owner's choice is not readable yet (default 400 ms × 3). */
+    settleDelayMs?: number
 }
+/** false / null / undefined = no; true = yes (generic reason); a string = yes, and it is the card's 原因 line (B-924b). */
+export type MustAskVerdict = boolean | string | null | undefined
 
 type Handler = (args: any, extra?: any) => Promise<ToolResult> | ToolResult
 
@@ -125,15 +165,50 @@ function firstLine(text: string, max: number): string {
     return line.length > max ? `${line.slice(0, max - 1)}…` : line
 }
 
-export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'toolName' | 'declared' | 'level'>, payload: string) {
+/** B-924g: the session / team a card's 目标 line names (the one whose title the gate looks up). */
+export function cardTargetRef(args: Record<string, unknown> | undefined): { kind: 'session' | 'team'; id: string } | null {
+    if (!args) return null
+    const pick = (...keys: string[]) => keys.map(k => str(args[k])).find(Boolean) ?? ''
+    const session = pick('sessionId', 'session_id', 'to')
+    if (session) return { kind: 'session', id: session }
+    if (Array.isArray(args.session_ids) || pick('terminalId')) return null
+    const team = pick('teamId')
+    return team ? { kind: 'team', id: team } : null
+}
+
+/** B-924c: the card's 目标 line — who receives the text (session / Lead / terminal / team / issue / automation). B-924g: with its title when known. */
+function cardTarget(args: Record<string, unknown> | undefined, title?: string | null): string | null {
+    if (!args) return null
+    const pick = (...keys: string[]) => keys.map(k => str(args[k])).find(Boolean) ?? ''
+    const named = (id: string) => title ? `「${title.replace(/\s+/g, ' ').slice(0, 60)}」（${id}）` : id
+    const session = pick('sessionId', 'session_id', 'to') || (Array.isArray(args.session_ids) ? args.session_ids.map(str).filter(Boolean).join(', ') : '')
+    if (session) return `会话 ${pick('sessionId', 'session_id', 'to') ? named(session) : session}`
+    const terminal = pick('terminalId')
+    if (terminal) return `终端 ${terminal}`
+    const team = pick('teamId')
+    if (team) return `团队 ${named(team)}${pick('taskId', 'botId') ? ` · ${pick('taskId', 'botId')}` : ''}`
+    const issue = pick('issue', 'issueId')
+    if (issue) return `issue ${issue}`
+    const automation = pick('id', 'name')
+    return automation ? automation : null
+}
+
+export function decisionCard(pending: Pick<PendingDispatch, 'approvalId' | 'toolName' | 'declared' | 'level'> & { args?: Record<string, unknown> }, payload: string, forced: boolean | string = false, targetTitle?: string | null) {
     const head = firstLine(payload, 60) || pending.toolName
+    const target = cardTarget(pending.args, targetTitle)
     return {
         key: `${DISPATCH_CARD_KEY_PREFIX}${pending.approvalId}`,
-        title: `主 agent 想派活（${pending.level}）：${head}`.slice(0, 120),
+        // B-924c (QA-T P3-2): the title names the action (想恢复自动化 / 想写项目决定 …), not always 派活.
+        title: `主 agent 想${mainAgentAskAction(pending.toolName, pending.args)}（${pending.level}${forced ? '，需你确认' : ''}）：${head}`.slice(0, 120),
         bodyMd: clipBytes([
             `工具：${pending.toolName}`,
+            ...(target ? [`目标：${target}`] : []),
             `风险：${pending.level}（声明 ${pending.declared}${pending.declared === pending.level ? '' : `，复核 ${pending.level}`}）`,
             `批准号：${pending.approvalId}`,
+            ...(typeof forced === 'string' && forced ? [forced] : forced ? [pending.toolName === 'terminal_send'
+                ? '原因：主 agent 的 Bash 已关闭，往终端里发内容等于直接执行命令，所以每次都先问你。'
+                // B-924: the other forced case (sendGuard.ts) — a send to another session in a turn the owner did not type.
+                : '原因：这一回合不是你本人发起的（自动化、脚本或别的会话发来的消息），主 agent 给别的会话发消息都先问你。'] : []),
             '',
             '内容：',
             payload.slice(0, 1_500),
@@ -161,10 +236,43 @@ export function withApprovalPrefix(toolName: string, args: Record<string, unknow
 
 const APPROVAL_ID_RE = /^[0-9a-f-]{36}$/i
 
+/** B-924g (QA-T P3-2): the main agent said「已催」「已经告诉 T3 了」for a call that was only carded. */
+export const AWAITING_NOTE = '还没发出、还没执行：已放到「需要我决策」，等 Owner 在卡上批准。告诉 Owner 这件事在等他批准，不要说「已经发了 / 已经告诉了 / 已催」。这不是出错：不要重试，也不要换别的工具再发。Owner 批准后系统会直接执行并通知你。'
+/**
+ * B-924i (QA-T R62 P2-2): the parked receipt's first words. The receipt is an error result (isError) so the model
+ * cannot read it as "done"; a repeat of the same call in the same turn returns the same card (no new card).
+ */
+export const AWAITING_STATUS = '未发送：已生成确认卡，等 Owner 在汇报板批准'
+
+/** B-924i (QA-T R62 P2-2): the line the wrapper adds to the chat when a turn ends with calls still on the board. */
+export function awaitingTurnNotice(items: ReadonlyArray<{ toolName: string; args: Record<string, unknown>; title?: string | null }>): string | null {
+    if (items.length === 0) return null
+    const what = items.map(p => { const target = cardTarget(p.args, p.title); return `${mainAgentAskAction(p.toolName, p.args)}${target ? `（${target}）` : ''}` })
+    return `［系统提示］${[...new Set(what)].join('；')}：等你在汇报板批准，还没发出。`
+}
+
+/** B-924g (QA-T P2-2): the system receipt the main agent gets for the owner's choice on a dispatch card. */
+export function dispatchChoiceReceipt(toolName: string, args: Record<string, unknown>, result: { state?: string; error?: string; result?: string }, title?: string | null): string {
+    const target = cardTarget(args, title)
+    const what = `${toolName}${target ? `（目标：${target}）` : ''}`
+    const detail = typeof result.result === 'string' && result.result ? `\n工具结果：${result.result.slice(0, 200)}` : ''
+    switch (result.state) {
+        case 'dispatched': return `Owner 在「需要我决策」卡上选了「批准执行」。系统已经替你执行了这次 ${what}，只执行这一次。${detail}\n不要再调 dispatch_approved，也不要重新调用 ${toolName}；用一两句话告诉 Owner 已经执行和结果。`
+        case 'already_dispatched': return `这张卡批准的 ${what} 已经执行过了（每张卡只执行一次）。${detail}\n不要再调用；告诉 Owner 已经执行过。`
+        case 'draft_only': return `Owner 在「需要我决策」卡上选了「只出草稿」：系统没有发出任何内容。现在在对话里把这次 ${what} 要发的内容写成草稿给 Owner 看，不要发送，也不要再调工具。`
+        case 'dropped': return `Owner 在「需要我决策」卡上选了「放弃」：${what} 没有执行。不要再试；需要的话问 Owner 接下来怎么办。`
+        default: return `系统没有执行这次 ${what}（${result.error ?? result.state ?? 'unknown'}）。告诉 Owner 没有执行和原因，不要自己换别的工具绕过。`
+    }
+}
+
 export function createDispatchGate(deps: DispatchGateDeps) {
     const now = deps.now ?? Date.now
     const newId = deps.newId ?? randomUUID
     const handlers = new Map<string, Handler>()
+    /** B-924i: calls parked since the last turn end (turnEndNotice drains it). */
+    const parkedThisTurn: Array<{ approvalId: string; toolName: string; args: Record<string, unknown>; argsSha256: string; title: string | null; result: ToolResult }> = []
+    const awaiting = (v: { approvalId: string; boardItemId: string; risk: RiskLevel }): ToolResult =>
+        ({ content: [{ type: 'text', text: receipt({ status: AWAITING_STATUS, ok: true, state: 'awaiting_decision', sent: false, ...v, note: AWAITING_NOTE }) }], isError: true })
     const pendingPath = (id: string) => join(deps.pendingDir, `${id}.json`)
     const donePath = (id: string) => join(deps.pendingDir, `${id}.done.json`)
 
@@ -179,18 +287,66 @@ export function createDispatchGate(deps: DispatchGateDeps) {
         const payload = DISPATCH_TOOL_PAYLOADS[toolName]?.(args) ?? ''
         const { level, keyword, classifier } = await effectiveRisk({ toolName, declared: risk, payload, classify: deps.classify })
         deps.log?.(`[main-agent gate] ${toolName} declared=${risk} keyword=${keyword} classifier=${classifier ?? 'n/a'} → ${level}`)
-        if (level === 'none') return handlers.get(toolName)!(args, extra)
+        const verdict = await verdictOf(toolName, args)
+        const forced = verdict === true || (typeof verdict === 'string' && verdict.length > 0)
+        if (level === 'none' && !forced) return handlers.get(toolName)!(args, extra)
+        // B-922: the owner chose "直接派" for this level (default ask = B-916c).
+        const policy = deps.dispatchPolicy?.()
+        if (!forced && level !== 'none' && policy && policy[level] === 'direct') {
+            deps.log?.(`[main-agent gate] ${toolName} ${level} dispatched directly (owner setting)`)
+            return handlers.get(toolName)!(args, extra)
+        }
+        return park(toolName, args, risk, level, payload, typeof verdict === 'string' ? verdict : forced)
+    }
+
+    /** B-924b: an ASK_ONLY_TOOLS call — runs unless `mustAsk`, then parks like a forced dispatch (risk none). */
+    async function interceptAskOnly(toolName: string, rawArgs: Record<string, unknown>, extra: unknown): Promise<ToolResult> {
+        const args = rawArgs ?? {}
+        const verdict = await verdictOf(toolName, args)
+        if (!(verdict === true || (typeof verdict === 'string' && verdict.length > 0))) return handlers.get(toolName)!(args, extra)
+        deps.log?.(`[main-agent gate] ${toolName} must ask (${typeof verdict === 'string' ? 'reason' : 'forced'})`)
+        return park(toolName, args, 'none', 'none', askOnlyPayload(args), verdict)
+    }
+
+    /** `mustAsk` first (sync rules), then the B-924f taint hook. */
+    async function verdictOf(toolName: string, args: Record<string, unknown>): Promise<MustAskVerdict> {
+        const verdict = deps.mustAsk?.(toolName, args)
+        if (verdict === true || (typeof verdict === 'string' && verdict.length > 0)) return verdict
+        return (await deps.taint?.(toolName, args)) ?? verdict
+    }
+
+    /** B-924f: an owner_only call that reached the gate (the owner's turn) — runs unless the taint hook flags it. */
+    async function interceptOwnerOnly(toolName: string, rawArgs: Record<string, unknown>, extra: unknown): Promise<ToolResult> {
+        const args = rawArgs ?? {}
+        const reason = await deps.taint?.(toolName, args)
+        if (!reason) return handlers.get(toolName)!(args, extra)
+        deps.log?.(`[main-agent gate] ${toolName} tainted, parked`)
+        return park(toolName, args, 'none', 'none', toolName === 'handoff_send' ? str(args.summary) || askOnlyPayload(args) : askOnlyPayload(args), reason)
+    }
+
+    async function park(toolName: string, args: Record<string, unknown>, declared: RiskLevel, level: RiskLevel, payload: string, forced: boolean | string): Promise<ToolResult> {
         if (!deps.board) return fail({ error: 'board_unavailable', risk: level })
+        // B-924i: the same call again in this turn (a retry after the error result) → the card already posted.
+        const sha = canonicalArgsHash(toolName, args)
+        const again = parkedThisTurn.find(p => p.argsSha256 === sha)
+        if (again && !(await readJson(donePath(again.approvalId)))) {
+            deps.log?.(`[main-agent gate] ${toolName} repeated in the turn → card ${again.approvalId}`)
+            return again.result
+        }
         const approvalId = newId()
-        const pending: PendingDispatch = { v: 1, approvalId, toolName, args, argsSha256: canonicalArgsHash(toolName, args), declared: risk, level, createdAt: now() }
+        const pending: PendingDispatch = { v: 1, approvalId, toolName, args, argsSha256: canonicalArgsHash(toolName, args), declared, level, createdAt: now() }
         try {
             await mkdir(deps.pendingDir, { recursive: true, mode: 0o700 })
             await writePrivate(pendingPath(approvalId), pending)
-            const card = decisionCard(pending, payload)
+            const ref = cardTargetRef(args)
+            const title = ref && deps.targetTitle ? await deps.targetTitle(ref.kind, ref.id).catch(() => null) : null
+            const card = decisionCard(pending, payload, forced, title)
             const posted = await deps.board.postDecision(card)
             const id = posted.id
             await writePrivate(pendingPath(approvalId), { ...pending, boardItemId: id, cardSha256: cardFaceHash(posted) })
-            return ok({ ok: true, state: 'awaiting_decision', approvalId, boardItemId: id, risk: level, note: '已放到「需要我决策」，等用户选择后调 dispatch_approved' })
+            const result = awaiting({ approvalId, boardItemId: id, risk: level })
+            parkedThisTurn.push({ approvalId, toolName, args, argsSha256: pending.argsSha256, title, result })
+            return result
         } catch (error) {
             deps.log?.(`[main-agent gate] park failed: ${error instanceof Error ? error.message : String(error)}`)
             return fail({ error: 'board_unavailable', risk: level })
@@ -232,7 +388,8 @@ export function createDispatchGate(deps: DispatchGateDeps) {
             if (item.ownerChoice !== 'approve') { await release(approvalId); return fail({ error: 'not_approved', boardItemId: item.id }) }
             const handler = handlers.get(pending.toolName)
             if (!handler) { await release(approvalId); return fail({ error: 'tool_unavailable', tool: pending.toolName }) }
-            const result = await handler(withApprovalPrefix(pending.toolName, pending.args, deps.approvalLink(item.id), 'approve'), undefined)
+            // B-924g: the owner approved this exact call — the tool's own owner checks see the owner (turnOrigin.ts).
+            const result = await runOwnerApproved(async () => handler(withApprovalPrefix(pending.toolName, pending.args, deps.approvalLink(item.id), 'approve'), undefined))
             const text = result.content.map(c => c.text).join('\n')
             if (result.isError) await release(approvalId)
             else await writePrivate(donePath(approvalId), { ...pending, result: text.slice(0, 1_000) })
@@ -244,6 +401,33 @@ export function createDispatchGate(deps: DispatchGateDeps) {
     }
 
     const { claim, release } = approvalClaims(deps.pendingDir)
+
+    /**
+     * B-924g (QA-T P2-2): the owner chose on one of this gate's cards → run `approved` here (same checks, same
+     * single-use claim), so the approved call never depends on the model calling dispatch_approved. A choice
+     * the server does not show yet is retried briefly; null = not this gate's card.
+     */
+    async function runBoardChoice(itemId: string): Promise<string | null> {
+        const approvalId = await approvalIdForCard(itemId)
+        if (!approvalId) return null
+        const pending = await readJson(pendingPath(approvalId))
+        if (!pending) return null
+        const parse = (r: ToolResult): { state?: string; error?: string; result?: string } => {
+            const text = r.content.map(c => c.text).join('')
+            try { return JSON.parse(text) } catch { /* a clipped receipt */ }
+            const field = (k: string) => text.match(new RegExp(`"${k}":"([^"]*)"`))?.[1]
+            return { state: field('state'), error: field('error') ?? (field('state') ? undefined : 'unreadable'), result: field('result') }
+        }
+        let out = parse(await approved({ approvalId }))
+        for (let i = 0; i < 3 && out.error === 'awaiting_decision'; i++) {
+            await new Promise(r => setTimeout(r, deps.settleDelayMs ?? 400))
+            out = parse(await approved({ approvalId }))
+        }
+        deps.log?.(`[main-agent gate] card ${itemId} chosen → ${out.state ?? out.error}`)
+        const ref = cardTargetRef(pending.args)
+        const title = ref && deps.targetTitle ? await deps.targetTitle(ref.kind, ref.id).catch(() => null) : null
+        return dispatchChoiceReceipt(pending.toolName, pending.args, out, title)
+    }
 
     /** The approval whose pending record names this card (the gate's own records only). */
     async function approvalIdForCard(id: string): Promise<string | null> {
@@ -292,6 +476,14 @@ export function createDispatchGate(deps: DispatchGateDeps) {
                         return handler(args, extra)
                     })
                 }
+                if (OWNER_ONLY_GATED_TOOLS.includes(name)) {
+                    handlers.set(name, handler)
+                    return (mcp.registerTool as any)(name, config, (args: Record<string, unknown>, extra: unknown) => interceptOwnerOnly(name, args, extra))
+                }
+                if (ASK_ONLY_TOOLS.includes(name)) {
+                    handlers.set(name, handler)
+                    return (mcp.registerTool as any)(name, config, (args: Record<string, unknown>, extra: unknown) => interceptAskOnly(name, args, extra))
+                }
                 if (!(name in DISPATCH_TOOL_PAYLOADS)) return (mcp.registerTool as any)(name, config, handler)
                 handlers.set(name, handler)
                 const riskSchema = z.enum(RISK_LEVELS).describe('Required. none = stays inside Very Happy / this machine; external = the result is sent or published where other people see it (messages, mail, comments, PRs, pushes, shares); production = writes production data or infrastructure. Non-none goes to the owner\'s decision board first.')
@@ -308,8 +500,24 @@ export function createDispatchGate(deps: DispatchGateDeps) {
                 inputSchema: { approvalId: z.string().min(1).max(64).optional(), boardItemId: z.string().min(1).max(128).optional().describe('The decision card id, when the approvalId is not at hand') },
             }, (args: { approvalId?: unknown; boardItemId?: unknown }) => approved(args))
         },
+        /** B-924g: systemCardChoice.ts runner for this gate's cards. */
+        runBoardChoice,
+        /**
+         * B-924i (QA-T R62 P2-2): at a turn's end, the chat line for the calls this turn parked whose card is still
+         * undecided (null = none). Drains the turn's list, whatever the model said about them.
+         */
+        /** B-924i: a new turn — the same call again parks a new card (the retry dedupe is per turn). */
+        onTurnStart(): void { parkedThisTurn.length = 0 },
+        async turnEndNotice(): Promise<string | null> {
+            const items = parkedThisTurn.splice(0)
+            const open: typeof items = []
+            for (const p of items) if (!(await readJson(donePath(p.approvalId)))) open.push(p)
+            return awaitingTurnNotice(open)
+        },
         /** Test hook. */
         _intercept: intercept,
+        _interceptAskOnly: interceptAskOnly,
+        _interceptOwnerOnly: interceptOwnerOnly,
         _approved: approved,
         _boardWriteRefusal: boardWriteRefusal,
     }

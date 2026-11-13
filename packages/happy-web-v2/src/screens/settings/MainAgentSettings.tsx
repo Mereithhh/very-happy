@@ -22,7 +22,9 @@ import { mainAgentCopy } from '@/assistant/mainAgentCopy';
 import { checkConfigLines, hasMainAgentGates, mainAgentSupported, rankMainAgentCandidates, DENIED_TOOLS_MAX, SKILL_ROOTS_MAX, type ConfigLinesCheck } from '@/assistant/mainAgent';
 import { loadMainAgentConfig, saveMainAgentConfig, useMainAgentStore } from '@/assistant/mainAgentStore';
 import { useMainAgentActions, useMainAgentPointerSync, useMainAgentState } from '@/assistant/useMainAgent';
+import { MainAgentAutomationsSection } from './MainAgentAutomationsSection';
 import '@/screens/mainAgent/mainAgent.css';
+import { MainAgentSafetySection } from './MainAgentSafetySection';
 
 export function MainAgentSettings() {
     const { lang } = useTranslation();
@@ -129,6 +131,9 @@ export function MainAgentSettings() {
                         {deniedProblem && <p className="tg-error ma-settings-error">{deniedProblem}</p>}
                     </div>
                 </ItemGroup>
+
+                <MainAgentSafetySection machine={machines.find((m) => m.id === currentMachineId) ?? null} />
+                <MainAgentAutomationsSection />
 
                 <div className="ma-settings-actions">
                     {configStatus === 'error' && <span className="tg-error">{copy.settingsLoadFailed}</span>}

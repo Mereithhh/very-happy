@@ -33,6 +33,7 @@ import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { checkMainAgentMachine, httpKvIo, mainAgentOnOtherMachineMessage, recordMainAgentSession } from '@/assistant/mainAgentPointer';
+import { installMainAgentDefaultsOnce } from '@/mainAgent/installOnce';
 import { assistantSpawnMode, createSpawnGate, findLiveAssistant, isAssistantTracked, listPersistedAssistantIds, pickLatestAssistantEntry, resolveAssistantClaudeSessionId } from './assistantSpawn';
 import { decideAssistantReport, formatAssistantReportMessage, resolveReportSessionTitle, type AssistantReportEvent } from './assistantReport';
 import { sendUserMessage } from '@/commands/sessionMessage';
@@ -546,6 +547,10 @@ export async function startDaemon(): Promise<void> {
           const sessionId = result.sessionId;
           void recordMainAgentSession(mainAgentKv, machineId, sessionId)
             .then(outcome => logger.debug(`[DAEMON RUN] main agent pointer ${sessionId}: ${outcome}`));
+          // B-924: the first main agent on this machine installs its default automations (once; best-effort).
+          void installMainAgentDefaultsOnce(machineId)
+            .then(created => { if (created?.length) logger.debug(`[DAEMON RUN] main agent default automations: ${created.join(', ')}`); })
+            .catch(error => logger.debug(`[DAEMON RUN] main agent default automations not installed: ${error instanceof Error ? error.message : String(error)}`));
         }
       }
       logger.debug(timer.format({ agent: options.agent ?? 'claude', outcome: result.type }));

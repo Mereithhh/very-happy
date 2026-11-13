@@ -50,6 +50,8 @@ function deps(over: Partial<MainAgentDeps> = {}): MainAgentDeps & { calls: any[]
         },
         machineId: async () => 'machine-1',
         sessionId: () => 'main-agent-session',
+        // B-924: these unit tests act as the owner's own turn (turnOrigin.test.ts covers the others).
+        turnOrigin: () => 'owner',
     }
     return Object.assign({ ...base, ...over }, { calls })
 }

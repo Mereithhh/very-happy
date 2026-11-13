@@ -39,6 +39,7 @@ export const LAZY_MODULES: ReadonlyArray<readonly [name: string, load: () => Pro
     ['commands/spawn', () => import('@/commands/spawn')],
     ['commands/teams', () => import('@/commands/teams')],
     ['commands/todo', () => import('@/commands/todo')],
+    ['commands/mainAgent', () => import('@/commands/mainAgent')],
     ['commands/issue', () => import('@/commands/issue')],
     ['commands/skill', () => import('@/commands/skill')],
     ['commands/settings', () => import('@/commands/settings')],
@@ -73,4 +74,8 @@ export const LAZY_MODULES: ReadonlyArray<readonly [name: string, load: () => Pro
     ['attention/client', () => import('@/attention/client')],
     ['claude/utils/titleGenerator', () => import('@/claude/utils/titleGenerator')],
     ['commands/sessionMessage', () => import('@/commands/sessionMessage')],
+    // B-922: the throwing KV client for the safety setting
+    ['assistant/mainAgentPointer', () => import('@/assistant/mainAgentPointer')],
+    // B-922: gate-1 card language from the account settings (setup.ts accountCardLang)
+    ['settings/stores', () => import('@/settings/stores')],
 ];

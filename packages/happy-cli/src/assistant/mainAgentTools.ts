@@ -29,6 +29,9 @@ import { z } from 'zod'
 import { ISSUE_ASSIGNABLE_AGENTS, ISSUE_PRIORITIES, ISSUE_STATUSES, type IssueView, type ProjectDetailResponse, type ProjectSessionContext } from '@slopus/happy-wire'
 import type { AssistantToolRegistrar } from './assistantTools'
 import { isValidSessionId } from './ids'
+import { ownerOnlyRefusal, type TurnOrigin } from './turnOrigin'
+import { MAIN_AGENT_OPS_TOOL_NAMES, registerMainAgentOpsTools, type MainAgentOpsDeps } from './mainAgentOpsTools'
+import { registerSystemCardRunner } from './systemCardChoice'
 import { formatIssueLine, describeIssueError } from '@/issues/format'
 import { formatContextForTool } from '@/projects/prompt'
 
@@ -38,6 +41,8 @@ export const MAIN_AGENT_TOOL_NAMES = [
     'todo_list', 'todo_add', 'todo_complete',
     'project_list', 'project_context', 'project_note',
     'session_wrapup', 'session_handoff', 'session_restart',
+    // B-924 (mainAgentOpsTools.ts)
+    ...MAIN_AGENT_OPS_TOOL_NAMES,
 ] as const
 
 /** Names that replace the shared session-scoped tool of the same name on the main agent's surface. */
@@ -93,6 +98,13 @@ export type MainAgentDeps = {
     machineId: () => Promise<string | null>
     /** This (main agent) session. */
     sessionId: () => string
+    /**
+     * B-924: who started the current turn (turnOrigin.ts, an allowlist). Wrap-up,
+     * hand-off and restart run only in the owner's turn (absent = not the owner).
+     */
+    turnOrigin?: () => TurnOrigin
+    /** B-924 board / session readers for boards_read, sessions_search, wrapup_suggest / wrapup_selected; absent = they answer not_available. */
+    ops?: Omit<MainAgentOpsDeps, 'sessionId' | 'wrapup' | 'listTeams'>
 }
 
 type Result = { content: Array<{ type: 'text'; text: string }>; isError: boolean }
@@ -356,10 +368,15 @@ export function registerMainAgentTools(mcp: AssistantToolRegistrar, deps: MainAg
     const DEDUPED = 'deduped: true = this requestId was already used, so nothing was sent again (for to = new: the same new session is returned); use a new requestId for a new request.'
     const notAvailable = (what: string) => ok(JSON.stringify({ ok: false, error: 'not_available', detail: `${what} is not available on this Very Happy version yet` }))
     const receipt = (r: { ok: boolean }) => r.ok ? ok(JSON.stringify(r)) : fail(JSON.stringify(r))
+    // B-924 (QA P1-2): only the owner's own turn (typed in a client) may wrap up, hand off or restart — never an
+    // automation, `very-happy send`, a Lead or a peer. startHappyServer also guards these names (withOwnerOnlyTools).
+    const notOwnerTurn = () => deps.turnOrigin?.() !== 'owner'
+    const ownerRequired = () => ownerOnlyRefusal(deps.turnOrigin?.() ?? 'unknown')
     register('session_wrapup', `Ask one session of the account to wrap up (the same as the owner pressing 收尾 in it): it gets one turn to write its wrap-up and the board gets a card. Never closes or archives anything. Receipt: { ok, sessionId, state: queued | running (already wrapping up, nothing sent) | done, deduped? }. ${DEDUPED} ${ONLY_ON_REQUEST}`, {
         sessionId: id, requestId,
     }, false, async (args) => {
         if (!isValidSessionId(args.sessionId)) return fail('Invalid sessionId')
+        if (notOwnerTurn()) return ownerRequired()
         if (!lifecycle.wrapup) return notAvailable('Wrap-up')
         return receipt(await lifecycle.wrapup({ sessionId: args.sessionId, requestId: args.requestId ?? randomUUID() }))
     })
@@ -368,6 +385,7 @@ export function registerMainAgentTools(mcp: AssistantToolRegistrar, deps: MainAg
     }, false, async (args) => {
         const to = args.to ?? 'new'
         if (!isValidSessionId(args.from) || (to !== 'new' && !isValidSessionId(to))) return fail('Invalid session id')
+        if (notOwnerTurn()) return ownerRequired()
         if (!lifecycle.handoff) return notAvailable('Handoff')
         return receipt(await lifecycle.handoff({ from: args.from, to, ...(args.note ? { note: args.note } : {}), requestId: args.requestId ?? randomUUID() }))
     })
@@ -375,8 +393,15 @@ export function registerMainAgentTools(mcp: AssistantToolRegistrar, deps: MainAg
         sessionId: id, when: z.enum(['idle', 'now']).optional(), requestId,
     }, false, async (args) => {
         if (!isValidSessionId(args.sessionId)) return fail('Invalid sessionId')
+        if (notOwnerTurn()) return ownerRequired()
         const when = args.when ?? 'idle'
         if (!lifecycle.restart) return notAvailable(when === 'idle' ? 'Restart when idle' : 'Restart')
         return receipt(await lifecycle.restart({ sessionId: args.sessionId, when, requestId: args.requestId ?? randomUUID() }))
     })
+
+    // ── B-924: boards / session search / wrap-up suggestions ────────────────
+    // Always registered (a fixed tool list); without readers (tests, older hosts) they answer not_available.
+    const unavailable = async (): Promise<never> => { throw new Error('not_available: this tool has no backend in this session') }
+    const ops = deps.ops ?? { board: { list: unavailable, post: unavailable, resolve: unavailable }, sessions: unavailable, projectSessionIds: unavailable }
+    registerMainAgentOpsTools(mcp, { ...ops, sessionId: deps.sessionId, listTeams: deps.listTeams, wrapup: () => lifecycle.wrapup, registerBoardChoice: (runner) => registerSystemCardRunner('wrapup', runner) })
 }

@@ -19,10 +19,13 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { open, rename, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { MAIN_AGENT_CARD_KEY, MAIN_AGENT_TOOL_CARD_KEY_PREFIX } from '@slopus/happy-wire'
 
 export const DISPATCH_CARD_KEY_PREFIX = 'main-agent-dispatch:'
 export const SETTINGS_CARD_KEY_PREFIX = 'settings-change:'
-export const RESERVED_CARD_KEY_PREFIXES = [DISPATCH_CARD_KEY_PREFIX, SETTINGS_CARD_KEY_PREFIX] as const
+/** B-922: gate 1's tool approval cards (`main-agent-tool:<approvalId>:<tool>`) are reserved too. */
+// B-924: the main agent's wrap-up checklist (`main-agent-wrapup:`) is posted only by wrapup_suggest.
+export const RESERVED_CARD_KEY_PREFIXES = [DISPATCH_CARD_KEY_PREFIX, SETTINGS_CARD_KEY_PREFIX, MAIN_AGENT_TOOL_CARD_KEY_PREFIX, MAIN_AGENT_CARD_KEY.wrapup] as const
 
 /** QA80 P3: the reserved prefix matches after trim + lowercase (`  MAIN-AGENT-DISPATCH:x` is reserved too). */
 export function isReservedCardKey(key: unknown): boolean {

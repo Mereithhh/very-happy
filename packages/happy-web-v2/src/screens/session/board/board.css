@@ -140,3 +140,10 @@ a.wrp-sha { text-decoration: underline; text-decoration-color: var(--line-2); te
 .wrp-retry-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: var(--r-btn); background: transparent; color: var(--text); font: inherit; font-size: var(--fs-12); font-weight: 500; cursor: pointer; }
 @media (pointer: coarse) { .wrp-retry-btn { min-height: 44px; padding: 0 14px; } }
 @media (hover: hover) and (pointer: fine) { .wrp-retry-btn:hover { background: var(--fill-soft); } }
+
+/* ── B-924 decision checklist (payload.type 'select') ── */
+.sel { margin-bottom: var(--sp-2); }
+.sel-text { display: flex; flex-direction: column; min-width: 0; }
+.sel-detail { font-size: var(--fs-12); color: var(--text-dim); overflow-wrap: anywhere; }
+/* closed: the ticked ones stay readable, the rest fade (disabled) */
+.sel.is-readonly .sel-check:has(input:checked) { color: var(--text); }

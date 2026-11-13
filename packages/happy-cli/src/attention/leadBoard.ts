@@ -8,6 +8,8 @@ import { readTeamScope, teamScopePath } from '@/teams/context';
 import { teamRequest } from '@/teams/client';
 import { AttentionUnsupportedError, type AttentionClient } from './client';
 import { inferOwnerDecision } from './inferDecision';
+// `meta.sentFrom` of a person typing in a Very Happy client: one list, shared with the main agent's turn origin.
+import { OWNER_SENT_FROM } from '@/assistant/turnOrigin';
 
 /**
  * B-766 C-1: the wrapper side of the owner briefing board
@@ -36,8 +38,6 @@ const DIGEST_MAX_CHARS = 480;
 /** Re-check team membership at most this often while not a lead (a session adopted into a team mid-run). */
 const LEAD_RECHECK_MS = 60_000;
 
-/** `meta.sentFrom` of a person typing in a Very Happy client. Automated senders use their own tags. */
-const OWNER_SENT_FROM = ['web', 'mobile', 'ios', 'android'] as const;
 /** localId prefixes automated senders stamp (mirror of the server's owner-replied rule). */
 const AUTOMATED_LOCAL_ID_PREFIXES = ['automation-', 'teams-', 'remote-send-', 'session-message-', 'edit-conflict-'] as const;
 

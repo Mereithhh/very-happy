@@ -23,6 +23,7 @@ import { AutomationsApiError } from '@/sync/apiAutomations';
 import { AUTOMATIONS_DETAIL_POLL_MS, useAutomations, useAutomationsPoll } from '@/sync/automationsStore';
 import {
   ACTION_KINDS,
+  SEND_TARGETS,
   PRECHECK_MODES,
   SPAWN_AGENTS,
   SPAWN_AGENT_LABELS,
@@ -325,9 +326,21 @@ export function AutomationFormScreen() {
           )}
           {draft.actionKind === 'send' && (
             <>
-              <Field label={t('automations.fieldSession') as string} error={err('sendSessionId')}>
-                <input className="au-input mono" value={draft.sendSessionId} onChange={(e) => set('sendSessionId', e.target.value)} autoComplete="off" spellCheck={false} />
+              {/* B-924: one session, or the account's main agent (the server resolves it when the run is claimed). */}
+              <Field label={t('automations.fieldSendTarget') as string} hint={draft.sendTarget === 'main-agent' ? (t('automations.sendTargetMainAgentHint') as string) : undefined} labelId="au-field-send-target">
+                <div className="au-choice" role="radiogroup" aria-labelledby="au-field-send-target">
+                  {SEND_TARGETS.map((target) => (
+                    <button key={target} type="button" role="radio" aria-checked={draft.sendTarget === target} className={`au-choice-btn${draft.sendTarget === target ? ' is-on' : ''}`} onClick={() => set('sendTarget', target)}>
+                      {t(target === 'main-agent' ? 'automations.sendTargetMainAgent' : 'automations.sendTargetSession')}
+                    </button>
+                  ))}
+                </div>
               </Field>
+              {draft.sendTarget === 'session' && (
+                <Field label={t('automations.fieldSession') as string} error={err('sendSessionId')}>
+                  <input className="au-input mono" value={draft.sendSessionId} onChange={(e) => set('sendSessionId', e.target.value)} autoComplete="off" spellCheck={false} />
+                </Field>
+              )}
               <Field label={t('automations.fieldPrompt') as string} hint={t('automations.fieldPromptHint') as string} error={err('prompt')} wide>
                 <textarea className="au-input au-textarea" value={draft.prompt} onChange={(e) => set('prompt', e.target.value)} rows={6} maxLength={32000} />
               </Field>

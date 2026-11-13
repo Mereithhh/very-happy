@@ -28,6 +28,7 @@ export * from './promptQueue';
 
 export * from './migrationProtocol';
 export * from './attention';
+export * from './promptProvenance';
 export * from './wrapup';
 export * from './issues';
 
@@ -36,3 +37,5 @@ export * from './syncProtocol';
 export * from './turnFailure';
 export * from './accountSettings';
 export * from './machineSettings';
+export * from './mainAgentSafety';
+export * from './mainAgentAutomations';

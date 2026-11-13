@@ -1,0 +1,232 @@
+/**
+ * Main agent gate 1 — the `ask` branch (B-922, spec §4.4).
+ *
+ * When the safety setting says `ask` for a tool, the PreToolUse hook does not
+ * run the call. It posts a decision card (tool + argument summary) and denies
+ * with a note telling the model to wait. After the OWNER chooses on the
+ * unchanged card, the SAME call (same tool, arguments hashing the same) is let
+ * through:
+ *
+ *  - 批准这一次 (`once`): exactly one call; the approval is spent on use
+ *    (`O_EXCL` marker), the next identical call asks again;
+ *  - 以后都允许这个工具 (`always`): this call, and the tool is added to
+ *    `safety.allowedTools` (in memory now, account KV for later runs);
+ *  - 拒绝 (`deny`): refused.
+ *
+ * Card checks are the shared owner approval (`attention/ownerApproval.ts`:
+ * `ownerDecision` — key, closed, `cardFaceHash`, `resolvedBy='owner'`;
+ * `approvalClaims` — the O_EXCL single-use marker), not a copy. Fails closed: no board → refused.
+ */
+
+import { randomUUID } from 'node:crypto'
+import { mkdir, readFile, unlink } from 'node:fs/promises'
+import { join } from 'node:path'
+import { MAIN_AGENT_TOOL_ALWAYS_CHOICE, MAIN_AGENT_TOOL_CARD_KEY_PREFIX } from '@slopus/happy-wire'
+import { approvalClaims, cardFaceHash, clipBytes, ownerDecision, writePrivateJson } from '@/attention/ownerApproval'
+import { canonicalArgsHash, type DispatchBoard } from './dispatchGate'
+import type { ToolAsker } from './outboundDenylist'
+
+export type CardLang = 'zh' | 'en'
+
+/** Option ids are fixed (the server and the gate read them); labels follow the account language. */
+export const TOOL_APPROVAL_OPTION_LABELS: Readonly<Record<CardLang, readonly [string, string, string]>> = {
+    zh: ['批准这一次', '以后都允许这个工具', '拒绝'],
+    en: ['Approve once', 'Always allow this tool', 'Decline'],
+}
+export function toolApprovalOptions(lang: CardLang = 'zh') {
+    const [once, always, deny] = TOOL_APPROVAL_OPTION_LABELS[lang]
+    return [{ id: 'once', label: once }, { id: MAIN_AGENT_TOOL_ALWAYS_CHOICE, label: always }, { id: 'deny', label: deny }] as const
+}
+export const TOOL_APPROVAL_OPTIONS = toolApprovalOptions('zh')
+
+/**
+ * The account `preferredLanguage` when set ('zh' for any Chinese tag, otherwise 'en');
+ * unset ("auto") → 'zh', like the gate-2 cards and the reason lines. The machine
+ * locale is not used: daemons run under `LANG=C.UTF-8` (QA-U r2 P3-2).
+ */
+export function cardLang(preferred: string | null | undefined): CardLang {
+    if (typeof preferred !== 'string' || !preferred.trim()) return 'zh'
+    return preferred.toLowerCase().startsWith('zh') ? 'zh' : 'en'
+}
+
+export const TOOL_ARGS_SUMMARY_CHARS = 1_500
+
+type ToolApprovalRecord = {
+    v: 1
+    approvalId: string
+    toolName: string
+    argsSha256: string
+    boardItemId: string
+    cardSha256: string
+    createdAt: number
+}
+
+export function toolCardKey(approvalId: string, toolName: string): string {
+    return `${MAIN_AGENT_TOOL_CARD_KEY_PREFIX}${approvalId}:${toolName}`
+}
+
+/** Argument summary for the card: pretty JSON, long strings clipped. */
+export function toolArgsSummary(input: Record<string, unknown>): string {
+    const clip = (value: unknown): unknown => typeof value === 'string' ? (value.length > 400 ? `${value.slice(0, 399)}…` : value)
+        : Array.isArray(value) ? value.slice(0, 20).map(clip)
+        : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value as Record<string, unknown>).slice(0, 30).map(([k, v]) => [k, clip(v)]))
+        : value
+    const text = JSON.stringify(clip(input), null, 2) ?? '{}'
+    return text.length > TOOL_ARGS_SUMMARY_CHARS ? `${text.slice(0, TOOL_ARGS_SUMMARY_CHARS - 1)}…` : text
+}
+
+const CARD_TEXT: Readonly<Record<CardLang, { title: (t: string) => string; tool: string; fp: (h: string) => string; args: string; help: string }>> = {
+    zh: {
+        title: (t) => `主 agent 想调用 ${t}`,
+        tool: '工具：', fp: (h) => `参数指纹：${h}（批准只对这组参数有效）`, args: '参数：',
+        help: '批准这一次 = 只放行这一次调用；以后都允许这个工具 = 写进主 agent 安全设置的「已允许工具」；拒绝 = 不执行。',
+    },
+    en: {
+        title: (t) => `The main agent wants to call ${t}`,
+        tool: 'Tool: ', fp: (h) => `Arguments fingerprint: ${h} (an approval covers exactly these arguments)`, args: 'Arguments:',
+        help: 'Approve once = this one call only; Always allow this tool = added to the main agent\'s allowed tools in Safety settings; Decline = not run.',
+    },
+}
+
+export function toolApprovalCard(approvalId: string, toolName: string, input: Record<string, unknown>, argsSha256: string, lang: CardLang = 'zh') {
+    const t = CARD_TEXT[lang]
+    return {
+        key: toolCardKey(approvalId, toolName),
+        title: t.title(toolName).slice(0, 120),
+        bodyMd: clipBytes([
+            `${t.tool}${toolName}`,
+            t.fp(argsSha256.slice(0, 12)),
+            '',
+            t.args,
+            '```json',
+            toolArgsSummary(input),
+            '```',
+            '',
+            t.help,
+        ].join('\n'), 7_900),
+        requestId: `tool-${approvalId}`,
+        options: toolApprovalOptions(lang),
+    }
+}
+
+export const toolWaitReason = (toolName: string, boardItemId: string) =>
+    `还没执行：已在「需要我决策」出卡（决策 ${boardItemId}），等 Owner 批准这次 ${toolName} 调用。现在先停下，告诉用户在等他批准（不要说已经做了），不要换别的工具绕过；`
+    + `Owner 批准后系统会发一条「系统回执」给你，那时用完全相同的参数再调用一次 ${toolName}（参数一变就要重新批准）。`
+    + ` (Waiting for the owner to approve this call on the decision board. Stop and tell the user; after approval call ${toolName} again with exactly the same arguments.)`
+
+export const toolDeniedReason = (toolName: string, boardItemId: string) =>
+    `Owner 拒绝了这次 ${toolName} 调用（决策 ${boardItemId}）。不要用同样的参数重试；需要的话问用户怎么处理。`
+    + ' (The owner declined this call. Do not retry it.)'
+
+export type ToolApprovalDeps = {
+    /** `$HAPPY_HOME/main-agent-approvals/pending-tool` */
+    pendingDir: string
+    /** Card language (default zh). */
+    lang?: CardLang
+    board: DispatchBoard | null
+    /** "always": the tool joins the in-memory allow set (CompiledDenylist.allowAlways). */
+    allowAlways: (toolName: string) => void
+    /** "always": persist to the account setting; best-effort (logged on failure). */
+    persistAlways?: (toolName: string) => Promise<unknown>
+    now?: () => number
+    newId?: () => string
+    log?: (line: string) => void
+}
+
+/**
+ * B-924g (QA-T P2-2): the system receipt for the owner's choice on a gate-1 card. Gate 1 cannot run a Claude
+ * Code tool for the model, so the receipt says exactly what to call again; the PreToolUse hook lets that one
+ * identical call through (single-use claim). Read-only: nothing is claimed here.
+ */
+export function toolChoiceReceipt(toolName: string, boardItemId: string, choice: string | null): string {
+    if (choice === 'once' || choice === MAIN_AGENT_TOOL_ALWAYS_CHOICE) {
+        return `Owner 在工具批准卡（决策 ${boardItemId}）上选了「${choice === 'once' ? '批准这一次' : '以后都允许这个工具'}」，批准的是你刚才被拦下的那次 ${toolName} 调用。系统不能替你执行这个工具：现在就用和那次完全相同的参数再调用一次 ${toolName}（系统核对参数，只放行这一次），然后把结果告诉 Owner。`
+    }
+    if (choice === 'deny') return `Owner 在工具批准卡（决策 ${boardItemId}）上选了「拒绝」：那次 ${toolName} 调用不执行。不要用同样的参数重试；需要的话问 Owner 怎么处理。`
+    return `工具批准卡（决策 ${boardItemId}）上还读不到 Owner 的选择：先不要调用 ${toolName}，告诉 Owner 在等卡上的选择。`
+}
+
+export function createToolApproval(deps: ToolApprovalDeps): { ask: ToolAsker; boardChoice: (itemId: string) => Promise<string | null> } {
+    const now = deps.now ?? Date.now
+    const newId = deps.newId ?? randomUUID
+    const recordPath = (argsSha256: string) => join(deps.pendingDir, `${argsSha256}.json`)
+    const claims = approvalClaims(deps.pendingDir)
+
+    async function readRecord(argsSha256: string): Promise<ToolApprovalRecord | null> {
+        try { return JSON.parse(await readFile(recordPath(argsSha256), 'utf8')) as ToolApprovalRecord } catch { return null }
+    }
+    const dropRecord = (argsSha256: string) => unlink(recordPath(argsSha256)).catch(() => {})
+
+    async function postCard(board: DispatchBoard, toolName: string, input: Record<string, unknown>, argsSha256: string): Promise<{ reason: string }> {
+        const approvalId = newId()
+        const card = toolApprovalCard(approvalId, toolName, input, argsSha256, deps.lang)
+        const posted = await board.postDecision(card)
+        await mkdir(deps.pendingDir, { recursive: true, mode: 0o700 })
+        const record: ToolApprovalRecord = { v: 1, approvalId, toolName, argsSha256, boardItemId: posted.id, cardSha256: cardFaceHash(posted), createdAt: now() }
+        await writePrivateJson(recordPath(argsSha256), record)
+        deps.log?.(`[main-agent gate] ${toolName} asks the owner (card ${posted.id})`)
+        return { reason: toolWaitReason(toolName, posted.id) }
+    }
+
+    async function ask(toolName: string, input: Record<string, unknown>): Promise<'allow' | { reason: string }> {
+        const board = deps.board
+        if (!board) throw new Error('board_unavailable')
+        const argsSha256 = canonicalArgsHash(toolName, input)
+        const record = await readRecord(argsSha256)
+        if (!record || record.toolName !== toolName || record.argsSha256 !== argsSha256 || !record.boardItemId || !record.cardSha256) {
+            return postCard(board, toolName, input, argsSha256)
+        }
+        const decision = ownerDecision(await board.findById(record.boardItemId), { key: toolCardKey(record.approvalId, toolName), cardSha256: record.cardSha256 })
+        if (!decision.ok && decision.error === 'awaiting_decision') return { reason: toolWaitReason(toolName, record.boardItemId) }
+        if (!decision.ok) {
+            // Gone, rewritten, or closed by someone other than the owner: nothing was approved — ask afresh.
+            deps.log?.(`[main-agent gate] ${toolName} card ${record.boardItemId}: ${decision.error}`)
+            await dropRecord(argsSha256)
+            return postCard(board, toolName, input, argsSha256)
+        }
+        const choice = decision.choice
+        if (choice === 'deny') {
+            await dropRecord(argsSha256)
+            return { reason: toolDeniedReason(toolName, record.boardItemId) }
+        }
+        if (choice !== 'once' && choice !== MAIN_AGENT_TOOL_ALWAYS_CHOICE) {
+            await dropRecord(argsSha256)
+            return postCard(board, toolName, input, argsSha256)
+        }
+        // One call per approval, even under concurrent identical calls.
+        await mkdir(deps.pendingDir, { recursive: true, mode: 0o700 })
+        const won = await claims.claim(record.approvalId)
+        await dropRecord(argsSha256)
+        if (!won) return postCard(board, toolName, input, argsSha256)
+        if (choice === MAIN_AGENT_TOOL_ALWAYS_CHOICE) {
+            deps.allowAlways(toolName)
+            try {
+                const outcome = await deps.persistAlways?.(toolName)
+                deps.log?.(`[main-agent gate] ${toolName} always allowed (persist: ${String(outcome ?? 'skipped')})`)
+            } catch (e) {
+                deps.log?.(`[main-agent gate] ${toolName} always-allow persist failed: ${e instanceof Error ? e.message : String(e)}`)
+            }
+        }
+        deps.log?.(`[main-agent gate] ${toolName} approved (${choice}, card ${record.boardItemId})`)
+        return 'allow'
+    }
+
+    /** B-924g: systemCardChoice.ts runner — the receipt when `itemId` is one of this gate's cards, else null. */
+    async function boardChoice(itemId: string): Promise<string | null> {
+        const { readdir } = await import('node:fs/promises')
+        let names: string[] = []
+        try { names = await readdir(deps.pendingDir) } catch { return null }
+        for (const name of names) {
+            if (!/^[0-9a-f]{64}\.json$/.test(name)) continue
+            const record = await readRecord(name.slice(0, -5))
+            if (!record || record.boardItemId !== itemId) continue
+            const board = deps.board
+            if (!board) return toolChoiceReceipt(record.toolName, itemId, null)
+            const decision = ownerDecision(await board.findById(itemId), { key: toolCardKey(record.approvalId, record.toolName), cardSha256: record.cardSha256 })
+            return toolChoiceReceipt(record.toolName, itemId, decision.ok ? decision.choice : null)
+        }
+        return null
+    }
+
+    return { ask, boardChoice }
+}

@@ -35,7 +35,7 @@ export const AUTO_ACTIONS = ['list', 'show', 'create', 'edit', 'pause', 'resume'
 export type AutoAction = typeof AUTO_ACTIONS[number];
 
 const VALUE_FLAGS = ['--name', '--rename', '--description', '--machine', '--cron', '--tz', '--every', '--at', '--spawn-dir', '--prompt', '--prompt-file', '--agent', '--model', '--permission-mode', '--sticky-key', '--account', '--send-session', '--cwd', '--env', '--timeout', '--concurrency', '--max-runtime', '--payload', '--payload-json', '--payload-file', '--dedupe-key', '--status', '--limit', '--run', '--summary', '--error', '--attention', '--host', '--home', '--precheck-shell', '--precheck-argv', '--precheck-cwd', '--precheck-timeout', '--project'] as const;
-const BOOL_FLAGS = ['--manual', '--script', '--worktree', '--paused', '--wait', '--json', '--apply', '--all-machines', '--all', '--attention', '--precheck-output', '--no-precheck', '--no-project', '--help', '-h'] as const;
+const BOOL_FLAGS = ['--manual', '--script', '--send-main-agent', '--worktree', '--paused', '--wait', '--json', '--apply', '--all-machines', '--all', '--attention', '--precheck-output', '--no-precheck', '--no-project', '--help', '-h'] as const;
 type ValueFlag = typeof VALUE_FLAGS[number];
 type BoolFlag = typeof BOOL_FLAGS[number];
 
@@ -102,15 +102,17 @@ function readPayload(flags: AutoCommand['flags']): string | undefined {
 /** Action from flags; `undefined` when no action flag was given (edit keeps the old one). Pure apart from prompt-file reads. */
 export function actionFromCommand(command: AutoCommand, current?: AutomationAction): AutomationAction | undefined {
     const { flags, bools } = command;
-    const kinds = [flags['--spawn-dir'] !== undefined, flags['--send-session'] !== undefined, bools.has('--script')].filter(Boolean).length;
-    if (kinds > 1) throw new Error('Use only one of --spawn-dir, --send-session, --script');
+    // B-924: --send-main-agent = a send to whichever session is the account's main agent when it runs.
+    const sendTo = flags['--send-session'] !== undefined || bools.has('--send-main-agent');
+    const kinds = [flags['--spawn-dir'] !== undefined, flags['--send-session'] !== undefined, bools.has('--send-main-agent'), bools.has('--script')].filter(Boolean).length;
+    if (kinds > 1) throw new Error('Use only one of --spawn-dir, --send-session, --send-main-agent, --script');
     const prompt = readPrompt(flags);
     const spawnOnly = ['--agent', '--model', '--permission-mode', '--sticky-key', '--account'].filter((flag) => flags[flag as ValueFlag] !== undefined).concat(bools.has('--worktree') ? ['--worktree'] : []);
     const scriptOnly = ['--cwd', '--timeout'].filter((flag) => flags[flag as ValueFlag] !== undefined).concat(command.env.length ? ['--env'] : []);
     if (kinds === 0) {
         // Editing details of the existing action without restating its kind.
         if (!current) {
-            if (prompt !== undefined || spawnOnly.length || scriptOnly.length) throw new Error('Give an action: --spawn-dir <dir>, --send-session <id>, or --script -- <argv…>');
+            if (prompt !== undefined || spawnOnly.length || scriptOnly.length) throw new Error('Give an action: --spawn-dir <dir>, --send-session <id>, --send-main-agent, or --script -- <argv…>');
             return undefined;
         }
         if (prompt === undefined && spawnOnly.length === 0 && scriptOnly.length === 0) return undefined;
@@ -130,12 +132,12 @@ export function actionFromCommand(command: AutoCommand, current?: AutomationActi
         if (prompt !== undefined || spawnOnly.length) throw new Error(`script actions do not take ${[...(prompt !== undefined ? ['--prompt'] : []), ...spawnOnly].join(', ')}`);
         return { kind: 'script', command: command.argv, ...(flags['--cwd'] !== undefined ? { cwd: flags['--cwd'] } : {}), ...(flags['--timeout'] !== undefined ? { timeoutMs: parseDuration(flags['--timeout']) } : {}), ...(command.env.length ? { env: Object.fromEntries(command.env.map(parseEnvAssignment)) } : {}) };
     }
-    if (scriptOnly.length) throw new Error(`${flags['--send-session'] !== undefined ? 'send' : 'spawn'} actions do not take ${scriptOnly.join(', ')}`);
+    if (scriptOnly.length) throw new Error(`${sendTo ? 'send' : 'spawn'} actions do not take ${scriptOnly.join(', ')}`);
     if (prompt === undefined) throw new Error('--prompt or --prompt-file is required');
     if (prompt.trim().length === 0) throw new Error('Prompt is empty');
-    if (flags['--send-session'] !== undefined) {
+    if (sendTo) {
         if (spawnOnly.length) throw new Error(`send actions do not take ${spawnOnly.join(', ')}`);
-        return { kind: 'send', sessionId: flags['--send-session'], prompt };
+        return bools.has('--send-main-agent') ? { kind: 'send', target: 'main-agent', prompt } : { kind: 'send', sessionId: flags['--send-session']!, prompt };
     }
     return { kind: 'spawn', agent: flags['--agent'] ?? 'claude', directory: resolve(flags['--spawn-dir']!), prompt, ...spawnDetails(command) };
 }
@@ -248,6 +250,7 @@ ${chalk.bold('Action (one):')}
       [--agent claude|codex|pi|gemini|openclaw] [--model <id>] [--permission-mode <m>]
       [--worktree] [--sticky-key <template>] [--account <id>|machine]
   --send-session <id> --prompt <text>|--prompt-file <file>
+  --send-main-agent --prompt <text>|--prompt-file <file>   (the account's main agent at run time)
   --script -- <argv…> [--cwd <dir>] [--env K=V]... [--timeout <dur>]
 
 ${chalk.bold('Precheck (optional, runs before the action; exit 0 runs it, anything else records a skip):')}
@@ -368,7 +371,7 @@ export async function handleAutoCommand(args: string[]): Promise<void> {
                 const trigger = triggerFromFlags({ cron: command.flags['--cron'], tz: command.flags['--tz'], every: command.flags['--every'], at: command.flags['--at'], manual: command.bools.has('--manual') });
                 if (!trigger) throw new Error('Give a trigger: --cron <expr> --tz <zone>, --every <dur>, --at <iso>, or --manual');
                 const action = actionFromCommand(command);
-                if (!action) throw new Error('Give an action: --spawn-dir <dir>, --send-session <id>, or --script -- <argv…>');
+                if (!action) throw new Error('Give an action: --spawn-dir <dir>, --send-session <id>, --send-main-agent, or --script -- <argv…>');
                 const input: AutomationCreate = {
                     name: command.flags['--name']!, machineId: machine(command.flags['--machine']), trigger, action,
                     ...(command.flags['--description'] !== undefined ? { description: command.flags['--description'] } : {}),

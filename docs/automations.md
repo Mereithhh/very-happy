@@ -78,7 +78,32 @@ very-happy auto edit on-mention --account org-b   # run on this machine's accoun
 very-happy auto list; very-happy auto show daily-inventory
 very-happy auto pause daily-inventory; very-happy auto resume daily-inventory
 very-happy auto runs --attention; very-happy auto ack <runId>
+very-happy auto create --name evening-check --cron '0 18 * * *' --tz UTC \
+  --send-main-agent --prompt 'Anything I should look at before tomorrow?'   # the account's main agent
 ```
+
+`--send-main-agent` (MCP: `action: { kind: 'send', target: 'main-agent', prompt }`;
+Web: *Send to → Main agent*) delivers into whichever session is the account's
+main agent when the run starts — the server resolves it, so the automation keeps
+working after the main agent starts a new conversation or moves machines. With
+no main agent the run fails with `main_agent_unavailable` (attention).
+
+### The main agent's default automations
+
+The first time a main agent starts on a machine it installs three automations,
+all on, each behind a precheck that costs no tokens
+(`very-happy main-agent precheck <kind>`; nothing new = the run is *skipped*):
+
+| Name | When | Wakes the main agent to |
+|---|---|---|
+| `main-agent-brief` | 09:00 (local zone) | post one morning-brief card (pushed) |
+| `main-agent-stuck` | hourly | post a card per session that stopped on an API error or went silent mid-turn |
+| `main-agent-wrapup` | 23:30 | post one checklist card of idle sessions; only the ones you tick are wrapped up |
+
+Switch them in **Settings → Main agent** or with
+`very-happy main-agent automations [list | on <kind> | off <kind> | install]`
+(off = paused, never deleted). Quiet hours there (set to 00:30–08:30 in the machine's zone on first install) keep the
+main agent's cards on the board without a push.
 
 Managed Claude, Codex and pi sessions carry the `automation_*` MCP tools
 (`automation_list`, `automation_get`, `automation_create`, `automation_update`,

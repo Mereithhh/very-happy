@@ -120,7 +120,10 @@ describe('changelog releases', () => {
     // about, and the target version itself is already pinned by the
     // changelogCliTarget test above. Hard-coding it here only meant every CLI
     // release had to come back and bump three copies.
-    const target = CHANGELOG_RELEASES.find((r) => r.cliVersion)?.cliVersion
+    // changelogCliTarget, not the first entry with a cliVersion: an older-dated
+    // entry can carry the newest CLI (R62: nov11o ships with 0.2.214 below the
+    // 11-13 entries on 0.2.213), and the production default takes the highest.
+    const target = changelogCliTarget(CHANGELOG_RELEASES)?.cliVersion
     const notices = changelogCliNotices([
       { id: 'old', active: true, metadata: { displayName: 'Desk', happyCliVersion: '0.2.80' } },
       { id: 'current', active: true, metadata: { host: 'Laptop', happyCliVersion: '0.2.86' } },

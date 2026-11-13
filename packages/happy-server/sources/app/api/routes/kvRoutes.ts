@@ -7,6 +7,8 @@ import { kvKeySchema, kvMutate, kvMutationsBodySchema, KV_KEY_MAX_BYTES } from "
 import { log } from "@/utils/log";
 import { isAccountResourceLimitError } from '../resourceLimits';
 import { utf8StringSchema } from '../resourceSchemas';
+import { requestTokenKind } from '@/app/auth/tokenKind';
+import { checkMachineConfigWrite, isMainAgentConfigKey, isServerOwnedKvKey, MAIN_AGENT_CONFIG_OWNER_ONLY, noteHumanConfigWrite, SERVER_OWNED_KV_KEY, updateGrantsRecord } from '@/app/kv/mainAgentConfigGuard';
 
 export function kvRoutes(app: Fastify) {
     // GET /v1/kv/:key - Get single value
@@ -137,6 +139,8 @@ export function kvRoutes(app: Fastify) {
                         value: z.string().nullable()
                     }))
                 }),
+                // 422, not 403: the Web treats 401/403 as auth failures (`isAuthFailure`), not as a refused write.
+                422: z.object({ error: z.enum([MAIN_AGENT_CONFIG_OWNER_ONLY, SERVER_OWNED_KV_KEY]), key: z.string() }),
                 413: z.object({ error: z.literal('kv_bytes_quota_exceeded') }),
                 429: z.object({ error: z.enum(['kv_count_quota_exceeded', 'kv_rate_quota_exceeded']) }),
                 500: z.object({
@@ -149,7 +153,25 @@ export function kvRoutes(app: Fastify) {
         const { mutations } = request.body;
 
         try {
+            // B-922: the grants record is the server's own; no client token writes it.
+            const owned = mutations.find((m) => isServerOwnedKvKey(m.key));
+            if (owned) return reply.code(422).send({ error: SERVER_OWNED_KV_KEY, key: owned.key });
+            // B-922: a machine token may not loosen the main agent safety setting (owner, in a browser, only).
+            let redeem: string[] = [];
+            if (requestTokenKind(request) === 'machine') {
+                const check = await checkMachineConfigWrite(userId, mutations);
+                if (check.refused) return reply.code(422).send({ error: MAIN_AGENT_CONFIG_OWNER_ONLY, key: check.refused });
+                redeem = check.redeem;
+            } else if (mutations.some((m) => isMainAgentConfigKey(m.key))) {
+                // stamped first: if the write then fails, older grant cards are only voided early (stricter)
+                await noteHumanConfigWrite(userId, mutations);
+            }
             const result = await kvMutate({ uid: userId }, mutations);
+            if (result.success && redeem.length > 0) {
+                await updateGrantsRecord(userId, (r) => ({ ...r, redeemed: [...r.redeemed, ...redeem] })).catch((error) => {
+                    log({ module: 'api', level: 'error', error }, 'Failed to record redeemed main agent grants');
+                });
+            }
 
             if (!result.success) {
                 return reply.code(409).send({

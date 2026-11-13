@@ -101,8 +101,10 @@ export function attentionResolveState(outcome: string): AttentionState {
  * An `inferred` draft (D5) never pushes: it shows on the board and badge only,
  * until the lead posts the same key and confirms it.
  */
-export function attentionPushKind(item: { kind: string; replyToId?: string | null; inferred?: boolean }): 'attention' | 'question' | null {
+export function attentionPushKind(item: { kind: string; replyToId?: string | null; inferred?: boolean }, options?: { notify?: boolean }): 'attention' | 'question' | null {
     if (item.inferred) return null;
+    // B-924: a report posted with `notify` (the main agent's morning brief) pushes once; the server honours it for the main agent only.
+    if (item.kind === 'report' && options?.notify === true) return 'attention';
     // B-915: wrap-up cards never push (~400 a month; the owner reads them when closing sessions).
     if (item.kind === 'wrapup') return null;
     if (attentionKindNeedsOwner(item.kind)) return 'attention';
@@ -255,6 +257,48 @@ export function applyWrapupCheck(payload: unknown, checkId: string, checked: boo
     return { ...p, pending: p.pending.map(x => x.id === checkId ? { ...x, checked } : x) };
 }
 
+// ─── B-924 multi-select decision payload ─────────────────────────────────────
+
+/**
+ * A `decision` card may carry `payload: { v: 1, type: 'select', items }`: a
+ * checklist the owner ticks (`owner-respond` `check`, state unchanged) before
+ * choosing an option. Nothing happens to an item the owner did not tick: the
+ * poster acts afterwards on the checked ones only (main agent `wrapup_selected`).
+ * `ref` is the poster's handle for the item (e.g. a session id).
+ */
+export const ATTENTION_SELECT_LIMITS = { items: 20, idChars: 16, labelChars: 120, detailChars: 300, refChars: 128 } as const;
+export const AttentionSelectItemSchema = z.object({
+    id: z.string().trim().min(1).max(ATTENTION_SELECT_LIMITS.idChars),
+    label: z.string().trim().min(1).max(ATTENTION_SELECT_LIMITS.labelChars),
+    detail: z.string().max(ATTENTION_SELECT_LIMITS.detailChars).optional(),
+    ref: z.string().min(1).max(ATTENTION_SELECT_LIMITS.refChars).optional(),
+    checked: z.boolean(),
+});
+export const AttentionSelectPayloadSchema = z.object({
+    v: z.literal(1),
+    type: z.literal('select'),
+    items: z.array(AttentionSelectItemSchema).min(1).max(ATTENTION_SELECT_LIMITS.items)
+        .refine(items => new Set(items.map(x => x.id)).size === items.length, 'item ids must be unique'),
+});
+export type AttentionSelectPayload = z.infer<typeof AttentionSelectPayloadSchema>;
+const SelectPayloadReadSchema = z.object({
+    v: z.literal(1),
+    type: z.literal('select'),
+    items: z.array(z.object({ id: z.string(), label: z.string(), detail: z.string().optional(), ref: z.string().optional(), checked: z.boolean() }).passthrough()),
+}).passthrough();
+export type SelectPayloadView = z.infer<typeof SelectPayloadReadSchema>;
+/** Lenient read: null when the payload is not a v1 select checklist. */
+export function parseSelectPayload(payload: unknown): SelectPayloadView | null {
+    const parsed = SelectPayloadReadSchema.safeParse(payload);
+    return parsed.success ? parsed.data : null;
+}
+/** Apply an owner `check` to a select payload; null when it has no such item. */
+export function applySelectCheck(payload: unknown, checkId: string, checked: boolean): Record<string, unknown> | null {
+    const p = parseSelectPayload(payload);
+    if (!p?.items.some(x => x.id === checkId)) return null;
+    return { ...p, items: p.items.map(x => x.id === checkId ? { ...x, checked } : x) };
+}
+
 // ─── Item (response / update payload) ────────────────────────────────────────
 
 export const AttentionItemSchema = z.object({
@@ -329,10 +373,17 @@ export const AttentionItemPostSchema = z.object({
      * pushes once); a draft never downgrades a confirmed item.
      */
     inferred: z.boolean().default(false),
-    /** B-915: only (and always) for `kind: 'wrapup'`. A repost replaces the whole payload. */
-    payload: AttentionWrapupPayloadSchema.optional(),
+    /**
+     * B-915: always for `kind: 'wrapup'` (its wrap-up payload). B-924: a
+     * `decision` may carry a select checklist. A repost replaces the whole payload.
+     */
+    payload: z.union([AttentionWrapupPayloadSchema, AttentionSelectPayloadSchema]).optional(),
+    /** B-924: push this `report` once (the main agent's morning brief). The server honours it only from the account's main agent. */
+    notify: z.boolean().optional(),
 }).refine(p => p.kind !== 'decision' || p.options !== undefined, { message: 'decision needs 2-4 options', path: ['options'] })
-    .refine(p => (p.kind === 'wrapup') === (p.payload !== undefined), { message: 'payload is required for wrapup and only allowed there', path: ['payload'] });
+    .refine(p => p.kind === 'wrapup' ? p.payload !== undefined && 'mode' in p.payload
+        : p.payload === undefined || (p.kind === 'decision' && 'type' in p.payload && p.payload.type === 'select'),
+    { message: 'payload: a wrap-up payload for wrapup (required), a select checklist for decision, nothing elsewhere', path: ['payload'] });
 export type AttentionItemPost = z.input<typeof AttentionItemPostSchema>;
 
 /** PATCH /v1/attention-items/:id → `AttentionItemResponse`. Omitted fields keep their value; `appendMd` appends to `bodyMd`. */
@@ -373,7 +424,7 @@ export const AttentionItemOwnerRespondSchema = z.discriminatedUnion('action', [
     z.object({ action: z.literal('choose'), choice: z.string().trim().min(1).max(ATTENTION_LIMITS.optionIdChars), note: note.optional() }),
     z.object({ action: z.literal('resolve'), note: note.optional() }),
     z.object({ action: z.literal('reopen'), note: note.optional() }),
-    /** B-915: tick / untick one `payload.pending` entry of a `wrapup` item (state unchanged). */
+    /** B-915: tick / untick one `payload.pending` entry of a `wrapup` item; B-924: one `payload.items` entry of a select decision (state unchanged). */
     z.object({ action: z.literal('check'), checkId: z.string().trim().min(1).max(WRAPUP_LIMITS.idChars), checked: z.boolean() }),
 ]);
 export type AttentionItemOwnerRespond = z.infer<typeof AttentionItemOwnerRespondSchema>;
@@ -408,6 +459,8 @@ export const OwnerBoardPostInputSchema = z.object({
     key: key.optional(),
     anchor: z.union([z.literal('this_turn'), z.object({ localId: z.string().min(1).max(256) })]).optional(),
     request_id: requestId,
+    /** B-924: push a `report` once (the main agent only; ignored for everyone else). */
+    notify: z.boolean().optional(),
 }).refine(p => p.kind !== 'decision' || p.options !== undefined, { message: 'decision needs 2-4 options', path: ['options'] });
 export type OwnerBoardPostInput = z.infer<typeof OwnerBoardPostInputSchema>;
 export type OwnerBoardPostOutput = { id: string; created: boolean };
@@ -458,5 +511,6 @@ export function ownerBoardPostToRest(sessionId: string, input: OwnerBoardPostInp
         ...(input.key ? { key: input.key } : {}),
         requestId: input.request_id,
         inferred: false,
+        ...(input.notify === true && input.kind === 'report' ? { notify: true } : {}),
     };
 }

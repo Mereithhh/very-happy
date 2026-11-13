@@ -8,12 +8,14 @@ const { state, dbMock, resetState } = vi.hoisted(() => {
     type KVRow = { id: string; accountId: string; key: string; value: Uint8Array | null; version: number; createdAt: Date; updatedAt: Date };
     const state = {
         rows: [] as KVRow[],
+        attention: [] as Array<{ id?: string; accountId: string; key: string; state: string; resolvedBy: string | null; ownerChoice: string | null; resolvedAt?: Date }>,
         rateCountByKey: new Map<string, number>(),
         transactionTail: Promise.resolve() as Promise<void>,
         nextId: 1,
     };
     const resetState = () => {
         state.rows = [];
+        state.attention = [];
         state.rateCountByKey = new Map();
         state.transactionTail = Promise.resolve();
         state.nextId = 1;
@@ -53,8 +55,14 @@ const { state, dbMock, resetState } = vi.hoisted(() => {
         throw new Error(`Unexpected SQL: ${sql}`);
     });
     const tx = { userKVStore, $queryRawUnsafe: rawQuery, $executeRawUnsafe: vi.fn(async () => 0) };
+    const attentionItem = {
+        findMany: vi.fn(async ({ where }: any) => state.attention.filter((a) => a.accountId === where.accountId && a.key.startsWith(where.key.startsWith)
+            && a.state === where.state && a.resolvedBy === where.resolvedBy && a.ownerChoice === where.ownerChoice)
+            .map((a, i) => ({ id: a.id ?? `card-${i}-${a.key}`, key: a.key, resolvedAt: a.resolvedAt ?? new Date(0) }))),
+    };
     const dbMock = {
         ...tx,
+        attentionItem,
         $transaction: vi.fn(async (fn: any) => {
             const previous = state.transactionTail;
             let release!: () => void;
@@ -87,6 +95,8 @@ async function createApp() {
         const userId = request.headers['x-user-id'];
         if (typeof userId !== 'string') return reply.code(401).send({ error: 'Unauthorized' });
         request.userId = userId;
+        // B-922 tests: a browser login carries a login session id
+        if (typeof request.headers['x-login'] === 'string') request.authLoginSessionId = request.headers['x-login'];
     });
     kvRoutes(typed);
     await typed.ready();
@@ -161,5 +171,142 @@ describe('KV account storage quotas', () => {
         expect(response.statusCode).toBe(429);
         expect(response.json()).toEqual({ error: 'kv_rate_quota_exceeded' });
         expect(state.rows).toHaveLength(0);
+    });
+});
+
+describe('B-922 main agent safety: machine tokens may only tighten', () => {
+    let app: Fastify;
+    const KEY = 'vh.main-agent-config.v1';
+    const enc = (v: unknown) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');
+    const write = (value: unknown, version: number, human = false) => app.inject({
+        method: 'POST', url: '/v1/kv', headers: { 'x-user-id': 'user-1', ...(human ? { 'x-login': 'login-1' } : {}) },
+        payload: { mutations: [{ key: KEY, value: value === null ? null : typeof value === 'string' ? value : enc(value), version }] },
+    });
+    beforeEach(async () => { resetState(); process.env.MAX_KV_WRITES_PER_ACCOUNT_PER_MINUTE = '0'; app = await createApp(); });
+    afterEach(async () => { await app.close(); delete process.env.MAX_KV_WRITES_PER_ACCOUNT_PER_MINUTE; });
+
+    it('machine token: tightening passes, loosening is refused (preset, override, deniedTools, delete, garbage)', async () => {
+        const strict = { v: 1, deniedTools: ['mcp__*__*archive*'], safety: { v: 1, preset: 'strict' } };
+        expect((await write(strict, -1)).statusCode).toBe(200); // no value yet = default (loose) → strict is tighter
+        for (const [label, next] of [
+            ['preset', { ...strict, safety: { v: 1, preset: 'loose' } }],
+            ['override', { ...strict, safety: { v: 1, preset: 'strict', overrides: { bash: true } } }],
+            ['deniedTools removed', { ...strict, deniedTools: [] }],
+            ['section dropped', { v: 1, deniedTools: strict.deniedTools }],
+            ['allowedTools without a grant', { ...strict, safety: { v: 1, preset: 'strict', allowedTools: ['mcp__chat__send_message'] } }],
+            ['deleted', null],
+            ['not JSON', Buffer.from('%%%').toString('base64')],
+            ['safety from a newer version', { ...strict, safety: { v: 2, preset: 'strict' } }],
+            ['unknown safety field', { ...strict, safety: { v: 1, preset: 'strict', network: 'off' } }],
+            ['not an object', ['x']],
+        ] as const) {
+            const res = await write(next, 0);
+            expect(res.statusCode, label).toBe(422);
+            expect(res.json(), label).toEqual({ error: 'main_agent_config_owner_only', key: KEY });
+        }
+        expect(state.rows[0].version).toBe(0);
+        // still allowed: tighten further, non-safety edits; quietHours (B-924) is never compared
+        expect((await write({ ...strict, skillRoots: ['~/skills'], deniedTools: ['mcp__*__*archive*', 'mcp__*__*drop*'] }, 0)).statusCode).toBe(200);
+        expect((await write({ ...strict, skillRoots: ['~/skills'], deniedTools: ['mcp__*__*archive*', 'mcp__*__*drop*'], quietHours: { enabled: false, start: '01:00', end: '07:00', tz: 'UTC' } }, 1)).statusCode).toBe(200);
+    });
+
+    it('human (browser login) token may loosen', async () => {
+        expect((await write({ v: 1, safety: { v: 1, preset: 'strict' } }, -1)).statusCode).toBe(200);
+        expect((await write({ v: 1, safety: { v: 1, preset: 'loose', overrides: { bash: true } } }, 0, true)).statusCode).toBe(200);
+    });
+
+    it('machine token may add exactly the tools the owner granted "always" on a gate-1 card', async () => {
+        const base = { v: 1, safety: { v: 1, preset: 'standard', allowedTools: [] as string[] } };
+        expect((await write(base, -1)).statusCode).toBe(200);
+        const add = (tools: string[]) => ({ v: 1, safety: { v: 1, preset: 'standard', allowedTools: tools } });
+        expect((await write(add(['mcp__chat__send_message']), 0)).statusCode).toBe(422);
+        const at = new Date();
+        state.attention.push(
+            { accountId: 'user-1', key: 'main-agent-tool:0b8c2b5e-1111-4222-8333-944445555666:mcp__chat__send_message', state: 'resolved', resolvedBy: 'owner', ownerChoice: 'always', resolvedAt: at },
+            { accountId: 'user-1', key: 'main-agent-tool:0b8c2b5e-1111-4222-8333-944445555667:mcp__mail__send_email', state: 'resolved', resolvedBy: 'owner', ownerChoice: 'once', resolvedAt: at },
+            { accountId: 'user-1', key: 'main-agent-tool:0b8c2b5e-1111-4222-8333-944445555668:mcp__cloud__deploy', state: 'resolved', resolvedBy: 'lead', ownerChoice: 'always', resolvedAt: at },
+            { accountId: 'user-2', key: 'main-agent-tool:0b8c2b5e-1111-4222-8333-944445555669:mcp__x__y', state: 'resolved', resolvedBy: 'owner', ownerChoice: 'always', resolvedAt: at },
+        );
+        expect((await write(add(['mcp__chat__send_message']), 0)).statusCode).toBe(200);
+        for (const tool of ['mcp__mail__send_email', 'mcp__cloud__deploy', 'mcp__x__y']) {
+            expect((await write(add(['mcp__chat__send_message', tool]), 1)).statusCode, tool).toBe(422);
+        }
+        // a grant never carries a preset change along
+        expect((await write({ v: 1, safety: { v: 1, preset: 'loose', allowedTools: ['mcp__chat__send_message'] } }, 1)).statusCode).toBe(422);
+    });
+
+    it('QA P2-1: an owner removing a tool voids older always cards; each card grants once', async () => {
+        const add = (tools: string[]) => ({ v: 1, safety: { v: 1, preset: 'standard', allowedTools: tools } });
+        // the owner (browser) saves a config, then grants "always" on a card
+        expect((await write(add([]), -1, true)).statusCode).toBe(200);
+        await new Promise((r) => setTimeout(r, 5));
+        const card = { id: 'card-a', accountId: 'user-1', key: 'main-agent-tool:0b8c2b5e-1111-4222-8333-944445555666:mcp__chat__send_message', state: 'resolved', resolvedBy: 'owner', ownerChoice: 'always', resolvedAt: new Date() };
+        state.attention.push(card);
+        // the CLI persists it with the machine token: accepted once
+        expect((await write(add(['mcp__chat__send_message']), 0)).statusCode).toBe(200);
+        // the owner removes it in the Web
+        await new Promise((r) => setTimeout(r, 5));
+        expect((await write(add([]), 1, true)).statusCode).toBe(200);
+        // a machine token replays the same old card: refused
+        const replay = await write(add(['mcp__chat__send_message']), 2);
+        expect(replay.statusCode).toBe(422);
+        expect(replay.json()).toEqual({ error: 'main_agent_config_owner_only', key: KEY });
+        // a card resolved after the removal but already redeemed would not count either
+        const grants = state.rows.find((r) => r.key === 'vh.main-agent-grants.v1');
+        expect(JSON.parse(Buffer.from(grants!.value!).toString('utf8')).redeemed).toEqual(['card-a']);
+        card.resolvedAt = new Date(Date.now() + 60_000);
+        expect((await write(add(['mcp__chat__send_message']), 2)).statusCode).toBe(422);
+        // a fresh, unredeemed card after the removal grants again
+        state.attention.push({ ...card, id: 'card-b', resolvedAt: new Date(Date.now() + 60_000) });
+        expect((await write(add(['mcp__chat__send_message']), 2)).statusCode).toBe(200);
+    });
+
+    it('QA-U r2 P3-1: a human write that does not take the tool back leaves an older always card live', async () => {
+        const cfg = (tools: string[], extra: Record<string, unknown> = {}) => ({ v: 1, safety: { v: 1, preset: 'standard', allowedTools: tools }, ...extra });
+        expect((await write(cfg(['mcp__other__tool']), -1, true)).statusCode).toBe(200);
+        await new Promise((r) => setTimeout(r, 5));
+        const card = { id: 'card-q', accountId: 'user-1', key: 'main-agent-tool:0b8c2b5e-1111-4222-8333-944445555666:mcp__ext__deploy_service', state: 'resolved', resolvedBy: 'owner', ownerChoice: 'always', resolvedAt: new Date() };
+        state.attention.push(card);
+        await new Promise((r) => setTimeout(r, 5));
+        // the owner saves quiet hours, and removes a different tool, before the main agent retries
+        expect((await write(cfg(['mcp__other__tool'], { quietHours: { enabled: false, start: '01:00', end: '07:00', tz: null } }), 0, true)).statusCode).toBe(200);
+        expect((await write(cfg([], { quietHours: { enabled: false, start: '01:00', end: '07:00', tz: null } }), 1, true)).statusCode).toBe(200);
+        // the CLI persists the "always" grant: still accepted
+        expect((await write(cfg(['mcp__ext__deploy_service'], { quietHours: { enabled: false, start: '01:00', end: '07:00', tz: null } }), 2)).statusCode).toBe(200);
+    });
+
+    it('QA-U r2 P3-1: removing that tool, a stricter preset or a new deny entry still voids older cards', async () => {
+        const cfg = (preset: string, tools: string[], denied: string[] = []) => ({ v: 1, safety: { v: 1, preset, allowedTools: tools }, deniedTools: denied });
+        const tool = 'mcp__ext__deploy_service';
+        for (const [label, tighten] of [
+            ['tool removed', cfg('loose', [])],
+            ['stricter preset', cfg('standard', ['mcp__a__b'])],
+            ['new deny entry', cfg('loose', ['mcp__a__b'], ['mcp__*__*drop*'])],
+        ] as const) {
+            resetState();
+            expect((await write(cfg('loose', label === 'tool removed' ? [tool] : ['mcp__a__b']), -1, true)).statusCode, label).toBe(200);
+            await new Promise((r) => setTimeout(r, 5));
+            state.attention.push({ id: `card-${label}`, accountId: 'user-1', key: `main-agent-tool:0b8c2b5e-1111-4222-8333-944445555666:${tool}`, state: 'resolved', resolvedBy: 'owner', ownerChoice: 'always', resolvedAt: new Date() });
+            await new Promise((r) => setTimeout(r, 5));
+            expect((await write(tighten, 0, true)).statusCode, label).toBe(200);
+            const tools = [...(tighten.safety.allowedTools as readonly string[]), tool];
+            const res = await write({ ...tighten, safety: { ...tighten.safety, allowedTools: tools } }, 1);
+            expect(res.statusCode, label).toBe(422);
+        }
+    });
+
+    it('the grants record is server-owned: no client token writes it', async () => {
+        for (const human of [false, true]) {
+            const res = await app.inject({ method: 'POST', url: '/v1/kv', headers: { 'x-user-id': 'user-1', ...(human ? { 'x-login': 'l' } : {}) },
+                payload: { mutations: [{ key: 'vh.main-agent-grants.v1', value: enc({ v: 1, humanWriteAt: {}, redeemed: [] }), version: -1 }] } });
+            expect(res.statusCode).toBe(422);
+            expect(res.json()).toEqual({ error: 'server_owned_kv_key', key: 'vh.main-agent-grants.v1' });
+        }
+    });
+
+    it('other keys are untouched by the guard', async () => {
+        expect((await write({ v: 1 }, -1)).statusCode).toBe(200);
+        const res = await app.inject({ method: 'POST', url: '/v1/kv', headers: { 'x-user-id': 'user-1' }, payload: { mutations: [{ key: 'vh.main-agent.v1', value: null, version: -1 }] } });
+        expect(res.statusCode).not.toBe(422);
     });
 });
