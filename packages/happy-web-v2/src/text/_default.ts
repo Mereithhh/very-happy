@@ -3415,6 +3415,11 @@ export const en = {
                 summary: 'On short screens such as an iPad in landscape, the sidebar entries now scroll away with the session list, so the list can use almost the whole sidebar.',
                 scroll: 'Main agent, New session and the entry rows scroll together with your sessions; the List / Status / Archived bar stays at the top while you scroll. The entries keep their names.',
             },
+            nov14b: {
+                title: 'On iPad, the keyboard no longer squeezes the sidebar',
+                summary: 'With the sidebar shown beside a session, opening the keyboard (or the shortcut bar of a hardware keyboard) only moves the session up; the sidebar stays where it is, at full height.',
+                split: 'The message box sits right above the keyboard and everything returns to place when it closes. On a phone, or with the sidebar collapsed, nothing changes.',
+            },
             nov13p: {
                 title: 'Switching a Codex session to another account keeps the conversation on newer Codex',
                 summary: 'On Codex 0.167 and later, moving a Codex session between your machine login and an added account (or between accounts on different providers) continues the conversation instead of cancelling it.',

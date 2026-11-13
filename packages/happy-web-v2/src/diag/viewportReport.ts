@@ -118,6 +118,8 @@ export interface KeyboardSnapshot {
     /** the inline override viewportVars.ts wrote (empty = CSS value). */
     appHOverride: string;
     keyboardOpen: boolean;
+    /** B-936: 'detail' = only the content pane avoids the keyboard (split layout), 'root' = the whole app. */
+    keyboardPane?: string | null;
     rootLock: boolean;
     /** B-855: what the keyboard path keys on — iPad + trackpad is `pointer: fine`. */
     pointer?: 'coarse' | 'fine' | 'none';
@@ -129,7 +131,7 @@ export interface KeyboardSnapshot {
 export function formatKeyboardLine(k: KeyboardSnapshot): string {
     return [
         `keyboard: vv.h=${px(k.vvHeight)} vv.top=${px(k.vvOffsetTop)} scrollY=${px(k.scrollY)} inner=${px(k.innerHeight)}`,
-        `--app-h=${px(k.appH)} (${k.appHOverride ? `js ${k.appHOverride}` : 'css'}) open=${k.keyboardOpen ? 'yes' : 'no'} root-lock=${k.rootLock ? 'yes' : 'no'}`,
+        `--app-h=${px(k.appH)} (${k.appHOverride ? `js ${k.appHOverride}` : 'css'}) open=${k.keyboardOpen ? 'yes' : 'no'} root-lock=${k.rootLock ? 'yes' : 'no'}${k.keyboardPane ? ` pane=${k.keyboardPane}` : ''}`,
         ...(k.pointer === undefined ? [] : [`pointer=${k.pointer} touch-points=${k.maxTouchPoints ?? 0} scroll-resets=${k.scrollResets ?? 0}`]),
     ].join(' · ');
 }

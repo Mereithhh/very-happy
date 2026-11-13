@@ -46,6 +46,9 @@ beforeEach(() => {
 afterEach(() => {
     delete document.documentElement.dataset.rootLock;
     delete document.documentElement.dataset.keyboardOpen;
+    delete document.documentElement.dataset.keyboardPane;
+    delete document.documentElement.dataset.splitPane;
+    document.documentElement.style.removeProperty('--app-h');
 });
 
 const TRIGGERS: Array<[string, () => void]> = [
@@ -103,5 +106,33 @@ describe('installViewportVars root-scroll guard (B-855)', () => {
         vv.dispatchEvent(new Event('resize'));
         flush();
         expect(mod.getKeyboardViewport().open).toBe(false);
+    });
+
+    it('B-936: split layout — the shortcut bar marks only the content pane, --app-h keeps the full height, closing clears it all', async () => {
+        const mod = await install(5);
+        const root = document.documentElement;
+        root.dataset.splitPane = 'true';
+        vv.height = H - 70; // hardware-keyboard shortcut bar
+        vv.offsetTop = 0;
+        vv.dispatchEvent(new Event('resize'));
+        flush();
+        expect(mod.getKeyboardViewport().open).toBe(true);
+        expect(root.dataset.keyboardPane).toBe('detail');
+        expect(root.style.getPropertyValue('--app-h')).toBe('');
+        expect(root.style.getPropertyValue('--vv-h')).toBe(`${H - 70}px`);
+
+        delete root.dataset.splitPane; // sidebar collapsed with the bar up → whole-root avoidance
+        window.dispatchEvent(new Event('resize'));
+        flush();
+        expect(root.dataset.keyboardPane).toBe('root');
+        expect(root.style.getPropertyValue('--app-h')).toBe(`${H - 70}px`);
+
+        vv.height = H;
+        vv.dispatchEvent(new Event('resize'));
+        flush();
+        expect(root.dataset.keyboardPane).toBeUndefined();
+        expect(root.dataset.keyboardOpen).toBeUndefined();
+        expect(root.style.getPropertyValue('--vv-h')).toBe('');
+        expect(root.style.getPropertyValue('--vv-top')).toBe('');
     });
 });

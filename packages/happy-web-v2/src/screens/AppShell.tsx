@@ -1,5 +1,6 @@
 import { Fragment, type MouseEventHandler, type ReactNode } from 'react';
 import type { AppShellMode } from '@/app/appShellMode';
+import { useSplitPaneMark } from '@/app/viewportVars';
 
 export type { AppShellMode };
 
@@ -26,6 +27,8 @@ export function AppShell({ mode, width, sidebar, rail, notes, aside, children, o
   const list = mode === 'list';
   const drawer = mode === 'drawer';
   const railed = mode === 'collapsed' || drawer;
+  // B-936: with the sidebar pinned beside the content, only the content pane avoids the iOS keyboard.
+  useSplitPaneMark(expanded);
   const columns = expanded ? `${width}px 6px minmax(0, 1fr)` : railed ? 'var(--app-rail-w) minmax(0, 1fr)' : 'minmax(0, 1fr)';
   const showSidebar = expanded || list || drawer || parked;
   const sidebarClass = list ? ' app-sidebar--full'
