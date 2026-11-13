@@ -15,7 +15,31 @@
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { AUTOMATION_PRECHECK_DEFAULT_TIMEOUT_MS, AUTOMATION_PRECHECK_MAX_TIMEOUT_MS, AUTOMATION_PRECHECK_OUTPUT_MAX_CHARS, AUTOMATION_SUMMARY_MAX_CHARS, type AutomationAction, type AutomationPrecheck, type AutomationSkipReason } from '@slopus/happy-wire';
+import { existsSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
+import { projectPath } from '@/projectPath';
 import { TailBuffer } from './script';
+
+/** This CLI as argv (node + its built entry, else the running entry script), or null when neither can be found. */
+export function selfInvocation(entry: string | undefined = process.argv[1]): string[] | null {
+    const built = join(projectPath(), 'dist', 'index.mjs');
+    const script = existsSync(built) ? built : entry && isAbsolute(entry) && existsSync(entry) ? entry : null;
+    return script ? [process.execPath, '--no-warnings', '--no-deprecation', script] : null;
+}
+
+/** argv[0] when this daemon's own CLI cannot be found: the precheck fails to launch (precheck_error), nothing else runs. */
+export const SELF_CLI_NOT_FOUND = 'very-happy-cli-not-found';
+
+/**
+ * B-924 (QA P1-4): an argv precheck whose program is `very-happy` (the main
+ * agent's default automations) runs THIS daemon's CLI by absolute path — never
+ * whatever `very-happy` the PATH finds (an older one would start a session
+ * from the unknown subcommand).
+ */
+export function selfCommand(argv: string[], self: string[] | null = selfInvocation()): string[] {
+    if (argv[0] !== 'very-happy') return argv;
+    return self ? [...self, ...argv.slice(1)] : [SELF_CLI_NOT_FOUND, ...argv.slice(1)];
+}
 
 /** Signal a whole process group by id, whether or not its leader is still alive (POSIX); the child alone on Windows. */
 export function killPrecheckGroup(pgid: number | undefined, child: ChildProcess | undefined, signal: NodeJS.Signals): void {

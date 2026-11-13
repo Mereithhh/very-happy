@@ -57,7 +57,7 @@ export class Session {
     /** B-883b: what to do when the provider refuses 1M context (set by runClaude; null = forward the error as is). */
     longContextPolicy: LongContextPolicy | null = null;
     /** B-916c: main agent gate 1 + skillRoots mount (set by runClaude for the main agent only). */
-    mainAgentGuard: { preToolUse: (input: any) => Promise<any>; extraDirectories: string[] } | null = null;
+    mainAgentGuard: { preToolUse: (input: any) => Promise<any>; extraDirectories: string[]; /** B-924d: appended to the system prompt. */ systemPrompt?: string } | null = null;
 
     /**
      * Window after a user-initiated abort during which stray promise rejections

@@ -12,6 +12,7 @@ import { IssueItemActions, isIssueReviewItem, issueLinkOf } from './IssueItemAct
 import { StaleWrapperItemActions, staleWrapperItemText } from './StaleWrapperItem';
 import { WrapupDetails, wrapupHeadlineText } from './WrapupCard';
 import { wrapupView } from './wrapupModel';
+import { SelectChecklist } from './SelectChecklist';
 
 export function boardTime(ts: number): string {
     try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { return ''; }
@@ -76,6 +77,7 @@ export const BoardCard = forwardRef<HTMLDivElement, {
                 <div className="brf-x" id={bodyId}>
                     {wrapup ? <WrapupDetails item={item} view={wrapup} copy={copy} />
                         : accountText ? <div className="brf-body"><Markdown text={accountText.body} /></div> : item.bodyMd && <div className="brf-body"><Markdown text={item.bodyMd} /></div>}
+                    <SelectChecklist item={item} copy={copy} />
                     {item.options && item.options.length > 0 && !isIssueReviewItem(item) && (
                         <div className="brf-opts" role="group" aria-label={copy.kinds.decision}>
                             {item.options.map((o) => (

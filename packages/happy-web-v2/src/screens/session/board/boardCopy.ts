@@ -46,6 +46,16 @@ export interface BoardCopy {
     badge: (n: number) => string;
     /** B-915 收尾 / 交接 card. */
     wrapup: WrapupCopy;
+    /** B-924 checklist on a decision card (`payload.type: 'select'`). */
+    select: SelectCopy;
+}
+
+export interface SelectCopy {
+    /** Heading while the card is open (tick, then choose an option). */
+    title: string;
+    /** Heading once the card is closed: what was ticked. */
+    result: (checked: number, total: number) => string;
+    checkFailed: string;
 }
 
 export interface WrapupCopy {
@@ -156,6 +166,11 @@ const ZH: BoardCopy = {
         archiveFailed: '归档失败',
         checkFailed: '勾选没有保存，已刷新',
     },
+    select: {
+        title: '勾选要处理的，再点下面的选项',
+        result: (checked, total) => `已勾选 ${checked} / ${total}`,
+        checkFailed: '勾选没有保存，已刷新',
+    },
 };
 
 const EN: BoardCopy = {
@@ -228,6 +243,11 @@ const EN: BoardCopy = {
         archivePendingConfirm: (n) => `${n} item${n === 1 ? '' : 's'} still unconfirmed. Archive this session anyway?`,
         archiveConfirm: 'Archive this session?',
         archiveFailed: 'Could not archive',
+        checkFailed: 'That tick was not saved; refreshed',
+    },
+    select: {
+        title: 'Tick the ones to act on, then pick an option below',
+        result: (checked, total) => `${checked} of ${total} ticked`,
         checkFailed: 'That tick was not saved; refreshed',
     },
 };

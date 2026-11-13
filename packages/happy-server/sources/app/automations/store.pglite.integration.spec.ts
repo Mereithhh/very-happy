@@ -581,4 +581,84 @@ describe('automations store (pglite)', () => {
         process.env.VH_AUTOMATIONS_ENABLED = 'true';
         await app.close();
     });
+    it('B-924: a send to target main-agent resolves to the KV pointer when claimed; follows the main agent to its machine; fails with attention without one', async () => {
+        const acct = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
+        const m1 = crypto.randomUUID(); const m2 = crypto.randomUUID();
+        await db.machine.create({ data: { id: m1, accountId: acct, metadata: 'm' } });
+        await db.machine.create({ data: { id: m2, accountId: acct, metadata: 'm' } });
+        const main = (await db.session.create({ data: { accountId: acct, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
+        const pointer = (value: object) => new TextEncoder().encode(JSON.stringify(value));
+        const auto = await store.createAutomation(acct, { name: 'to-main', machineId: m1, trigger: { kind: 'manual' }, action: { kind: 'send', target: 'main-agent', prompt: 'brief' } });
+        expect(auto.action).toEqual({ kind: 'send', target: 'main-agent', prompt: 'brief' });
+
+        // No main agent yet: the run fails with attention and is never handed out.
+        const r0 = await store.runAutomationNow(acct, auto.id, {});
+        expect((await store.claimRuns(acct, { machineId: m1, capabilities: ['precheck', 'main-agent-automations'] })).runs).toHaveLength(0);
+        expect(await store.getRun(acct, r0.id)).toMatchObject({ status: 'failed', error: 'main_agent_unavailable', needsAttention: true, attentionReason: 'main_agent_unavailable' });
+
+        // The pointer names this machine: a plain send to the main agent session.
+        await db.userKVStore.create({ data: { accountId: acct, key: 'vh.main-agent.v1', value: pointer({ v: 1, machineId: m1, sessionId: main, generation: 1 }) } });
+        await store.runAutomationNow(acct, auto.id, {});
+        const claimed = await store.claimRuns(acct, { machineId: m1, capabilities: ['precheck', 'main-agent-automations'] });
+        expect(claimed.runs).toHaveLength(1);
+        expect(claimed.runs[0].automation.action).toEqual({ kind: 'send', target: 'main-agent', prompt: 'brief', sessionId: main });
+        await store.reportRun(acct, claimed.runs[0].run.id, { claimId: claimed.runs[0].run.claimId, status: 'done' });
+        // The stored action is unchanged (resolved again on every run).
+        expect((await store.getAutomation(acct, auto.id)).action).toEqual({ kind: 'send', target: 'main-agent', prompt: 'brief' });
+
+        // The main agent moved to m2: m1's claim hands nothing out; the run and the automation follow; m2 gets it.
+        await db.userKVStore.update({ where: { accountId_key: { accountId: acct, key: 'vh.main-agent.v1' } }, data: { value: pointer({ v: 1, machineId: m2, sessionId: main, generation: 2 }) } });
+        const r2 = await store.runAutomationNow(acct, auto.id, {});
+        expect((await store.claimRuns(acct, { machineId: m1, capabilities: ['main-agent-automations'] })).runs).toHaveLength(0);
+        expect(await store.getAutomation(acct, auto.id)).toMatchObject({ machineId: m2 });
+        const onM2 = await store.claimRuns(acct, { machineId: m2, capabilities: ['main-agent-automations'] });
+        expect(onM2.runs.map(r => r.run.id)).toEqual([r2.id]);
+        expect(onM2.runs[0].automation.action).toMatchObject({ sessionId: main });
+
+        // A pointer at a session of another account is no main agent.
+        const foreign = (await db.session.create({ data: { accountId: otherAccountId, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
+        await store.reportRun(acct, onM2.runs[0].run.id, { claimId: onM2.runs[0].run.claimId, status: 'done' });
+        await db.userKVStore.update({ where: { accountId_key: { accountId: acct, key: 'vh.main-agent.v1' } }, data: { value: pointer({ v: 1, machineId: m2, sessionId: foreign }) } });
+        const r3 = await store.runAutomationNow(acct, auto.id, {});
+        expect((await store.claimRuns(acct, { machineId: m2, capabilities: ['main-agent-automations'] })).runs).toHaveLength(0);
+        expect(await store.getRun(acct, r3.id)).toMatchObject({ status: 'failed', error: 'main_agent_unavailable' });
+    });
+
+    it('B-924: a send needs exactly one of sessionId / target (wire schema)', async () => {
+        const { AutomationCreateSchema } = await import('@slopus/happy-wire');
+        const base = { name: 'x', machineId, trigger: { kind: 'manual' } };
+        expect(AutomationCreateSchema.safeParse({ ...base, action: { kind: 'send', prompt: 'p' } }).success).toBe(false);
+        expect(AutomationCreateSchema.safeParse({ ...base, action: { kind: 'send', prompt: 'p', sessionId, target: 'main-agent' } }).success).toBe(false);
+        expect(AutomationCreateSchema.safeParse({ ...base, action: { kind: 'send', prompt: 'p', target: 'somebody' } }).success).toBe(false);
+        expect(AutomationCreateSchema.safeParse({ ...base, action: { kind: 'send', prompt: 'p', target: 'main-agent' } }).success).toBe(true);
+        expect(AutomationCreateSchema.safeParse({ ...base, action: { kind: 'send', prompt: 'p', sessionId } }).success).toBe(true);
+    });
+
+    it('B-924 (QA P1-4): main-agent runs go only to a daemon that announces main-agent-automations; an older one gets nothing (failed daemon_too_old)', async () => {
+        const acct = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
+        const m = crypto.randomUUID();
+        await db.machine.create({ data: { id: m, accountId: acct, metadata: 'm' } });
+        const main = (await db.session.create({ data: { accountId: acct, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
+        await db.userKVStore.create({ data: { accountId: acct, key: 'vh.main-agent.v1', value: new TextEncoder().encode(JSON.stringify({ v: 1, machineId: m, sessionId: main })) } });
+        const brief = await store.createAutomation(acct, { name: 'main-agent-brief', machineId: m, trigger: { kind: 'manual' }, action: { kind: 'send', target: 'main-agent', prompt: 'brief' },
+            precheck: { command: ['very-happy', 'main-agent', 'precheck', 'brief', '--record'], includeOutput: true } });
+        // A precheck-only one (the default spawn-free shape is a send, but the precheck alone also needs the new daemon).
+        const prechecked = await store.createAutomation(acct, { name: 'other-precheck', machineId: m, trigger: { kind: 'manual' }, action: { kind: 'send', sessionId: main, prompt: 'p' },
+            precheck: { command: ['very-happy', 'main-agent', 'precheck', 'stuck'] } });
+        const plain = await store.createAutomation(acct, { name: 'plain-send', machineId: m, trigger: { kind: 'manual' }, action: { kind: 'send', sessionId: main, prompt: 'p' } });
+        const r1 = await store.runAutomationNow(acct, brief.id, {});
+        const r2 = await store.runAutomationNow(acct, prechecked.id, {});
+        const r3 = await store.runAutomationNow(acct, plain.id, {});
+        // An older daemon (precheck only, no main-agent-automations): nothing main-agent is handed out; the plain send still is.
+        const old = await store.claimRuns(acct, { machineId: m, capabilities: ['precheck'] });
+        expect(old.runs.map(r => r.run.id)).toEqual([r3.id]);
+        for (const id of [r1.id, r2.id]) expect(await store.getRun(acct, id)).toMatchObject({ status: 'failed', error: 'daemon_too_old', needsAttention: true, attentionReason: 'daemon_too_old', sessionId: null });
+        // A daemon that announces it gets them.
+        await store.reportRun(acct, old.runs[0].run.id, { claimId: old.runs[0].run.claimId, status: 'done' });
+        const r4 = await store.runAutomationNow(acct, brief.id, {});
+        const fresh = await store.claimRuns(acct, { machineId: m, capabilities: ['precheck', 'main-agent-automations'] });
+        expect(fresh.runs.map(r => r.run.id)).toEqual([r4.id]);
+        expect(fresh.runs[0].automation.action).toMatchObject({ sessionId: main });
+    });
+
 });

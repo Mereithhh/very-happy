@@ -120,6 +120,7 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   { id: 'mainAgent.skillRoots', section: 'main-agent', title: { en: 'Skills folders (skillRoots)', zh: 'skills 目录（skillRoots）' }, keywords: ['skills', 'skillroots', 'skill roots', '技能', '目录'] },
   { id: 'mainAgent.deniedTools', section: 'main-agent', title: { en: 'Outbound deny list (additions)', zh: '出站禁用表（补充项）' }, keywords: ['deny', 'denylist', 'outbound', 'blocked tools', '禁用', '出站', '黑名单'] },
   { id: 'mainAgent.safety', section: 'main-agent', title: { en: 'Safety', zh: '安全' }, keywords: ['safety', 'strict', 'standard', 'loose', 'approve', 'allowed tools', 'bash', '安全', '严格', '标准', '宽松', '批准', '安全阀'] },
+  { id: 'mainAgent.automations', section: 'main-agent', title: 'settingsMainAgent.automationsTitle', description: 'settingsMainAgent.automationsFooter', keywords: ['automation', 'morning brief', 'stuck', 'wrap-up', 'schedule', '自动化', '早报', '卡住', '收尾', '定时'] },
   // ── voice ──
   { id: 'voice.voice', section: 'voice', title: 'settingsVoice.voice', keywords: ['voice', 'tts', 'speaker', 'elevenlabs', '语音', '音色', '朗读'] },
   { id: 'voice.library', section: 'voice', title: 'settingsVoice.library', keywords: ['voice library', 'voices', '语音库', '音色库'] },

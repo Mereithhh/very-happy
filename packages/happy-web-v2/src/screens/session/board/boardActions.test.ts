@@ -25,6 +25,13 @@ describe('board actions (B-766)', () => {
         expect(choiceMessage({ ...base, id: 'd1', key: 'issue-review:1' }, 'B', boardCopy(true))).toBe('［汇报板 · 决定］今天发还是明早发？ → B. 明早');
     });
 
+    it('B-924: a main agent wrap-up checklist choice names the card for wrapup_selected', () => {
+        const card = { ...base, id: 'card-9', source: 'agent', key: 'main-agent-wrapup:2026-11-11', title: '可以收尾的会话（3）',
+            options: [{ id: 'wrapup', label: '收尾所选' }, { id: 'skip', label: '这次不用' }] };
+        expect(choiceMessage(card, 'wrapup', boardCopy(true))).toBe('［汇报板 · 决定］可以收尾的会话（3） → 收尾所选 (wrapup_selected boardItemId=card-9)');
+        expect(choiceMessage(card, 'skip', boardCopy(false))).toBe('[Briefing · decision] 可以收尾的会话（3） → 这次不用 (wrapup_selected boardItemId=card-9)');
+    });
+
     it('a choice is sent as an Owner message naming the option', () => {
         expect(choiceMessage({ ...base, id: 'd1' }, 'B', boardCopy(true))).toBe('［汇报板 · 决定］今天发还是明早发？ → B. 明早');
         expect(choiceMessage({ ...base, id: 'd1' }, 'B', boardCopy(false))).toBe('[Briefing · decision] 今天发还是明早发？ → B. 明早');

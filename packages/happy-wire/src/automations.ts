@@ -29,6 +29,20 @@ export const AUTOMATION_PRECHECK_OUTPUT_MAX_CHARS = 4000;
 /** Announced in `AutomationClaim.capabilities` by daemons that execute prechecks; the server never hands a precheck run to a daemon without it. */
 export const AUTOMATION_DAEMON_CAPABILITY_PRECHECK = 'precheck';
 /**
+ * B-924: announced by daemons that run the main agent's automations — they
+ * resolve `very-happy main-agent precheck` with their own CLI. The server hands
+ * a `target: 'main-agent'` run, or one gated by that precheck, only to a daemon
+ * that announces it; any other daemon gets it as failed `daemon_too_old`.
+ */
+export const AUTOMATION_DAEMON_CAPABILITY_MAIN_AGENT = 'main-agent-automations';
+export const AUTOMATION_DAEMON_TOO_OLD = 'daemon_too_old';
+/** True for an automation only a `main-agent-automations` daemon may run. */
+export function automationNeedsMainAgentDaemon(action: { kind: string; target?: unknown }, precheck: { command?: readonly string[] } | null | undefined): boolean {
+    if (action.kind === 'send' && action.target === 'main-agent') return true;
+    const argv = precheck?.command ?? [];
+    return argv[0] === 'very-happy' && argv[1] === 'main-agent';
+}
+/**
  * Reason codes a `skipped` run carries in `error` (B-548). Consecutive skips of
  * one automation's scheduled runs with the same reason fold into the newest run
  * (`occurrenceCount`). Clients show unknown codes verbatim.
@@ -48,6 +62,11 @@ export const AutomationTriggerSchema = z.discriminatedUnion('kind', [
 ]);
 export type AutomationTrigger = z.infer<typeof AutomationTriggerSchema>;
 
+/** B-924 `send` targets resolved by the server: `main-agent` = the session KV `vh.main-agent.v1` names when the run is claimed. */
+export const AUTOMATION_SEND_TARGETS = ['main-agent'] as const;
+export type AutomationSendTarget = typeof AUTOMATION_SEND_TARGETS[number];
+/** Run error / attention reason when a `main-agent` target has no main agent to resolve to. */
+export const AUTOMATION_MAIN_AGENT_UNAVAILABLE = 'main_agent_unavailable';
 export const AutomationStickySchema = z.object({ key: z.string().min(1).max(512) });
 export const AutomationActionSchema = z.discriminatedUnion('kind', [
     // `agent` and `permissionMode` are open strings (AGENTS #14): the daemon
@@ -64,7 +83,11 @@ export const AutomationActionSchema = z.discriminatedUnion('kind', [
         /** B-850d: the account the run uses (absent = project default > machine default; null = machine login). An older daemon ignores it. */
         agentProfile: AgentProfileChoiceSchema.optional(),
     }),
-    z.object({ kind: z.literal('send'), sessionId: id, prompt: text }),
+    // B-924: `target: 'main-agent'` instead of `sessionId` = the account's main
+    // agent at run time (KV `vh.main-agent.v1`): the server resolves it when a
+    // daemon claims the run and hands the daemon a plain `send` with `sessionId`
+    // (so older daemons run it unchanged). Exactly one of the two.
+    z.object({ kind: z.literal('send'), sessionId: id.optional(), target: z.enum(AUTOMATION_SEND_TARGETS).optional(), prompt: text }),
     z.object({
         kind: z.literal('script'),
         command: z.array(z.string().min(1).max(4096)).min(1).max(256),
@@ -72,8 +95,16 @@ export const AutomationActionSchema = z.discriminatedUnion('kind', [
         env: z.record(z.string().min(1).max(256), z.string().max(32000)).optional(),
         timeoutMs: z.number().int().min(1000).max(7 * 86_400_000).optional(),
     }),
-]);
+]).superRefine((action, ctx) => {
+    if (action.kind === 'send' && (action.sessionId === undefined) === (action.target === undefined)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'send needs exactly one of sessionId or target', path: ['sessionId'] });
+    }
+});
 export type AutomationAction = z.infer<typeof AutomationActionSchema>;
+/** B-924: the session a `send` action delivers to, or null when it targets the main agent (resolved by the server at claim time). */
+export function automationSendSessionId(action: AutomationAction): string | null {
+    return action.kind === 'send' && typeof action.sessionId === 'string' ? action.sessionId : null;
+}
 
 /**
  * B-548: optional gate before the action. Exactly one of `command` (argv, no

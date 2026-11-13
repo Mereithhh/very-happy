@@ -28,7 +28,7 @@ import { toast } from '@/ui/Toast';
 import { AccountEventBlock } from './AccountEventBlock';
 import { accountEventKind, machineLoginCardApplies } from './sessionAccount';
 import { AUTO_UPDATED_EVENT_KIND, parseAutoUpdatedLine, parseRestartedOnRequestLine, RESTARTED_ON_REQUEST_EVENT_KIND } from '@/app/autoRestartPolicy';
-import { LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_INTERRUPTED_EVENT_KIND, LONG_CONTEXT_REFUSED_EVENT_KIND } from '@slopus/happy-wire';
+import { LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_INTERRUPTED_EVENT_KIND, LONG_CONTEXT_REFUSED_EVENT_KIND, suggestionOptionLocalId } from '@slopus/happy-wire';
 import { parseAttachedFiles, stripAttachedFiles } from './attachedFiles';
 import { attachmentsFromFileEvents, attachmentsFromManifest, UserAttachments, type AttachmentItem } from './UserAttachments';
 import { discardedReasonKey } from './discardedInput';
@@ -218,7 +218,8 @@ function AgentText({
     const onOption = useCallback((option: string) => {
         setPicked(true);
         requestChatFollow(sessionId);
-        void sync.sendMessage(sessionId, option, { source: 'chat' }).catch(() => setPicked(false));
+        // B-924d (QA-T P1-2): the chip's text is the agent's — its own localId prefix, so the CLI never reads the click as the owner's words.
+        void sync.sendMessage(sessionId, option, { source: 'chat', localId: suggestionOptionLocalId() }).catch(() => setPicked(false));
     }, [sessionId]);
     const offerOptions = optionsActive && !picked;
 

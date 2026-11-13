@@ -1643,6 +1643,8 @@ export class ApiMachineClient {
                     mainAgentGates: { rpcAvailable: true, detectedAt: now },
                     // B-922 capability flag: the main agent enforces the configurable safety setting.
                     mainAgentSafety: { rpcAvailable: true, detectedAt: now },
+                    // B-924 capability flag: the main agent's default automations (same restamp discipline).
+                    mainAgentAutomations: { rpcAvailable: true, detectedAt: now },
                     // B-084: closed records survive daemon restarts (persisted
                     // in closed-terminals.json), so the connect snapshot ships
                     // them too — not just the incremental pushes.

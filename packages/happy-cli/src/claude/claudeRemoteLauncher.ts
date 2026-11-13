@@ -1,3 +1,4 @@
+import { silentMainAgentTurn } from '@/assistant/turnOrigin';
 import { createRuntimeControls, isRuntimeCheckpointReplay } from './runtimeControls';
 import { leadBoardFor } from '@/attention/leadBoard';
 import { finalizeRemotePrompt } from './finalizeRemotePrompt';
@@ -539,6 +540,8 @@ export async function claudeRemoteLauncher(
         uuid?: string;
         /** Already went through `finalize` once (a Query handed it back, B-853, or a redelivery): replayed verbatim. */
         finalized?: boolean;
+        /** B-924: the parked batch's prompt localIds, so its replayed turn still knows who sent it (turn origin, board). */
+        sourceIds?: string[];
     };
 
     try {
@@ -616,6 +619,7 @@ export async function claudeRemoteLauncher(
                     path: session.path,
                     additionalDirectories: [attachmentDirectory, ...(session.mainAgentGuard?.extraDirectories ?? [])],
                     preToolUseHook: session.mainAgentGuard?.preToolUse,
+                    extraSystemPrompt: session.mainAgentGuard?.systemPrompt,
                     allowedTools: session.allowedTools ?? [],
                     mcpServers: session.mcpServers,
                     hookSettingsPath: session.hookSettingsPath,
@@ -633,7 +637,7 @@ export async function claudeRemoteLauncher(
                         // B-645: the project prefix / digest is added to exactly what reaches
                         // the SDK, and `onPromptFinalized` records that same string (the JSONL
                         // dedupe compares against what the SDK writes).
-                        // B-766: localIds of the batch being finalized (queue path); a parked replay has none.
+                        // B-766: localIds of the batch being finalized (queue path, or a parked replay's stored ones — B-924).
                         let batchSourceIds: string[] | undefined;
                         const finalize = async (prompt: string): Promise<string> => {
                             lastRawPrompt = prompt;
@@ -650,6 +654,8 @@ export async function claudeRemoteLauncher(
                         };
                         const parked = modeGate.takeParked();
                         if (parked) {
+                            // B-924: a message parked for a mode change (e.g. the owner switched model) keeps its localIds.
+                            batchSourceIds = parked.sourceIds;
                             permissionHandler.handleModeChange(parked.mode.permissionMode);
                             if (parked.finalized) {
                                 if (typeof parked.message === 'string') onPromptFinalized?.(parked.message);
@@ -692,6 +698,7 @@ export async function claudeRemoteLauncher(
                                         : msg.message,
                                     mode: msg.mode,
                                     uuid: promptUuidFor(msg.sourceIds),
+                                    sourceIds: msg.sourceIds,
                                 });
                                 return null;
                             }
@@ -895,7 +902,9 @@ export async function claudeRemoteLauncher(
                         const failure = turnFailures.conclude(result);
                         if (failure) {
                             session.client.setTurnFailure(failure);
-                            const idle = !modeGate.hasParked && session.queue.size() === 0 && !session.client.promptQueueHasPending();
+                            // B-924 (QA P2-5): a main agent turn the owner did not start ends without a push.
+                            const idle = !modeGate.hasParked && session.queue.size() === 0 && !session.client.promptQueueHasPending()
+                                && !silentMainAgentTurn(session.mainAgentGuard != null);
                             if (idle) {
                                 session.api.push().sendTurnFailedNotification({
                                     sessionId: session.client.sessionId,
@@ -919,7 +928,9 @@ export async function claudeRemoteLauncher(
                                 // reply_done if Claude produced output, else input_needed
                                 // when the session is idle awaiting the user (best-effort).
                                 session.onTurnEnd(idle);
-                                if (idle) {
+                                // B-924 (QA P2-5): a main agent turn the owner did not start (automation, script, Lead)
+                                // ends silently; what it has to say goes on the board (its notify report obeys quiet hours).
+                                if (idle && !silentMainAgentTurn(session.mainAgentGuard != null)) {
                                     session.api.push().sendSessionNotification({
                                         kind: 'done',
                                         metadata: session.client.getMetadata(),

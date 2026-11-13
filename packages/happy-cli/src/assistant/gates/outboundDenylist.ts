@@ -77,7 +77,7 @@ export const WRITE_VERB_TOKENS: readonly string[] = [
 export const PRODUCTION_SUBSTRINGS: readonly string[] = ['deploy', 'release', 'rollback', 'publish']
 export const PRODUCTION_VERB_TOKENS: readonly string[] = ['apply', 'scale', 'drop', 'truncate', 'migrate', 'rollout', 'terminate', 'destroy']
 
-function toolTokens(tool: string): Set<string> {
+export function toolTokens(tool: string): Set<string> {
     const tokens = tool.toLowerCase().split(/[^a-z0-9]+|(?<=[a-z])(?=[0-9])/).filter(Boolean)
     const camel = tool.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
     return new Set([...tokens, ...camel])
@@ -209,11 +209,15 @@ export function compileOutboundDenylist(
 
 export type PreToolUseInput = { hook_event_name?: string; tool_name?: string; tool_input?: unknown; cwd?: string }
 export type PreToolUseOutput = { continue: true } | {
-    hookSpecificOutput: { hookEventName: 'PreToolUse'; permissionDecision: 'deny'; permissionDecisionReason: string }
+    hookSpecificOutput: { hookEventName: 'PreToolUse'; permissionDecision: 'deny' | 'allow'; permissionDecisionReason: string }
 }
 
 /** The `ask` branch (toolApproval.ts): `allow` lets the call through, a string is the deny reason the model reads. */
 export type ToolAsker = (toolName: string, toolInput: Record<string, unknown>) => Promise<'allow' | { reason: string }>
+
+export const OWNER_APPROVED_OUTPUT: PreToolUseOutput = {
+    hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow', permissionDecisionReason: 'Owner 已在「需要我决策」的工具批准卡上批准了这次调用（参数一致，只放行一次）。' },
+}
 
 const denyOutput = (reason: string): PreToolUseOutput => ({
     hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason },
@@ -236,7 +240,9 @@ export function outboundPreToolUseHook(list: Pick<CompiledDenylist, 'denies'> & 
             const toolInput = input.tool_input && typeof input.tool_input === 'object' && !Array.isArray(input.tool_input) ? input.tool_input as Record<string, unknown> : {}
             let verdict: 'allow' | { reason: string }
             try { verdict = await ask(input.tool_name, toolInput) } catch { verdict = { reason: TOOL_APPROVAL_UNAVAILABLE_REASON } }
-            if (verdict === 'allow') return { continue: true }
+            // B-924g (e2e on 9604d2b70): the owner already approved this exact call on the card — say so to Claude
+            // Code, or its own permission prompt asks the owner a second time (permissionMode default).
+            if (verdict === 'allow') return OWNER_APPROVED_OUTPUT
             onDeny?.(input.tool_name)
             return denyOutput(verdict.reason)
         }

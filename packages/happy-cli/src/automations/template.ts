@@ -164,6 +164,6 @@ export function describeTrigger(trigger: AutomationTrigger): string {
 
 export function describeAction(action: AutomationAction): string {
     if (action.kind === 'spawn') return `spawn ${action.agent} in ${action.directory}${action.sticky ? ` (sticky ${action.sticky.key})` : ''}${action.agentProfile !== undefined ? ` · account ${action.agentProfile === null ? 'machine login' : action.agentProfile.label ?? action.agentProfile.id}` : ''}`;
-    if (action.kind === 'send') return `send to session ${action.sessionId}`;
+    if (action.kind === 'send') return action.target === 'main-agent' ? 'send to the main agent' : `send to session ${action.sessionId}`;
     return `script ${action.command.join(' ')}`;
 }

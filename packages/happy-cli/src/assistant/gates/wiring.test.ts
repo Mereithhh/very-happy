@@ -51,7 +51,7 @@ describe('B-916c main agent gate wiring', () => {
         const run = src('claude/runClaude.ts')
         expect(run).toContain("const mainAgent = isAssistantVariant && !process.env.VH_TEAM_SCOPE_FILE ? await prepareMainAgentForSession(api, session, credentials) : undefined;")
         expect(run).toContain('startHappyServer(session, { assistant: isAssistantVariant, mainAgent,')
-        expect(run).toContain('if (mainAgent) sessionInstance.mainAgentGuard = { preToolUse: mainAgent.preToolUse, extraDirectories: mainAgent.extraDirectories };')
+        expect(run).toContain('if (mainAgent) sessionInstance.mainAgentGuard = { preToolUse: mainAgent.preToolUse, extraDirectories: mainAgent.extraDirectories, systemPrompt: MAIN_AGENT_PROVENANCE_SYSTEM_PROMPT };')
         expect(run).toContain('setAssistantExtraDenied(runtime.denylist.sdkDisallowed);')
         // B-922: the safety setting opens built-ins for the main agent only, reads the KV through the throwing client, and advertises the capability
         expect(run).toContain('setAssistantBuiltinsAllowed(assistantBuiltinsAllowedBy(runtime.safety.policy));')
@@ -69,7 +69,7 @@ describe('B-916c main agent gate wiring', () => {
         expect(server).toContain('const dispatchRegistrar = mainAgent ? options!.mainAgent!.gate.wrap(mcp) : mcp;')
         // QA77 #6: the main agent needs the gate runtime; QA77 #2: its owner_board_* go through the gate's write guard
         expect(server).toContain('return options?.assistant === true && !env.VH_TEAM_SCOPE_FILE && options.mainAgent !== undefined;')
-        expect(server).toContain('registerOwnerBoardTools(options!.mainAgent!.gate.wrap(withToolOutputCaps(mcp, MAIN_AGENT_LIST_VIEWS)), leadBoard);')
+        expect(server).toContain('registerOwnerBoardTools(options!.mainAgent!.gate.wrap(withNonOwnerProvenance(withToolOutputCaps(mcp, MAIN_AGENT_LIST_VIEWS))), leadBoard);')
         expect(server).toContain('registerTeamsTools(dispatchRegistrar, sessionId);')
         expect(server).toContain('registerAutomationTools(dispatchRegistrar);')
         expect(server).toContain('registerSessionPeerTools(dispatchRegistrar, createSessionPeerToolExecutor(client));')

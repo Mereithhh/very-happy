@@ -244,7 +244,9 @@ Single use and the card-face binding stop mistakes and in-session bypasses. They
 
 One assistant session per account, opened from the Web sidebar. It reads and dispatches; work is done by team leads, sessions and automations. Its own rules are in the main-agent skill named in its prompt.
 
-Its extra MCP tools: \`sessions_list\`, \`session_read\`, \`session_send\`, \`session_spawn\`, \`session_kill\`, \`session_archive\`, \`terminals_list\`, \`terminal_read\`, \`terminal_send\`, \`memory_update\`, \`journal_append\`. A plain agent CLI can get the session tools through \`very-happy mcp\` in an assistant session.`,
+Its extra MCP tools: \`sessions_list\`, \`session_read\`, \`session_send\`, \`session_spawn\`, \`session_kill\`, \`session_archive\`, \`terminals_list\`, \`terminal_read\`, \`terminal_send\`, \`memory_update\`, \`journal_append\`, plus (B-924) \`boards_read\`, \`sessions_search\`, \`wrapup_suggest\`, \`wrapup_selected\`.
+
+Default automations (installed once, all on; Settings → Main agent or \`very-happy main-agent automations list|on|off <brief|stuck|wrapup>\`): a 09:00 brief, an hourly stuck-session check and a 23:30 wrap-up checklist, each behind a zero-token precheck. An automation targets the main agent with \`--send-main-agent\` (MCP \`action: {kind:'send', target:'main-agent', prompt}\`). A plain agent CLI can get the session tools through \`very-happy mcp\` in an assistant session.`,
     },
 ];
 

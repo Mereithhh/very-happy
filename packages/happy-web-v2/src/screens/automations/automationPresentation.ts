@@ -222,7 +222,11 @@ export function describeAction(action: AutomationAction, lang: Lang, accountLabe
     }
     case 'send': {
       const p = promptPreview(action.prompt);
-      return { kind: 'send', headline: zh ? `发送到会话 ${action.sessionId}` : `Send to session ${action.sessionId}`, body: p.text, truncated: p.truncated };
+      // B-924: `target: 'main-agent'` has no session id; the server resolves it at run time.
+      const headline = action.target === 'main-agent' || !action.sessionId
+        ? (zh ? '发送到主 agent' : 'Send to the main agent')
+        : zh ? `发送到会话 ${action.sessionId}` : `Send to session ${action.sessionId}`;
+      return { kind: 'send', headline, body: p.text, truncated: p.truncated };
     }
     case 'script':
     default: {

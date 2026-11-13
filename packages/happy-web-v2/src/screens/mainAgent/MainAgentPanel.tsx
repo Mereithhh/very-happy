@@ -21,6 +21,7 @@ import { machineLabel } from '@/utils/machineUtils';
 import { useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { Markdown } from '@/screens/session/Markdown';
+import { suggestionOptionLocalId } from '@slopus/happy-wire';
 import { derivePendingPermission, deriveTranscript } from '@/assistant/assistantView';
 import { hasMainAgentGates, mainAgentDot, mainAgentStatusDot, MAIN_AGENT_OTHER_MACHINE_ERROR, type MainAgentState } from '@/assistant/mainAgent';
 import { mainAgentCopy, type MainAgentCopy } from '@/assistant/mainAgentCopy';
@@ -214,6 +215,13 @@ function MainAgentConversation({ sessionId, gates, offlineMachine, copy }: { ses
         if (!v) return;
         void sync.sendMessage(sessionId, v);
     }, [sessionId]);
+    // B-924d (QA-T P1-2): a suggestion chip is the main agent's text, not the owner's words: own localId prefix
+    // (the CLI turn origin reads it as board_choice — nothing unlocked).
+    const sendOption = useCallback((option: string) => {
+        const v = option.trim();
+        if (!v) return;
+        void sync.sendMessage(sessionId, v, { localId: suggestionOptionLocalId() });
+    }, [sessionId]);
 
     // ⌘K hand-over: a pending draft is sent (send: true) or put in the composer
     useEffect(() => {
@@ -259,7 +267,7 @@ function MainAgentConversation({ sessionId, gates, offlineMachine, copy }: { ses
                         );
                     }
                     if (e.role === 'user') return <div key={e.id} className="ma-msg" data-role="user">{e.text}</div>;
-                    return <div key={e.id} className="ma-msg" data-role="assistant"><Markdown text={e.text} onOption={send} /></div>;
+                    return <div key={e.id} className="ma-msg" data-role="assistant"><Markdown text={e.text} onOption={sendOption} /></div>;
                 })}
                 {session?.thinking && <div className="ma-thinking" aria-label={copy.statusThinking}><Spinner size={14} /> {copy.statusThinking}</div>}
             </div>

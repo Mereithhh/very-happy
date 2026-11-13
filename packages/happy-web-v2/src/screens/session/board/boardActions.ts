@@ -8,7 +8,7 @@
  * - 追问: quotes the item into the composer; a closed item is reopened.
  * The card updates at once; the server snapshot (higher version) replaces it.
  */
-import { applyWrapupCheck, attentionBoardLocalId, isAttentionActive, type AttentionItem } from '@slopus/happy-wire';
+import { applySelectCheck, applyWrapupCheck, attentionBoardLocalId, MAIN_AGENT_CARD_KEY, isAttentionActive, type AttentionItem } from '@slopus/happy-wire';
 import { sync } from '@/sync/sync';
 import { respondToAttentionItem } from '@/sync/apiAttention';
 import { loadAttentionItems, useAttentionStore } from '@/sync/attentionStore';
@@ -34,6 +34,8 @@ export function choiceMessage(item: AttentionItem, optionId: string, copy: Board
     const key = item.key ?? '';
     // B-920: a settings card names the card id the agent reruns `very-happy settings set … --approved` with.
     if (key.startsWith(SETTINGS_CHANGE_KEY_PREFIX)) return `${base} (very-happy settings set … --approved ${item.id})`;
+    // B-924: likewise the main agent's wrap-up checklist card names itself for wrapup_selected.
+    if (key.startsWith(MAIN_AGENT_CARD_KEY.wrapup)) return `${base} (wrapup_selected boardItemId=${item.id})`;
     if (!key.startsWith(MAIN_AGENT_DISPATCH_KEY_PREFIX)) return base;
     return `${base} (dispatch_approved approvalId=${key.slice(MAIN_AGENT_DISPATCH_KEY_PREFIX.length)} boardItemId=${item.id})`;
 }
@@ -94,6 +96,24 @@ export async function followUp(item: AttentionItem, copy: BoardCopy): Promise<vo
         useAttentionStore.getState().apply(next);
     } catch (error) {
         failed(item, copy, error);
+    }
+}
+
+/**
+ * B-924: tick / untick one entry of a decision card's checklist
+ * (`owner-respond {check}`); same optimistic tick and rollback as below.
+ */
+export async function checkSelectItem(item: AttentionItem, checkId: string, checked: boolean, copy: BoardCopy): Promise<void> {
+    const payload = applySelectCheck(item.payload, checkId, checked);
+    if (!payload) return;
+    optimistic(item, { payload, updatedAt: Date.now() });
+    try {
+        const { item: next } = await respondToAttentionItem(item.id, { action: 'check', checkId, checked });
+        useAttentionStore.getState().apply(next);
+    } catch {
+        useAttentionStore.getState().apply(item);
+        toast.error(copy.select.checkFailed);
+        void loadAttentionItems(item.sessionId);
     }
 }
 
