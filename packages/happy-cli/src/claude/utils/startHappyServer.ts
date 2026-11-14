@@ -41,7 +41,7 @@ import { createRequestHuman, REQUEST_HUMAN_TOOL_DESCRIPTION, REQUEST_HUMAN_TOOL_
 import { readSettings } from "@/persistence";
 import { getSessionNotificationBody } from "@/api/pushNotifications";
 import { checkPreviewPath } from "./previewPath";
-import { checkDownloadTarget } from "./downloadTarget";
+import { checkPreviewTarget } from "./downloadTarget";
 import { ATTENTION_SESSION_CAPABILITY, WRAPUP_SESSION_CAPABILITY } from "@slopus/happy-wire";
 import { sharedAttentionClient } from "@/attention/client";
 import { attachLeadBoard, createLeadBoard, resolveTeamLead } from "@/attention/leadBoard";
@@ -416,17 +416,19 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
     const handlers: HappyMcpHandlers = {
         openPreview: async (path: string, mode: 'file' | 'diff', download = false) => {
             // 这道闸必须在 CLI 侧（模型请求刚落地时），不能放 web——web 可绕过。
-            const verdict = checkPreviewPath(path);
+            // B-938: relative paths resolve against the session's working directory (metadata.path),
+            // not whatever process.cwd() happens to be.
+            const verdict = checkPreviewPath(path, { cwd: client.getMetadata?.()?.path || process.cwd() });
             if (verdict.deniedReason) {
                 logger.debug(`[happyMCP] open_preview denied: ${verdict.deniedReason}`);
                 return { delivered: false, error: verdict.deniedReason };
             }
-            // B-562: a download must be one existing regular file (directories → zip first).
-            const target = download ? await checkDownloadTarget(verdict.resolved) : null;
-            if (target?.error) return { delivered: false, error: target.error };
+            // B-562 / B-938: only an existing regular file is pushed (missing or a directory → told why, not delivered).
+            const target = await checkPreviewTarget(verdict.resolved, download);
+            if (target.error) return { delivered: false, resolved: verdict.resolved, error: target.error };
             try {
                 const result = client.pushFilePreview(verdict.resolved, mode, download ? 'download' : undefined);
-                return { delivered: result.delivered, resolved: verdict.resolved, error: result.error, note: target?.note ?? undefined };
+                return { delivered: result.delivered, resolved: verdict.resolved, error: result.error, note: target.note ?? undefined };
             } catch (error) {
                 return { delivered: false, error: String(error) };
             }

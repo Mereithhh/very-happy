@@ -35,7 +35,7 @@ import { registerAssistantSessionTools, type AssistantToolRegistrar } from '@/as
 import { logger } from '@/ui/logger';
 import { checkPreviewPath } from '@/claude/utils/previewPath';
 import { PREVIEW_DOWNLOAD_PARAM_DESCRIPTION, PREVIEW_TOOL_DESCRIPTION, PREVIEW_TOOL_NAME, PREVIEW_TOOL_TITLE } from '@/claude/utils/agentGuidance';
-import { checkDownloadTarget } from '@/claude/utils/downloadTarget';
+import { checkPreviewTarget } from '@/claude/utils/downloadTarget';
 import { resolveMcpTerminalId, resolveMcpToolSurface, TERMINAL_TITLE_TOOL_NAME, type McpToolSurface } from './mcpToolSurface';
 import { TerminalTitleSuggestRequestSchema } from '@/terminal/terminalTitleSuggest';
 import { suggestTitleForPrompt } from '@/claude/utils/titleGenerator';
@@ -101,10 +101,11 @@ export function registerMcpTools(server: AssistantToolRegistrar, surface: McpToo
             const verdict = checkPreviewPath(args.path);
             if (verdict.deniedReason) return { content: [{ type: 'text' as const, text: verdict.deniedReason }], isError: true };
             const download = args.download === true;
-            const target = download ? await checkDownloadTarget(verdict.resolved) : null;
-            if (target?.error) return { content: [{ type: 'text' as const, text: target.error }], isError: true };
+            // B-938: plain previews are checked too — a missing file or a directory is never pushed.
+            const target = await checkPreviewTarget(verdict.resolved, download);
+            if (target.error) return { content: [{ type: 'text' as const, text: target.error }], isError: true };
             const result = await pushFilePreviewViaDaemon(terminalId, verdict.resolved, args.mode ?? 'file', download ? 'download' : undefined);
-            const note = target?.note ? ` ${target.note}` : '';
+            const note = target.note ? ` ${target.note}` : '';
             return {
                 content: [{ type: 'text' as const, text: result.delivered
                     ? (download

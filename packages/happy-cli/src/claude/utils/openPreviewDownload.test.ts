@@ -62,17 +62,16 @@ describe('B-562 open_preview download over the http MCP', () => {
         expect(pushFilePreview).toHaveBeenLastCalledWith(file, 'file', 'download');
     });
 
-    it('refuses directories and missing files without pushing; plain previews stay unchecked', async () => {
+    it('refuses directories and missing files without pushing', async () => {
         pushFilePreview.mockClear();
         const folder = await call({ path: join(dir, 'folder'), download: true });
         expect(folder.isError).toBe(true);
         expect(folder.text).toContain('zip -r');
         const missing = await call({ path: join(dir, 'gone.zip'), download: true });
         expect(missing.isError).toBe(true);
+        // B-938: a plain preview of a missing path is refused too.
+        expect((await call({ path: join(dir, 'gone.zip') })).isError).toBe(true);
         expect(pushFilePreview).not.toHaveBeenCalled();
-        // B-131 behaviour unchanged: a plain preview of a missing path is still pushed.
-        expect((await call({ path: join(dir, 'gone.zip') })).isError).toBe(false);
-        expect(pushFilePreview).toHaveBeenCalledTimes(1);
     });
 
     it('keeps the credential path gate in front of downloads', async () => {

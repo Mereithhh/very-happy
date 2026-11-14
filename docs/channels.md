@@ -1223,7 +1223,10 @@ provide this context; an existing external tmux pane may need a new Very Happy
 terminal. It starts its CLI bridge on Pi session start and closes it on shutdown
 or `/reload`, without adding a native permission gate. `change_title` changes the
 Very Happy terminal name; `open_preview` accepts absolute, `~/…`, or cwd-relative
-paths and uses the existing file viewer and path checks. The machine must run the
+paths and uses the existing file viewer and path checks. In every session type
+(Claude, Codex, pi, terminal agents) a path that does not exist, or is a directory,
+is refused with a reason instead of being pushed (B-938); relative paths resolve
+against the session's working directory. The machine must run the
 matching CLI/daemon. `very-happy pi` still starts a managed ACP conversation;
 managed `HAPPY_MCP_URL` and the temporary launcher's `HAPPY_TERMINAL_MCP_URL` take
 priority, so the auto-discovered extension does not register duplicate tools.

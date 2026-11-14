@@ -110,3 +110,10 @@
 .fsb-download-status { flex: none; padding: var(--sp-1) 12px; border-bottom: 1px solid var(--line); }
 .fsb-unpreviewable { gap: var(--sp-2); }
 .fsb-unpreviewable-title { margin: 0; font-size: var(--fs-14); font-weight: 600; color: var(--text); }
+
+/* B-938: missing-file notice (path + machine + likely causes). */
+.fsb-missing { gap: var(--sp-2); text-align: center; }
+.fsb-missing-path { display: flex; align-items: center; gap: var(--sp-1); max-width: 100%; }
+.fsb-missing-path code { font-size: var(--fs-12); color: var(--text); overflow-wrap: anywhere; text-align: left; }
+.fsb-missing-reasons { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1); max-width: 100%; text-align: left; }
+.fsb-missing-reasons ul { margin: 0; padding-left: var(--sp-4); color: var(--text-dim); font-size: var(--fs-13); }
