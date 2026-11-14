@@ -52,8 +52,10 @@ describe('native pi terminal tools', () => {
             expect(clipboard).toHaveBeenCalledWith('copy me', 'term_1');
             await tools.get('change_title').execute('2', { title: 'Pi task' });
             expect(title).toHaveBeenCalledWith('term_1', 'Pi task', false);
-            await tools.get('open_preview').execute('3', { path: 'notes.md', mode: 'diff' });
-            expect(preview).toHaveBeenCalledWith('term_1', resolve('notes.md'), 'diff', undefined);
+            // B-938: the previewed file must exist (relative to the cwd of the tool process).
+            await tools.get('open_preview').execute('3', { path: 'package.json', mode: 'diff' });
+            expect(preview).toHaveBeenCalledWith('term_1', resolve('package.json'), 'diff', undefined);
+            await expect(tools.get('open_preview').execute('3b', { path: 'never-written.md' })).rejects.toThrow('does not exist');
 
             await expect(tools.get('open_preview').execute('4', { path: '~/.ssh/id_ed25519' })).rejects.toThrow();
             expect(preview).toHaveBeenCalledTimes(1);

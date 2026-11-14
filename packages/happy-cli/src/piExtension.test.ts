@@ -71,6 +71,7 @@ describe('auto-discovered native Pi tools', () => {
             expect(process.env.HAPPY_HOME_DIR).toBe(join(home, 'wrong-daemon'));
             await runtime.tools.get('copy_to_clipboard').execute('1', { text: 'native pi' });
             expect(clipboard).toHaveBeenCalledWith('native pi', 'term_native');
+            await writeFile(join(home, 'notes.md'), '# notes\n'); // B-938: only existing files are previewed
             await runtime.tools.get('open_preview').execute('2', { path: 'notes.md' });
             expect(preview).toHaveBeenCalledWith('term_native', join(home, 'notes.md'), 'file', undefined);
             await runtime.tools.get('change_title').execute('3', { title: 'My terminal' });

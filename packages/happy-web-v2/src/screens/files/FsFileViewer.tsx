@@ -40,7 +40,8 @@ import { fsFailureText } from './fsFailureText';
 import { DownloadFeedback, FileDownloadAction } from './FileDownloadAction';
 import { useFileDownload } from './useFileDownload';
 import { consumeDownloadIntent, useDownloadIntent } from './downloadIntent';
-import { useSession, useSessionMessages } from '@/sync/storage';
+import { useMachine, useSession, useSessionMessages } from '@/sync/storage';
+import { machineLabel } from '@/utils/machineUtils';
 import { changeAction, isNewWrite, lastAgentWriteAt } from './agentWrites';
 
 type ViewerState =
@@ -57,6 +58,31 @@ function decodeUtf8(b64: string): string {
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+}
+
+/** B-938: the not-found state — full path (copyable), the machine that was searched, likely causes. */
+function MissingFileNotice({ machineId, path }: { machineId: string; path: string }) {
+    const { t } = useTranslation();
+    const machine = useMachine(machineId);
+    const machineName = machine ? machineLabel(machine) : machineId.slice(0, 8);
+    return (
+        <div className="fsb-center fsb-missing" role="status">
+            <p className="fsb-unpreviewable-title">{t('fsBrowser.missingFileTitle')}</p>
+            <div className="fsb-missing-path">
+                <code className="mono">{path}</code>
+                <CopyButton text={path} label={t('fsBrowser.copyPath')} className="fsb-iconbtn" size={14} />
+            </div>
+            <span className="fsb-caption">{t('fsBrowser.missingFileMachine', { machine: machineName })}</span>
+            <div className="fsb-missing-reasons">
+                <span className="fsb-caption">{t('fsBrowser.missingFileReasons')}</span>
+                <ul>
+                    <li>{t('fsBrowser.missingFileNotGenerated')}</li>
+                    <li>{t('fsBrowser.missingFileCleaned')}</li>
+                    <li>{t('fsBrowser.missingFileOtherMachine')}</li>
+                </ul>
+            </div>
+        </div>
+    );
 }
 
 export function FsFileViewer(props: FsFileViewerProps) {
@@ -275,6 +301,8 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
                     </div>
                 );
             case 'failed':
+                // B-938: a pushed preview of a missing file says which path, on which machine, and why it may be gone.
+                if (state.failure.code === 'not-found') return <MissingFileNotice machineId={machineId} path={path}/>;
                 return <div className="fsb-center">{fsFailureText(t, state.failure)}</div>;
             case 'too-large':
                 return unpreviewable(t('fsBrowser.tooLarge', {

@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-15-preview-missing-file',
+    cliVersion: '0.2.215',
+    date: '2026-11-15',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov15b.title',
+    summaryKey: 'changelog.releases.nov15b.summary',
+    itemKeys: ['changelog.releases.nov15b.agent', 'changelog.releases.nov15b.notice'],
+  },
+  {
     id: '2026-11-15-context-meter-keeps-latest-usage',
     date: '2026-11-15',
     buildVersion: __APP_VERSION__,
