@@ -3410,6 +3410,12 @@ export const en = {
                 images: 'On a new chat\'s page (before the session is up) and in the new-chat dialog, images can be pasted, dropped or picked (also on phones). They are uploaded once the session has started and reach Claude or Codex together with the text; a message of images only works too. A reload while it starts keeps them.',
                 noSilentDrop: 'Nothing is dropped silently any more: if the files cannot go out (upload failed, or the session does not take them), you are told why and the text and files are back in the box — send again to retry.',
             },
+            nov15a: {
+                title: 'The context meter no longer drops to 0%',
+                summary: 'In long sessions that had been compacted, the meter under the message box sometimes read "0% context used · 0 / 1.0M tokens" while the session was actually using plenty. It now keeps showing the latest usage.',
+                history: 'Scrolling back through history no longer resets the meter. It still drops to 0 right after a real compaction or /clear, and fills again with the next reply. In a Codex session a compaction no longer leaves it stuck at 0%.',
+                subagent: 'A sub-agent\'s own usage no longer replaces the session\'s context figure.',
+            },
             nov14a: {
                 title: 'More of the session list fits in the sidebar',
                 summary: 'On short screens such as an iPad in landscape, the sidebar entries now scroll away with the session list, so the list can use almost the whole sidebar.',
