@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-15-context-meter-keeps-latest-usage',
+    date: '2026-11-15',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov15a.title',
+    summaryKey: 'changelog.releases.nov15a.summary',
+    itemKeys: ['changelog.releases.nov15a.history', 'changelog.releases.nov15a.subagent'],
+  },
+  {
     id: '2026-11-14-sidebar-nav-scrolls-with-list',
     date: '2026-11-14',
     buildVersion: __APP_VERSION__,

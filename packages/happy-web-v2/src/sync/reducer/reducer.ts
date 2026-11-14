@@ -269,8 +269,55 @@ export type ReducerState = {
         /** 真实生效的模型 id（B-135）——上下文窗口分母按它选，不是按我们请求的那个 */
         model?: string;
         timestamp: number;
+        /** B-937: server seq of the message this snapshot came from — breaks createdAt ties. */
+        seq?: number;
     };
+    /**
+     * B-937: the newest context reset / compaction seen so far. Usage from
+     * before it is stale even when no snapshot exists yet (history arrives
+     * newest page first, so a pre-compaction reply can be reduced later).
+     */
+    usageResetAt?: UsagePoint;
 };
+
+/** B-937: where a usage snapshot or a reset sits in the session's history. */
+type UsagePoint = { timestamp: number; seq?: number };
+
+/**
+ * B-937: is `a` strictly later than `b`? createdAt first; the server seq
+ * breaks a tie when both carry one (a POSTed batch shares one createdAt).
+ */
+function isLaterPoint(a: UsagePoint, b: UsagePoint): boolean {
+    if (a.timestamp !== b.timestamp) return a.timestamp > b.timestamp;
+    return typeof a.seq === 'number' && typeof b.seq === 'number' && a.seq > b.seq;
+}
+
+/**
+ * B-937: a context reset or compaction at `point`. History is backfilled
+ * newest page first, so the event may be reduced after usage that is newer
+ * than it: only usage from before it is cleared. An older event changes
+ * nothing; with no snapshot yet nothing is invented (agents whose messages
+ * carry no usage, e.g. Codex, would read "0%" forever) — it only fences off
+ * older usage that arrives later.
+ */
+function resetUsageAt(state: ReducerState, point: UsagePoint) {
+    if (!state.usageResetAt || isLaterPoint(point, state.usageResetAt)) {
+        state.usageResetAt = { timestamp: point.timestamp, ...(typeof point.seq === 'number' ? { seq: point.seq } : {}) };
+    }
+    const current = state.latestUsage;
+    if (!current || isLaterPoint(current, point)) return;
+    state.latestUsage = {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheCreation: 0,
+        cacheRead: 0,
+        contextSize: 0,
+        // clear/compact 只清用量，不清模型——模型没变，清了分母会退回默认值（B-135）
+        model: current.model,
+        timestamp: point.timestamp,
+        ...(typeof point.seq === 'number' ? { seq: point.seq } : {}),
+    };
+}
 
 export function createReducer(): ReducerState {
     return {
@@ -626,37 +673,22 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
 
         // Handle context reset events - reset state and let the message be shown
         if (msg.role === 'event' && msg.content.type === 'message' && msg.content.message === 'Context was reset') {
-            // Reset todos to empty array and reset usage to zero
-            state.latestTodos = {
-                todos: [],
-                timestamp: msg.createdAt  // Use message timestamp, not current time
-            };
-            state.latestUsage = {
-                inputTokens: 0,
-                outputTokens: 0,
-                cacheCreation: 0,
-                cacheRead: 0,
-                contextSize: 0,
-                // clear/compact 只清用量，不清模型——模型没变，清了分母会退回默认值（B-135）
-                model: state.latestUsage?.model,
-                timestamp: msg.createdAt  // Use message timestamp to avoid blocking older usage data
-            };
+            // Reset todos and usage — unless newer ones were already reduced
+            // (B-937: an older history page can arrive after the newest one).
+            if (!state.latestTodos || state.latestTodos.timestamp <= msg.createdAt) {
+                state.latestTodos = {
+                    todos: [],
+                    timestamp: msg.createdAt  // Use message timestamp, not current time
+                };
+            }
+            resetUsageAt(state, { timestamp: msg.createdAt, seq: msg.seq ?? undefined });
             // Don't continue - let the event be processed normally to create a message
         }
 
         // Handle compaction completed events - reset context but keep todos
         if (msg.role === 'event' && msg.content.type === 'message' && msg.content.message === 'Compaction completed') {
-            // Reset usage/context to zero but keep todos unchanged
-            state.latestUsage = {
-                inputTokens: 0,
-                outputTokens: 0,
-                cacheCreation: 0,
-                cacheRead: 0,
-                contextSize: 0,
-                // clear/compact 只清用量，不清模型——模型没变，清了分母会退回默认值（B-135）
-                model: state.latestUsage?.model,
-                timestamp: msg.createdAt  // Use message timestamp to avoid blocking older usage data
-            };
+            // Reset usage/context to zero but keep todos unchanged (B-937: only usage older than it)
+            resetUsageAt(state, { timestamp: msg.createdAt, seq: msg.seq ?? undefined });
             // Don't continue - let the event be processed normally to create a message
         }
 
@@ -1008,9 +1040,12 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
             // Mark this message as seen
             state.messageIds.set(msg.id, msg.id);
 
-            // Process usage data if present
-            if (msg.usage) {
-                processUsageData(state, msg.usage, msg.createdAt, msg.model);
+            // Process usage data if present. B-937: a sub-agent's usage is
+            // its own context, not the session's — and a sidechain message
+            // whose parent tool call is outside the loaded window reaches
+            // this main-chain path untraced.
+            if (msg.usage && !msg.isSidechain) {
+                processUsageData(state, msg.usage, { timestamp: msg.createdAt, seq: msg.seq ?? undefined }, msg.model);
             }
 
             // Per-message usage snapshot (camelCase) for per-turn display.
@@ -1604,9 +1639,19 @@ function allocateId() {
     return Math.random().toString(36).substring(2, 15);
 }
 
-function processUsageData(state: ReducerState, usage: UsageData, timestamp: number, model?: string) {
-    // Only update if this is newer than the current latest usage
-    if (!state.latestUsage || timestamp > state.latestUsage.timestamp) {
+function processUsageData(state: ReducerState, usage: UsageData, point: UsagePoint, model?: string) {
+    // Only update if this is newer than the current latest usage and than the
+    // latest reset/compaction (B-937: history pages arrive newest first).
+    if (state.usageResetAt && !isLaterPoint(point, state.usageResetAt)) {
+        // Stale — but it proves this agent reports usage, so the context
+        // since that reset is known to be empty. (Events are reduced before
+        // the replies of their batch, so this is the in-order case too.)
+        if (!state.latestUsage) {
+            state.latestUsage = { inputTokens: 0, outputTokens: 0, cacheCreation: 0, cacheRead: 0, contextSize: 0, model, ...state.usageResetAt };
+        }
+        return;
+    }
+    if (!state.latestUsage || isLaterPoint(point, state.latestUsage)) {
         state.latestUsage = {
             inputTokens: usage.input_tokens,
             outputTokens: usage.output_tokens,
@@ -1618,7 +1663,8 @@ function processUsageData(state: ReducerState, usage: UsageData, timestamp: numb
             // 200k on Opus 5.5). No model → the composer falls back to the
             // running model (metadata.currentModelCode).
             model,
-            timestamp: timestamp
+            timestamp: point.timestamp,
+            ...(typeof point.seq === 'number' ? { seq: point.seq } : {}),
         };
     }
 }
