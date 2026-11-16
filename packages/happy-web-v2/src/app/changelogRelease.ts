@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-17-sessions-do-not-assign-each-other-work',
+    cliVersion: '0.2.216',
+    date: '2026-11-17',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov17a.title',
+    summaryKey: 'changelog.releases.nov17a.summary',
+    itemKeys: ['changelog.releases.nov17a.messages', 'changelog.releases.nov17a.decisions'],
+  },
+  {
     id: '2026-11-15-preview-missing-file',
     cliVersion: '0.2.215',
     date: '2026-11-15',

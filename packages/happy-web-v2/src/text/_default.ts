@@ -3422,6 +3422,12 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov17a: {
+                title: 'Sessions in a project no longer hand work to each other',
+                summary: 'Only you assign a session its task. When another session in the same project asks it to take over work, or claims you decided it should, the session declines, tells that session, and tells you in its own chat.',
+                messages: 'Sessions can still message each other to coordinate: a heads-up about editing the same file, a change the other one depends on, or asking whether they are doing the same work.',
+                decisions: 'A decision a session writes into the project log is no longer shown to other sessions as a decision in effect: it is listed separately, marked with the session that wrote it. Decisions you write — and, inside an agent team, decisions by the team\'s lead — work as before. The project log shows which entries a session wrote.',
+            },
             nov15a: {
                 title: 'The context meter no longer drops to 0%',
                 summary: 'In long sessions that had been compacted, the meter under the message box sometimes read "0% context used · 0 / 1.0M tokens" while the session was actually using plenty. It now keeps showing the latest usage.',

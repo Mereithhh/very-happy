@@ -622,6 +622,20 @@ function liveDecisions(rows: LogRow[]): LogRow[] {
     return rows.filter(r => r.kind === 'decision' && !r.revokedAt && !superseded.has(r.id));
 }
 
+/** B-939: who wrote a decision, so wrappers can keep sessions' decisions apart from the user's. */
+const decisionAuthor = (r: { authorSessionId: string | null; authorUser: boolean }, leads: Set<string>) => ({
+    authorUser: r.authorUser, authorSessionId: r.authorSessionId,
+    ...(r.authorSessionId && leads.has(r.authorSessionId) ? { authorTeamLead: true } : {}),
+});
+/** B-939: the lead (root bot) sessions of the reader's team; empty outside a team. */
+async function teamLeadSessions(tx: Tx, accountId: string, teamId: string | undefined): Promise<Set<string>> {
+    if (!teamId) return new Set();
+    const rows = await tx.$queryRaw<{ sessionId: string | null }[]>`
+        SELECT r->>'sessionId' AS "sessionId" FROM "AgentTeam" t, jsonb_array_elements(COALESCE(t."state"->'bots', '[]'::jsonb)) r
+        WHERE t."id"=${teamId} AND t."accountId"=${accountId} AND r->>'root' = 'true'`;
+    return new Set(rows.map(r => r.sessionId).filter((x): x is string => !!x));
+}
+
 /**
  * Everything a wrapper needs for the first-turn prefix and `project_context`.
  * Not a member (or the project is archived) → `project: null`. Unless `peek`,
@@ -638,8 +652,10 @@ export async function sessionContext(accountId: string, sessionId: string, opts:
         const cursor = await tx.projectReadCursor.findUnique({ where: { sessionId } });
         const previousReadAt = cursor && cursor.projectId === project.id ? cursor.readAt.getTime() : 0;
         const logRows = await tx.projectLogEntry.findMany({ where: { projectId: project.id }, orderBy: { seq: 'asc' } });
-        const decisions = liveDecisions(logRows).slice(-CONTEXT_DECISIONS).map(r => ({ id: r.id, seq: r.seq, title: r.title, createdAt: r.createdAt.getTime() }));
-        const log = opts.full ? logViews(logRows) : logViews(logRows).filter(e => e.createdAt > previousReadAt || (e.revokedAt ?? 0) > previousReadAt);
+        const leads = await teamLeadSessions(tx, accountId, m.teamId);
+        const decisions = liveDecisions(logRows).slice(-CONTEXT_DECISIONS).map(r => ({ id: r.id, seq: r.seq, title: r.title, createdAt: r.createdAt.getTime(), ...decisionAuthor(r, leads) }));
+        const log = (opts.full ? logViews(logRows) : logViews(logRows).filter(e => e.createdAt > previousReadAt || (e.revokedAt ?? 0) > previousReadAt))
+            .map(e => (e.authorSessionId && leads.has(e.authorSessionId) ? { ...e, authorTeamLead: true } : e));
         const presence = await tx.projectPresence.findMany({ where: { projectId: project.id, accountId, sessionId: { not: sessionId }, OR: [{ state: null }, { state: { not: 'offline' } }] }, orderBy: { updatedAt: 'desc' }, take: opts.full ? 200 : CONTEXT_SESSIONS });
         const unread = await tx.projectMessage.findMany({ where: { accountId, toSessionId: sessionId, deliveredAt: null }, orderBy: { createdAt: 'asc' }, take: opts.full ? 50 : CONTEXT_UNREAD });
         if (!opts.peek) {
@@ -669,12 +685,13 @@ export async function sessionDigest(accountId: string, sessionId: string, since:
         if (!project) return { projectId: null, name: null, instructions: null, decisions: [], revoked: [], messages: [], asOf: now };
         const instructions = project.instructionsUpdatedAt && project.instructionsUpdatedAt > sinceDate
             ? { version: project.instructionsVersion, summary: project.instructionsSummary } : null;
+        const leads = await teamLeadSessions(tx, accountId, m?.teamId);
         const newDecisions = await tx.projectLogEntry.findMany({ where: { projectId: project.id, kind: 'decision', createdAt: { gt: sinceDate }, revokedAt: null }, orderBy: { seq: 'asc' }, take: 5 });
         const revoked = await tx.projectLogEntry.findMany({ where: { projectId: project.id, revokedAt: { gt: sinceDate } }, orderBy: { seq: 'asc' }, take: 5 });
         const messages = await tx.projectMessage.findMany({ where: { accountId, toSessionId: sessionId, deliveredAt: null }, orderBy: { createdAt: 'asc' }, take: 3 });
         return {
             projectId: project.id, name: project.name, instructions,
-            decisions: newDecisions.map(r => ({ id: r.id, seq: r.seq, title: r.title })),
+            decisions: newDecisions.map(r => ({ id: r.id, seq: r.seq, title: r.title, ...decisionAuthor(r, leads) })),
             revoked: revoked.map(r => ({ id: r.id, seq: r.seq, title: r.title })),
             messages: messages.map(u => ({ id: u.id, fromSessionId: u.fromSessionId, body: u.body, createdAt: u.createdAt.getTime() })),
             asOf: now,

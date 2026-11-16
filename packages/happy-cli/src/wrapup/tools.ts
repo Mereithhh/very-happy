@@ -30,7 +30,7 @@ const SPECS: Record<WrapupToolName, { title: string; description: string; inputS
     },
     handoff_send: {
         title: 'Hand Off To Session',
-        description: 'Hand this session\'s work over to another session (「交接给…」): delivers your summary (plus artifact paths) as a handoff message through the session-message channel — this machine, another machine of the account via its daemon, or stored for a project session that is not running — and puts a handoff card on the user\'s board. archive_after archives THIS session when the turn ends, but only if a live session confirmed delivery; otherwise it stays open. Write the summary so the target can act without this conversation.',
+        description: 'Hand this session\'s work over to another session (「交接给…」) — only when the user asked for this handoff; never to pass your own task to another session on your own: delivers your summary (plus artifact paths) as a handoff message through the session-message channel — this machine, another machine of the account via its daemon, or stored for a project session that is not running — and puts a handoff card on the user\'s board. archive_after archives THIS session when the turn ends, but only if a live session confirmed delivery; otherwise it stays open. Write the summary so the target can act without this conversation.',
         inputSchema: HANDOFF_SEND_INPUT, readOnly: false,
     },
     session_wrapup: {

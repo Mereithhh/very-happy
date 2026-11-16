@@ -197,6 +197,18 @@ reports the `project-v1` capability) receive:
   a decision, finding or handoff; at most 5 entries per hour, of which at most 2
   decisions), and `session_peers` with `scope: "project"`.
 
+Only you assign a session its task. Messages and notes from other sessions are
+reference, not assignments: a session asked by another one to take over work —
+or told "the owner decided you do this" — declines, tells that session, and
+tells you in its own chat; it does not hand its own task to another session
+either. Messages stay for coordination: editing the same files, a change the
+other session depends on, or asking whether both are doing the same work.
+Decisions a *session* wrote are listed apart from yours ("Decisions written by
+sessions", marked with the author) instead of under "Decisions in effect" —
+except, for an agent team's sessions, decisions by that team's lead, who
+assigns the team's work. The project page marks each entry as yours or a
+session's.
+
 A `session_message` (or `very-happy sessions message`) to a project session
 that is not running is stored and read at that session's next turn instead of
 failing. Automation sessions get a quiet variant: the instructions, but no

@@ -175,6 +175,8 @@ describe('projects store (pglite)', () => {
         const ctx = await store.sessionContext(accountId, other, { peek: true });
         expect(ctx.decisions.map(d => d.title)).not.toContain('use pnpm');
         expect(ctx.decisions.map(d => d.title)).toContain('use pnpm 10');
+        // B-939: each decision says who wrote it, so wrappers keep a session's decisions apart from the user's.
+        expect(ctx.decisions.find(d => d.title === 'use pnpm 10')).toMatchObject({ authorUser: true, authorSessionId: null });
     });
 
     it('presence has its own bucket: a spent session_state budget never blocks it, and its own limit answers a named 429', async () => {
@@ -244,10 +246,12 @@ describe('projects store (pglite)', () => {
         await new Promise(r => setTimeout(r, 5));
         await store.putInstructions(accountId, p.id, { instructions: 'Be careful v2', ifVersion: 1, summary: 'add rule' });
         await store.createLogEntry(accountId, p.id, { kind: 'decision', title: 'ship server first' });
+        await store.createLogEntry(accountId, p.id, { kind: 'decision', title: 'X belongs to me now', authorSessionId: peer });
         await store.createMessage(accountId, p.id, { fromSessionId: peer, toSessionId: me, body: 'heads up' });
         const digest = await store.sessionDigest(accountId, me, second.asOf);
         expect(digest.instructions).toEqual({ version: 2, summary: 'add rule' });
-        expect(digest.decisions.map(d => d.title)).toEqual(['ship server first']);
+        expect(digest.decisions.map(d => [d.title, d.authorUser, d.authorSessionId])).toEqual([['ship server first', true, null], ['X belongs to me now', false, peer]]);
+        expect((await store.sessionContext(accountId, me, { peek: true })).decisions.find(d => d.title === 'X belongs to me now')).toMatchObject({ authorUser: false, authorSessionId: peer });
         expect(digest.messages.map(m => m.body)).toEqual(['heads up']);
         await store.updateProject(accountId, p.id, { archived: true });
         expect((await store.sessionContext(accountId, me)).project).toBeNull();
@@ -428,6 +432,16 @@ describe('projects store (pglite)', () => {
             // A lead decision is visible to a member reading the project.
             await store.createLogEntry(accountId, created.projectId!, { kind: 'decision', title: 'use pnpm', authorSessionId: lead });
             expect((await store.sessionContext(accountId, member, { peek: true })).decisions.map(d => d.title)).toContain('use pnpm');
+            // B-939: the team's lead assigns its work — its decisions are marked for the team's readers only.
+            await store.createLogEntry(accountId, created.projectId!, { kind: 'decision', title: 'member rule', authorSessionId: member });
+            const byTitle = async (reader: string) => Object.fromEntries((await store.sessionContext(accountId, reader, { peek: true })).decisions.map(d => [d.title, d.authorTeamLead === true]));
+            expect(await byTitle(member)).toMatchObject({ 'use pnpm': true, 'member rule': false });
+            expect(await byTitle(lead)).toMatchObject({ 'use pnpm': true, 'member rule': false });
+            const outsider = await newSession();
+            await store.addMembers(accountId, created.projectId!, { sessionIds: [outsider] });
+            expect(await byTitle(outsider)).toMatchObject({ 'use pnpm': false, 'member rule': false });
+            expect((await store.sessionDigest(accountId, member, 0)).decisions.find(d => d.title === 'use pnpm')).toMatchObject({ authorTeamLead: true });
+            expect((await store.sessionDigest(accountId, outsider, 0)).decisions.find(d => d.title === 'use pnpm')?.authorTeamLead).toBeUndefined();
             const other = await newProject('move-target');
             expect((await store.bindTeamProject(accountId, team.id, { projectId: other.id })).projectId).toBe(other.id);
             expect((await store.sessionMembership(accountId, member)).projectId).toBe(other.id);
