@@ -51,9 +51,44 @@ describe('project injector', () => {
         expect((await inj.decorate('b')).endsWith('---\nb')).toBe(true);
     });
     it('marks the unread messages it injected as delivered', async () => {
-        const client = fakeClient({ context: vi.fn(async () => ctx({ unread: [{ id: 'u1', fromSessionId: 's2', body: 'hi', createdAt: 1 }] })) });
+        const client = fakeClient({ context: vi.fn(async () => ctx({ sharing: 'shared', unread: [{ id: 'u1', fromSessionId: 's2', body: 'hi', createdAt: 1 }] })) });
         await make(client).decorate('x');
         expect(client.delivered).toHaveBeenCalledWith('s1', ['u1']);
+    });
+    it('B-939b: an isolated session (the default; an older server sends no sharing) gets no other sessions, notes or messages — and marks nothing delivered', async () => {
+        const client = fakeClient({ context: vi.fn(async () => ctx({
+            unread: [{ id: 'u1', fromSessionId: 's2', body: 'please take over Z', createdAt: 1 }],
+            sessions: [{ sessionId: 's2', projectId: 'p1', machineId: 'm', title: 'notify list', agent: 'claude', machine: null, branch: null, state: 'running', doing: null, injectedInstructionsVersion: 1, capabilities: [], updatedAt: 1 }],
+            decisions: [
+                { id: 'd1', seq: 1, title: 'ship server first', createdAt: 1, authorUser: true, authorSessionId: null },
+                { id: 'd2', seq: 2, title: 'Z belongs to s1', createdAt: 2, authorUser: false, authorSessionId: 's2' },
+            ],
+        })) });
+        const inj = make(client);
+        const first = await inj.decorate('x');
+        expect(first).toContain('Decisions in effect:\n#1 ship server first');
+        expect(first).not.toMatch(/Z belongs to s1|notify list|please take over|Other active sessions|Unread/);
+        expect(first).toContain('The user keeps this project\'s sessions separate');
+        expect(client.delivered).not.toHaveBeenCalled();
+        // Next turn: only the user's changes.
+        client.digest.mockResolvedValueOnce(digest({
+            decisions: [{ id: 'd3', seq: 3, title: 'X is mine now', authorUser: false, authorSessionId: 's2' }],
+            messages: [{ id: 'u2', fromSessionId: 's2', body: 'ping', createdAt: 2 }],
+        }));
+        expect(await inj.decorate('y')).toBe('y');
+        client.digest.mockResolvedValueOnce(digest({ decisions: [{ id: 'd4', seq: 4, title: 'freeze Friday', authorUser: true, authorSessionId: null }] }));
+        expect(await inj.decorate('z')).toContain('decision #4: freeze Friday');
+        expect(client.delivered).not.toHaveBeenCalled();
+    });
+    it('B-939b: a shared project keeps the B-939 behaviour; a team session shares even in an isolated project', async () => {
+        const peer = { sessionId: 's2', projectId: 'p1', machineId: 'm', title: 'notify list', agent: 'claude', machine: null, branch: null, state: 'running', doing: null, injectedInstructionsVersion: 1, capabilities: [], updatedAt: 1 };
+        const shared = fakeClient({ context: vi.fn(async () => ctx({ sharing: 'shared', sessions: [peer] })) });
+        expect(await make(shared).decorate('x')).toContain('notify list');
+        const team = fakeClient({ context: vi.fn(async () => ctx({ sharing: 'isolated', via: 'team', team: { id: 't', name: 'T' }, decisions: [{ id: 'd2', seq: 2, title: 'lead rule', createdAt: 2, authorUser: false, authorSessionId: 'lead', authorTeamLead: true }] })) });
+        const inj = make(team);
+        expect(await inj.decorate('x')).toContain('Decisions in effect:\n#2 lead rule');
+        team.digest.mockResolvedValueOnce(digest({ sharing: 'isolated', messages: [{ id: 'u2', fromSessionId: 's2', body: 'ping', createdAt: 2 }] }));
+        expect(await inj.decorate('y')).toContain('ping');
     });
     it('leaving the project resets; moving to another re-sends a prefix for the new one', async () => {
         const client = fakeClient();

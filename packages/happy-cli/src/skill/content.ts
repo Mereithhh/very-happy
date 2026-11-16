@@ -44,7 +44,7 @@ An agent session is a Claude / Codex / pi / Gemini / OpenClaw process run by a m
 
 ## MCP tools in managed sessions
 - \`change_title\` names this session; \`report_progress\` updates the tracked task's board status; \`open_preview\` shows a file in the user's client; \`copy_to_clipboard\` hands text to the user's clipboard.
-- \`session_peers\` / \`session_message\`: see and message sessions on the same work.
+- \`session_peers\` / \`session_message\`: see and message sessions on the same work — to coordinate, not to assign: only the user gives a session its task.
 - \`request_human\`: block on a human decision when you cannot proceed.
 
 Full flags: \`very-happy spawn --help\`, \`very-happy send --help\`, \`very-happy sessions --help\`.`,

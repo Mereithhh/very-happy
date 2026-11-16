@@ -52,6 +52,8 @@ export const ProjectDefaultsSchema = z.object({
     worktree: z.boolean().nullable().optional(),
     /** B-850d: per-agent account for new sessions (one entry per agent, machine-scoped; ids + labels only). */
     agentProfiles: ProjectAgentProfilesSchema.nullable().optional(),
+    /** B-939b: whether project sessions see each other's notes and sessions. Absent = isolated (the default). */
+    sessionSharing: z.enum(['isolated', 'shared']).nullable().optional(),
 });
 export type ProjectDefaults = z.infer<typeof ProjectDefaultsSchema>;
 
@@ -253,31 +255,44 @@ export type ProjectDetailResponse = {
     log: ProjectLogEntryView[];
 };
 
+/**
+ * B-939: relative to the reading session. `authorTeamLead` = written by the
+ * lead (root bot) of the reader's own team, who assigns that team's work —
+ * so it stays a decision in effect for the team's sessions.
+ */
+export type DecisionAuthority = { authorTeamLead?: boolean };
+
 /** What a wrapper needs to build the first-turn prefix (P) and answer `project_context`. */
 export type ProjectSessionContext = {
     project: Pick<ProjectView, 'id' | 'name' | 'goal' | 'instructions' | 'instructionsVersion'> | null;
     via: string | null;
     /** `lead` (B-726) is absent from older servers; true when this session is the team's root bot. */
     team: { id: string; name: string; lead?: boolean } | null;
-    decisions: Pick<ProjectLogEntryView, 'id' | 'seq' | 'title' | 'createdAt'>[];
-    log: ProjectLogEntryView[];
+    /** B-939: `authorUser` / `authorSessionId` / `authorTeamLead` are absent from older servers. */
+    decisions: (Pick<ProjectLogEntryView, 'id' | 'seq' | 'title' | 'createdAt'> & Partial<Pick<ProjectLogEntryView, 'authorUser' | 'authorSessionId'>> & DecisionAuthority)[];
+    log: (ProjectLogEntryView & DecisionAuthority)[];
     sessions: ProjectPresenceView[];
     unread: Pick<ProjectMessageView, 'id' | 'fromSessionId' | 'body' | 'createdAt'>[];
     /** Server time of this read; pass back as `since` for the next digest. */
     asOf: number;
     /** Cursor the server held before this read (0 = never read). */
     previousReadAt: number;
+    /** B-939b: the project's session sharing. Absent (older server) = isolated. */
+    sharing?: ProjectSessionSharing;
 };
+export type ProjectSessionSharing = 'isolated' | 'shared';
 
 /** Next-turn piggyback (D): only what changed since `since`. Empty arrays and null mean nothing to say. */
 export type ProjectDigest = {
     projectId: string | null;
     name: string | null;
     instructions: { version: number; summary: string | null } | null;
-    decisions: Pick<ProjectLogEntryView, 'id' | 'seq' | 'title'>[];
-    revoked: Pick<ProjectLogEntryView, 'id' | 'seq' | 'title'>[];
+    decisions: (Pick<ProjectLogEntryView, 'id' | 'seq' | 'title'> & Partial<Pick<ProjectLogEntryView, 'authorUser' | 'authorSessionId'>> & DecisionAuthority)[];
+    revoked: (Pick<ProjectLogEntryView, 'id' | 'seq' | 'title'> & Partial<Pick<ProjectLogEntryView, 'authorUser' | 'authorSessionId'>> & DecisionAuthority)[];
     messages: Pick<ProjectMessageView, 'id' | 'fromSessionId' | 'body' | 'createdAt'>[];
     asOf: number;
+    /** B-939b: absent (older server) = isolated. */
+    sharing?: ProjectSessionSharing;
 };
 
 /** Narrow error codes clients can branch on. */

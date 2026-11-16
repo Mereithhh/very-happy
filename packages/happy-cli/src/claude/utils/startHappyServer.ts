@@ -160,7 +160,10 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     // B-497: message / list the other sessions on this machine (identity = this session).
     if (client) registerSessionPeerTools(dispatchRegistrar, createSessionPeerToolExecutor(client));
     // B-645: project_context / project_note — always registered (a fixed tools prefix); "not in a project" otherwise.
-    if (client) registerProjectTools(mcp, createProjectToolExecutor(() => client.sessionId), replaced);
+    if (client) registerProjectTools(mcp, createProjectToolExecutor(() => client.sessionId, undefined, () => {
+        const parent = (client.getMetadata?.() as { parentSessionId?: unknown } | null | undefined)?.parentSessionId;
+        return typeof parent === 'string' ? parent : null;
+    }), replaced);
     // B-874: issue_get / issue_update / issue_comment / issue_list — always registered; "issue_not_bound" outside an issue run.
     if (client) registerIssueTools(mcp, createIssueToolExecutor(() => client.sessionId), replaced);
     // B-911: the agent asks the daemon to restart its own session once idle (the daemon matches this wrapper's pid).

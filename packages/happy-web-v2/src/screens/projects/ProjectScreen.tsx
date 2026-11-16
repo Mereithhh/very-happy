@@ -38,6 +38,7 @@ import { createTerminalInProject } from '@/app/newTerminal';
 import { leaveTerminalProject } from '@/app/sessionMenuActions';
 import './projects.css';
 import { ProjectIssuesSection } from '@/screens/issues/ProjectIssuesSection';
+import { logAuthor } from './logAuthor';
 
 /**
  * B-648 project page `/projects/:id` (`specs/2026-10-projects.md` §6.2/§6.5).
@@ -357,8 +358,7 @@ function ProjectLog({ detail, c, onChanged }: { detail: ProjectDetailResponse; c
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const sessions = useAllSessions();
-  const titleOf = (id: string | null) => {
-    if (!id) return c.byUser;
+  const sessionName = (id: string) => {
     const s = sessions.find((x) => x.id === id);
     return s ? getSessionName(s) : detail.presence.find((p) => p.sessionId === id)?.title ?? id.slice(0, 8);
   };
@@ -400,7 +400,10 @@ function ProjectLog({ detail, c, onChanged }: { detail: ProjectDetailResponse; c
                 <strong>{e.title}</strong>
                 {e.revokedAt ? <span className="pj-muted">· {c.revoked}</span> : e.supersededBy ? <span className="pj-muted">· {c.superseded}</span> : <button type="button" className="pj-ghost pj-revoke" onClick={() => void revoke(e)}><Undo2 size={13} />{c.revoke}</button>}
               </div>
-              <div className="pj-muted pj-log-meta">{titleOf(e.authorSessionId)} · {new Date(e.createdAt).toLocaleString()}</div>
+              {(() => {
+                const author = logAuthor(e, sessionName, c);
+                return <div className="pj-muted pj-log-meta">{author.label} · {new Date(e.createdAt).toLocaleString()}{author.note ? ` · ${author.note}` : ''}</div>;
+              })()}
               {e.body && <p className="pj-log-body">{e.body}</p>}
             </li>
           ))}

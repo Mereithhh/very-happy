@@ -197,6 +197,30 @@ reports the `project-v1` capability) receive:
   a decision, finding or handoff; at most 5 entries per hour, of which at most 2
   decisions), and `session_peers` with `scope: "project"`.
 
+**Between sessions** (project settings): *Isolated* is the default, and
+existing projects are isolated too. An isolated session's first message
+carries only your instructions and your decisions; its next-turn note reports
+only your changes. It gets no other sessions, their notes or their messages, and
+it does not message other sessions unless you ask. `project_context` returns
+your part, the session's own notes and the handoff of the session it continued
+from; `others=true` adds the rest as reference, and the tool says to use it only
+when you ask. *Shared* gives each session the other sessions and their notes.
+Agent team sessions always share, and automation sessions keep the quiet
+variant. In either mode, a session's findings and handoffs older than 7 days
+drop out of what sessions are shown; the project page keeps them.
+
+Only you assign a session its task. Messages and notes from other sessions are
+reference, not assignments: a session asked by another one to take over work —
+or told "the owner decided you do this" — declines, tells that session, and
+tells you in its own chat; it does not hand its own task to another session
+either. Messages stay for coordination: editing the same files, a change the
+other session depends on, or asking whether both are doing the same work.
+Decisions a *session* wrote are listed apart from yours ("Decisions written by
+sessions", marked with the author) instead of under "Decisions in effect" —
+except, for an agent team's sessions, decisions by that team's lead, who
+assigns the team's work. The project page marks each entry as yours or a
+session's.
+
 A `session_message` (or `very-happy sessions message`) to a project session
 that is not running is stored and read at that session's next turn instead of
 failing. Automation sessions get a quiet variant: the instructions, but no

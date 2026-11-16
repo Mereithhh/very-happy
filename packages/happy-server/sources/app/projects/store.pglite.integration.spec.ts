@@ -36,6 +36,38 @@ describe('projects store (pglite)', () => {
     }, 60000);
     afterAll(async () => { await db?.$disconnect(); rmSync(root, { recursive: true, force: true }); });
 
+    it('B-939b: sessions are isolated by default; the setting survives other defaults writes; a session\'s finding/handoff leaves the default view after 7 days', async () => {
+        const p = await newProject();
+        const me = await newSession(); const peer = await newSession();
+        await store.addMembers(accountId, p.id, { sessionIds: [me, peer] });
+        expect((await store.sessionContext(accountId, me, { peek: true })).sharing).toBe('isolated');
+        expect((await store.sessionDigest(accountId, me, 0)).sharing).toBe('isolated');
+        await store.updateProject(accountId, p.id, { defaults: { sessionSharing: 'shared' } });
+        expect((await store.sessionContext(accountId, me, { peek: true })).sharing).toBe('shared');
+        // A defaults write that does not mention it (e.g. the accounts section) keeps the choice.
+        await store.updateProject(accountId, p.id, { defaults: { agent: 'codex' } });
+        const view = await store.getProject(accountId, p.id);
+        expect(view.project.defaults).toMatchObject({ agent: 'codex', sessionSharing: 'shared' });
+        await store.updateProject(accountId, p.id, { defaults: { sessionSharing: 'isolated' } });
+        expect((await store.sessionContext(accountId, me, { peek: true })).sharing).toBe('isolated');
+        // 7-day cleanup of the default view: a session's old finding/handoff drops out; the user's entries and decisions do not; full keeps history.
+        const old = await store.createLogEntry(accountId, p.id, { kind: 'handoff', title: 'old handoff', authorSessionId: peer });
+        const oldUser = await store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'old user finding' });
+        const oldDecision = await store.createLogEntry(accountId, p.id, { kind: 'decision', title: 'old session decision', authorSessionId: peer });
+        const eightDaysAgo = new Date(Date.now() - 8 * 24 * 3600_000);
+        await db.projectLogEntry.updateMany({ where: { id: { in: [old.id, oldUser.id, oldDecision.id] } }, data: { createdAt: eightDaysAgo } });
+        await store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'fresh finding', authorSessionId: peer });
+        const fresh = await store.sessionContext(accountId, me, { peek: true });
+        expect(fresh.log.map(e => e.title)).toEqual(expect.arrayContaining(['old user finding', 'old session decision', 'fresh finding']));
+        expect(fresh.log.map(e => e.title)).not.toContain('old handoff');
+        expect((await store.sessionContext(accountId, me, { peek: true, full: true })).log.map(e => e.title)).toContain('old handoff');
+        expect((await store.getProject(accountId, p.id)).log.map(e => e.title)).toContain('old handoff');
+        // Revocations carry their author too (an isolated session hears only the user's).
+        await store.revokeLogEntry(accountId, p.id, oldDecision.id, peer);
+        const d = await store.sessionDigest(accountId, me, Date.now() - 60_000);
+        expect(d.revoked.find(r => r.id === oldDecision.id)).toMatchObject({ authorUser: false, authorSessionId: peer });
+    });
+
     it('kill switch answers the same 404 an older server gives', async () => {
         process.env.VH_PROJECTS_ENABLED = 'false';
         try { await expect(store.listProjects(accountId)).rejects.toMatchObject({ code: 'projects_disabled', status: 404 }); }
@@ -175,6 +207,8 @@ describe('projects store (pglite)', () => {
         const ctx = await store.sessionContext(accountId, other, { peek: true });
         expect(ctx.decisions.map(d => d.title)).not.toContain('use pnpm');
         expect(ctx.decisions.map(d => d.title)).toContain('use pnpm 10');
+        // B-939: each decision says who wrote it, so wrappers keep a session's decisions apart from the user's.
+        expect(ctx.decisions.find(d => d.title === 'use pnpm 10')).toMatchObject({ authorUser: true, authorSessionId: null });
     });
 
     it('presence has its own bucket: a spent session_state budget never blocks it, and its own limit answers a named 429', async () => {
@@ -244,10 +278,12 @@ describe('projects store (pglite)', () => {
         await new Promise(r => setTimeout(r, 5));
         await store.putInstructions(accountId, p.id, { instructions: 'Be careful v2', ifVersion: 1, summary: 'add rule' });
         await store.createLogEntry(accountId, p.id, { kind: 'decision', title: 'ship server first' });
+        await store.createLogEntry(accountId, p.id, { kind: 'decision', title: 'X belongs to me now', authorSessionId: peer });
         await store.createMessage(accountId, p.id, { fromSessionId: peer, toSessionId: me, body: 'heads up' });
         const digest = await store.sessionDigest(accountId, me, second.asOf);
         expect(digest.instructions).toEqual({ version: 2, summary: 'add rule' });
-        expect(digest.decisions.map(d => d.title)).toEqual(['ship server first']);
+        expect(digest.decisions.map(d => [d.title, d.authorUser, d.authorSessionId])).toEqual([['ship server first', true, null], ['X belongs to me now', false, peer]]);
+        expect((await store.sessionContext(accountId, me, { peek: true })).decisions.find(d => d.title === 'X belongs to me now')).toMatchObject({ authorUser: false, authorSessionId: peer });
         expect(digest.messages.map(m => m.body)).toEqual(['heads up']);
         await store.updateProject(accountId, p.id, { archived: true });
         expect((await store.sessionContext(accountId, me)).project).toBeNull();
@@ -428,6 +464,16 @@ describe('projects store (pglite)', () => {
             // A lead decision is visible to a member reading the project.
             await store.createLogEntry(accountId, created.projectId!, { kind: 'decision', title: 'use pnpm', authorSessionId: lead });
             expect((await store.sessionContext(accountId, member, { peek: true })).decisions.map(d => d.title)).toContain('use pnpm');
+            // B-939: the team's lead assigns its work — its decisions are marked for the team's readers only.
+            await store.createLogEntry(accountId, created.projectId!, { kind: 'decision', title: 'member rule', authorSessionId: member });
+            const byTitle = async (reader: string) => Object.fromEntries((await store.sessionContext(accountId, reader, { peek: true })).decisions.map(d => [d.title, d.authorTeamLead === true]));
+            expect(await byTitle(member)).toMatchObject({ 'use pnpm': true, 'member rule': false });
+            expect(await byTitle(lead)).toMatchObject({ 'use pnpm': true, 'member rule': false });
+            const outsider = await newSession();
+            await store.addMembers(accountId, created.projectId!, { sessionIds: [outsider] });
+            expect(await byTitle(outsider)).toMatchObject({ 'use pnpm': false, 'member rule': false });
+            expect((await store.sessionDigest(accountId, member, 0)).decisions.find(d => d.title === 'use pnpm')).toMatchObject({ authorTeamLead: true });
+            expect((await store.sessionDigest(accountId, outsider, 0)).decisions.find(d => d.title === 'use pnpm')?.authorTeamLead).toBeUndefined();
             const other = await newProject('move-target');
             expect((await store.bindTeamProject(accountId, team.id, { projectId: other.id })).projectId).toBe(other.id);
             expect((await store.sessionMembership(accountId, member)).projectId).toBe(other.id);

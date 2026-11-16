@@ -27,7 +27,9 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 describe('project tool surface across runners', () => {
     it('managed Claude/ACP/Gemini: registered in-process with the session identity and advertised in toolNames', () => {
         const source = read('../claude/utils/startHappyServer.ts');
-        expect(source).toContain('if (client) registerProjectTools(mcp, createProjectToolExecutor(() => client.sessionId), replaced);');
+        expect(source).toContain('if (client) registerProjectTools(mcp, createProjectToolExecutor(() => client.sessionId, undefined, () => {');
+        // B-939b: the tool learns its lineage parent (an isolated session reads that parent's handoff).
+        expect(source).toContain('const parent = (client.getMetadata?.() as { parentSessionId?: unknown } | null | undefined)?.parentSessionId;');
         expect(source).toContain('...PROJECT_TOOL_NAMES,');
     });
     it('Codex: forwarded by the stdio bridge without new literal registrations', () => {

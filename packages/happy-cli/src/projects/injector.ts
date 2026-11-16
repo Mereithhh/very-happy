@@ -1,6 +1,6 @@
 import type { ProjectPresenceEntry } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
-import { buildDigestLine, buildFirstTurnPrefix, prependToMessage } from './prompt';
+import { buildDigestLine, buildFirstTurnPrefix, isolateContext, isolateDigest, prependToMessage } from './prompt';
 import { ProjectsUnsupportedError, type ProjectsClient } from './client';
 import { createIssueDigest, type IssueDigest } from '@/issues/digest';
 import { createTeamExitNotice, type TeamExitNotice } from '@/teams/exitNotice';
@@ -50,6 +50,7 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
     const presenceEvery = deps.presenceMinIntervalMs ?? 30_000;
     const state: ProjectInjectorState = { projectId: null, prefixSent: false, cursor: 0, injectedVersion: null };
     const titles = new Map<string, string>();
+    let teamReader = false;
     let lastPresenceAt = 0;
     let lastPresenceVersion: number | null = null;
     const label = (id: string) => titles.get(id) ?? id.slice(0, 8);
@@ -86,9 +87,13 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
     }
 
     async function firstTurn(sid: string, message: string): Promise<string> {
-        const ctx = await withTimeout(deps.client.context(sid, {}, timeoutMs));
+        const raw = await withTimeout(deps.client.context(sid, {}, timeoutMs));
+        const parentId = typeof deps.metadata?.()?.parentSessionId === 'string' ? deps.metadata?.()?.parentSessionId as string : null;
+        // B-939b: an isolated session sees no other sessions — and only what it is shown is marked delivered.
+        const ctx = isolateContext(raw, { selfId: sid, parentId });
+        teamReader = !!raw.team || raw.via === 'team';
         for (const s of ctx.sessions) if (s.title) titles.set(s.sessionId, s.title);
-        const built = buildFirstTurnPrefix(ctx, { label });
+        const built = buildFirstTurnPrefix(ctx, { label, selfId: sid, parentId });
         if (!built || !ctx.project) { state.projectId = null; return message; }
         state.projectId = ctx.project.id;
         state.prefixSent = true;
@@ -100,7 +105,9 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
     }
 
     async function laterTurn(sid: string, message: string): Promise<string> {
-        const d = await withTimeout(deps.client.digest(sid, state.cursor, timeoutMs));
+        const raw = await withTimeout(deps.client.digest(sid, state.cursor, timeoutMs));
+        // B-939b: the digest carries the project's current sharing; team sessions always share.
+        const d = isolateDigest(raw, { selfId: sid, isolated: !teamReader && raw.sharing !== 'shared' });
         if (!d.projectId) {
             // Left the project (or it was archived): the next membership gets a fresh prefix.
             state.projectId = null; state.prefixSent = false; state.injectedVersion = null;
