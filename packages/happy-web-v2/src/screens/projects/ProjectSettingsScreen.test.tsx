@@ -103,13 +103,23 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
 
 describe('B-757 project settings page', () => {
-  it('has the seven sections (B-850e 账号 after 目录), in team-settings order, each anchor-linked', async () => {
+  it('has the eight sections (B-850e 账号 after 目录, B-939b 会话之间 after 说明), in team-settings order, each anchor-linked', async () => {
     await render(detail());
     expect($$('main[data-testid=project-settings] > section').map((s) => s.id)).toEqual(
-      ['pj-settings-basics', 'pj-settings-context', 'pj-settings-folders', 'pj-settings-accounts', 'pj-settings-teams', 'pj-settings-sessions', 'pj-settings-danger']);
-    expect($$('.pj-settings-nav a').map((a) => a.getAttribute('href'))).toEqual(['#basics', '#context', '#folders', '#accounts', '#teams', '#sessions', '#danger']);
+      ['pj-settings-basics', 'pj-settings-context', 'pj-settings-sharing', 'pj-settings-folders', 'pj-settings-accounts', 'pj-settings-teams', 'pj-settings-sessions', 'pj-settings-danger']);
+    expect($$('.pj-settings-nav a').map((a) => a.getAttribute('href'))).toEqual(['#basics', '#context', '#sharing', '#folders', '#accounts', '#teams', '#sessions', '#danger']);
     // B-796: the shared back arrow (history first, else appBack's parent: /projects/p1 — see appBack.test.ts)
     expect($('.pj-head .vh-back')).not.toBeNull();
+  });
+
+  it('B-939b 会话之间: isolated by default; choosing Shared patches defaults and keeps the others', async () => {
+    await render(detail({ defaults: { agent: 'codex' } }));
+    const seg = section('sharing');
+    const opts = [...seg.querySelectorAll<HTMLElement>('[role=radio], button')];
+    const isolated = opts.find((b) => b.textContent === 'Isolated')!; const shared = opts.find((b) => b.textContent === 'Shared')!;
+    expect(isolated.getAttribute('aria-checked') ?? isolated.getAttribute('aria-pressed')).toBe('true');
+    await click(shared);
+    expect(api.update).toHaveBeenCalledWith('p1', { defaults: { agent: 'codex', sessionSharing: 'shared' } });
   });
 
   it('basics: save is off until something changed; writes the trimmed name and description', async () => {

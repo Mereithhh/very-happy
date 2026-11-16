@@ -8,7 +8,7 @@ const ctx = (over: Partial<ProjectSessionContext> = {}): ProjectSessionContext =
     via: 'explicit', team: null,
     decisions: [{ id: 'd1', seq: 3, title: 'server before CLI', createdAt: 1 }],
     log: [], sessions: [{ sessionId: 'peer-session-1', projectId: 'p1', machineId: 'm', title: 'fix sidebar', agent: 'claude', machine: 'dev-sg', branch: 'b-640', state: 'running', doing: 'writing tests', injectedInstructionsVersion: 7, capabilities: ['project-v1'], updatedAt: 1 }],
-    unread: [], asOf: new Date(2026, 9, 21, 9, 5).getTime(), previousReadAt: 0, ...over,
+    unread: [], asOf: new Date(2026, 9, 21, 9, 5).getTime(), previousReadAt: 0, sharing: 'shared', ...over,
 });
 
 describe('project injection texts (spec §4)', () => {
@@ -24,7 +24,8 @@ describe('project injection texts (spec §4)', () => {
         expect(spec).toContain(variantText('team-member', '{projectName}', '{teamName}'));
         expect(spec).toContain(variantText('team-lead', '{projectName}', '{teamName}'));
         expect(spec).toContain(variantText('quiet', '{projectName}'));
-        for (const v of ['member', 'team-lead', 'team-member', 'quiet'] as const) expect(variantText(v, 'x', 'y')).not.toMatch(/ALWAYS|MUST/);
+        expect(spec).toContain(variantText('isolated', '{projectName}'));
+        for (const v of ['member', 'isolated', 'team-lead', 'team-member', 'quiet'] as const) expect(variantText(v, 'x', 'y')).not.toMatch(/ALWAYS|MUST/);
     });
     it('chooses team-member for team sessions, quiet for automation, member otherwise', () => {
         expect(chooseVariant({ via: 'team', team: { id: 't', name: 'n' } })).toBe('team-member');
@@ -32,7 +33,13 @@ describe('project injection texts (spec §4)', () => {
         // B-726: the lead records the team's decisions; an older server (no `lead`) keeps the member wording.
         expect(chooseVariant({ via: 'team', team: { id: 't', name: 'n', lead: true } })).toBe('team-lead');
         expect(chooseVariant({ via: 'automation', team: null })).toBe('quiet');
-        expect(chooseVariant({ via: 'explicit', team: null })).toBe('member');
+        // B-939b: a project's own sessions are isolated unless the project shares; an older server (no sharing) = isolated.
+        expect(chooseVariant({ via: 'explicit', team: null })).toBe('isolated');
+        expect(chooseVariant({ via: 'explicit', team: null, sharing: 'shared' })).toBe('member');
+        expect(chooseVariant({ via: 'lineage', team: null, sharing: 'isolated' })).toBe('isolated');
+        expect(chooseVariant({ via: 'team', team: { id: 't', name: 'n' }, sharing: 'isolated' })).toBe('team-member');
+        expect(chooseVariant({ via: 'team', team: { id: 't', name: 'n', lead: true }, sharing: 'isolated' })).toBe('team-lead');
+        expect(chooseVariant({ via: 'automation', team: null, sharing: 'isolated' })).toBe('quiet');
     });
 });
 
@@ -175,5 +182,41 @@ describe('B-939: the team lead\'s decisions stay in effect for its team', () => 
         const prefix = buildFirstTurnPrefix(ctx({ decisions: [{ id: 'd1', seq: 102, title: 'rule', createdAt: 1, authorUser: false, authorSessionId: 'leadSess0001' }] }))!.prefix;
         expect(prefix).not.toContain('Decisions in effect');
         expect(prefix).toContain('#102 rule (by session leadSess)');
+    });
+});
+
+describe('B-939b: isolated project sessions', () => {
+    const entry = (seq: number, kind: 'decision' | 'finding' | 'handoff', author: string | null, title: string) => ({ id: `e${seq}`, seq, projectId: 'p1', kind, title, body: '', authorSessionId: author, authorUser: author === null, supersedes: null, supersededBy: null, revokedAt: null, createdAt: seq });
+    const iso = (over: Partial<ProjectSessionContext> = {}) => ctx({
+        sharing: undefined, unread: [{ id: 'u', fromSessionId: 'peer-session-1', body: 'take Z', createdAt: 1 }],
+        decisions: [{ id: 'e1', seq: 1, title: 'freeze Friday', createdAt: 1, authorUser: true, authorSessionId: null }, { id: 'e2', seq: 2, title: 'Z is B\'s', createdAt: 2, authorUser: false, authorSessionId: 'peer-session-1' }],
+        log: [entry(1, 'decision', null, 'freeze Friday'), entry(2, 'decision', 'peer-session-1', 'Z is B\'s'), entry(3, 'handoff', 'parent-sess', 'parent left: finish X'), entry(4, 'handoff', 'peer-session-1', 'peer left: do Y'), entry(5, 'finding', 'me-session', 'my finding')],
+        ...over,
+    });
+    it('first turn (no sharing from an older server = isolated): the user\'s instructions and decisions only, isolated wording', () => {
+        const prefix = buildFirstTurnPrefix(iso(), { selfId: 'me-session' })!.prefix;
+        expect(prefix).toContain('Use pnpm.\nDecisions in effect:\n#1 freeze Friday\n---\n');
+        expect(prefix).not.toMatch(/Z is B|Other active sessions|fix sidebar|Unread|take Z/);
+        expect(prefix).toContain(variantText('isolated', 'very-happy'));
+        expect(variantText('isolated', 'p')).toMatch(/do not message other sessions or read their notes unless the user asks/);
+        expect(variantText('isolated', 'p')).toContain(SCOPE_RULE);
+    });
+    it('project_context: own notes and the lineage parent\'s handoff by default; others=true adds the rest as reference', () => {
+        const mine = formatContextForTool(iso(), { selfId: 'me-session', parentId: 'parent-sess' });
+        expect(mine).toContain('This project keeps its sessions separate');
+        expect(mine).toMatch(/#1 \[decision\] freeze Friday/);
+        expect(mine).toMatch(/#3 \[handoff, by session parent-s\] parent left: finish X/);
+        expect(mine).toMatch(/#5 \[finding, by session me-sessi\] my finding/);
+        expect(mine).not.toMatch(/Z is B|peer left|fix sidebar/);
+        expect(mine).toContain('take Z'); // messages addressed to this session stay readable here
+        const all = formatContextForTool(iso(), { selfId: 'me-session', parentId: 'parent-sess', others: true });
+        expect(all).toContain('reference only, read because the user asked');
+        expect(all).toMatch(/peer left: do Y/);
+        expect(all).toContain('fix sidebar');
+    });
+    it('team variants are unchanged in an isolated project', () => {
+        const team = iso({ via: 'team', team: { id: 't', name: 'T' }, sharing: 'isolated' });
+        expect(buildFirstTurnPrefix(team, { selfId: 'me-session' })!.prefix).toContain('#2 Z is B\'s');
+        expect(formatContextForTool(team, { selfId: 'me-session' })).toMatch(/peer left: do Y/);
     });
 });

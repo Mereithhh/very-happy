@@ -52,6 +52,8 @@ export const ProjectDefaultsSchema = z.object({
     worktree: z.boolean().nullable().optional(),
     /** B-850d: per-agent account for new sessions (one entry per agent, machine-scoped; ids + labels only). */
     agentProfiles: ProjectAgentProfilesSchema.nullable().optional(),
+    /** B-939b: whether project sessions see each other's notes and sessions. Absent = isolated (the default). */
+    sessionSharing: z.enum(['isolated', 'shared']).nullable().optional(),
 });
 export type ProjectDefaults = z.infer<typeof ProjectDefaultsSchema>;
 
@@ -275,7 +277,10 @@ export type ProjectSessionContext = {
     asOf: number;
     /** Cursor the server held before this read (0 = never read). */
     previousReadAt: number;
+    /** B-939b: the project's session sharing. Absent (older server) = isolated. */
+    sharing?: ProjectSessionSharing;
 };
+export type ProjectSessionSharing = 'isolated' | 'shared';
 
 /** Next-turn piggyback (D): only what changed since `since`. Empty arrays and null mean nothing to say. */
 export type ProjectDigest = {
@@ -283,9 +288,11 @@ export type ProjectDigest = {
     name: string | null;
     instructions: { version: number; summary: string | null } | null;
     decisions: (Pick<ProjectLogEntryView, 'id' | 'seq' | 'title'> & Partial<Pick<ProjectLogEntryView, 'authorUser' | 'authorSessionId'>> & DecisionAuthority)[];
-    revoked: Pick<ProjectLogEntryView, 'id' | 'seq' | 'title'>[];
+    revoked: (Pick<ProjectLogEntryView, 'id' | 'seq' | 'title'> & Partial<Pick<ProjectLogEntryView, 'authorUser' | 'authorSessionId'>> & DecisionAuthority)[];
     messages: Pick<ProjectMessageView, 'id' | 'fromSessionId' | 'body' | 'createdAt'>[];
     asOf: number;
+    /** B-939b: absent (older server) = isolated. */
+    sharing?: ProjectSessionSharing;
 };
 
 /** Narrow error codes clients can branch on. */

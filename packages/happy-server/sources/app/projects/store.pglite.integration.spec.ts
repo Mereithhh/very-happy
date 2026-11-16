@@ -36,6 +36,38 @@ describe('projects store (pglite)', () => {
     }, 60000);
     afterAll(async () => { await db?.$disconnect(); rmSync(root, { recursive: true, force: true }); });
 
+    it('B-939b: sessions are isolated by default; the setting survives other defaults writes; a session\'s finding/handoff leaves the default view after 7 days', async () => {
+        const p = await newProject();
+        const me = await newSession(); const peer = await newSession();
+        await store.addMembers(accountId, p.id, { sessionIds: [me, peer] });
+        expect((await store.sessionContext(accountId, me, { peek: true })).sharing).toBe('isolated');
+        expect((await store.sessionDigest(accountId, me, 0)).sharing).toBe('isolated');
+        await store.updateProject(accountId, p.id, { defaults: { sessionSharing: 'shared' } });
+        expect((await store.sessionContext(accountId, me, { peek: true })).sharing).toBe('shared');
+        // A defaults write that does not mention it (e.g. the accounts section) keeps the choice.
+        await store.updateProject(accountId, p.id, { defaults: { agent: 'codex' } });
+        const view = await store.getProject(accountId, p.id);
+        expect(view.project.defaults).toMatchObject({ agent: 'codex', sessionSharing: 'shared' });
+        await store.updateProject(accountId, p.id, { defaults: { sessionSharing: 'isolated' } });
+        expect((await store.sessionContext(accountId, me, { peek: true })).sharing).toBe('isolated');
+        // 7-day cleanup of the default view: a session's old finding/handoff drops out; the user's entries and decisions do not; full keeps history.
+        const old = await store.createLogEntry(accountId, p.id, { kind: 'handoff', title: 'old handoff', authorSessionId: peer });
+        const oldUser = await store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'old user finding' });
+        const oldDecision = await store.createLogEntry(accountId, p.id, { kind: 'decision', title: 'old session decision', authorSessionId: peer });
+        const eightDaysAgo = new Date(Date.now() - 8 * 24 * 3600_000);
+        await db.projectLogEntry.updateMany({ where: { id: { in: [old.id, oldUser.id, oldDecision.id] } }, data: { createdAt: eightDaysAgo } });
+        await store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'fresh finding', authorSessionId: peer });
+        const fresh = await store.sessionContext(accountId, me, { peek: true });
+        expect(fresh.log.map(e => e.title)).toEqual(expect.arrayContaining(['old user finding', 'old session decision', 'fresh finding']));
+        expect(fresh.log.map(e => e.title)).not.toContain('old handoff');
+        expect((await store.sessionContext(accountId, me, { peek: true, full: true })).log.map(e => e.title)).toContain('old handoff');
+        expect((await store.getProject(accountId, p.id)).log.map(e => e.title)).toContain('old handoff');
+        // Revocations carry their author too (an isolated session hears only the user's).
+        await store.revokeLogEntry(accountId, p.id, oldDecision.id, peer);
+        const d = await store.sessionDigest(accountId, me, Date.now() - 60_000);
+        expect(d.revoked.find(r => r.id === oldDecision.id)).toMatchObject({ authorUser: false, authorSessionId: peer });
+    });
+
     it('kill switch answers the same 404 an older server gives', async () => {
         process.env.VH_PROJECTS_ENABLED = 'false';
         try { await expect(store.listProjects(accountId)).rejects.toMatchObject({ code: 'projects_disabled', status: 404 }); }

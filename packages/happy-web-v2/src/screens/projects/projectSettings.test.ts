@@ -64,3 +64,14 @@ describe('B-757 project settings rules', () => {
     expect(basicsPatch({ name: 'A', goal: null }, 'A', '')).toBeNull();
   });
 });
+
+describe('B-939b: 会话之间 setting', () => {
+  it('an existing project (no field) reads as isolated; the patch keeps the other defaults and is null when unchanged', async () => {
+    const { sessionSharingOf, sharingPatch, PROJECT_SETTINGS_SECTIONS } = await import('./projectSettings');
+    expect(sessionSharingOf({ defaults: {} })).toBe('isolated');
+    expect(sessionSharingOf({ defaults: { sessionSharing: 'shared' } })).toBe('shared');
+    expect(sharingPatch({ defaults: {} }, 'isolated')).toBeNull();
+    expect(sharingPatch({ defaults: { agent: 'codex' } }, 'shared')).toEqual({ defaults: { agent: 'codex', sessionSharing: 'shared' } });
+    expect(PROJECT_SETTINGS_SECTIONS).toContain('sharing');
+  });
+});

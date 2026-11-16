@@ -16,7 +16,7 @@ import { ActionDropdownMenu } from '@/ui/Menu';
 import { Markdown } from '@/screens/session/Markdown';
 import { linkableTeams, teamMoveSource } from './projectChoice';
 import { utf8Bytes, INSTRUCTIONS_MAX_BYTES } from './projectPage';
-import { addFolder, basicsPatch, canRemoveMember, folderError, makePrimary, projectSettingsPolicy, removeFolder, updateFolder, PROJECT_SETTINGS_SECTIONS, type FolderDraft } from './projectSettings';
+import { addFolder, basicsPatch, canRemoveMember, folderError, makePrimary, projectSettingsPolicy, removeFolder, sessionSharingOf, sharingPatch, updateFolder, PROJECT_SETTINGS_SECTIONS, type FolderDraft } from './projectSettings';
 import { useProjectCopy, type ProjectCopy } from './projectCopy';
 import { ProjectFolderPicker } from './ProjectFolderPicker';
 import { ProjectAccountsSection } from './ProjectAccountsSection';
@@ -90,6 +90,7 @@ export function ProjectSettingsScreen() {
         <p className="pj-muted pj-hint">{c.contextHint}</p>
         <InstructionsEditor detail={detail} c={c} editable={policy.editable} onChanged={reload} />
       </section>
+      <SharingSection project={project} c={c} editable={policy.editable} onChanged={reload} />
       <FoldersSection project={project} c={c} editable={policy.editable} onChanged={reload} />
       <ProjectAccountsSection key={`accounts:${project.updatedAt}`} project={project} c={c} editable={policy.editable} onChanged={reload} />
       <TeamsSection project={project} c={c} editable={policy.editable} onChanged={reload} />
@@ -102,6 +103,7 @@ export function ProjectSettingsScreen() {
 function sectionTitle(s: (typeof PROJECT_SETTINGS_SECTIONS)[number], c: ProjectCopy): string {
   switch (s) {
     case 'accounts': return c.accounts;
+    case 'sharing': return c.sharing;
     case 'basics': return c.basics;
     case 'context': return c.contextTitle;
     case 'folders': return c.folders;
@@ -123,6 +125,30 @@ function useWrite(c: ProjectCopy, onChanged: () => Promise<void>) {
     finally { setBusy(null); }
   };
   return { busy, run };
+}
+
+// ─── 会话之间（B-939b） ───────────────────────────────────────────────────
+
+function SharingSection({ project, c, editable, onChanged }: SectionProps) {
+  const { busy, run } = useWrite(c, onChanged);
+  const choose = (next: 'isolated' | 'shared') => {
+    const patch = sharingPatch(project, next);
+    if (patch) void run('sharing', async () => { await projectsApi.update(project.id, patch); toast.success(c.saved); });
+  };
+  return (
+    <section id="pj-settings-sharing" className="pj-section">
+      <h2>{c.sharing}</h2>
+      <p className="pj-muted pj-hint">{c.sharingHint}</p>
+      <Segmented<'isolated' | 'shared'>
+        className="pj-sharing"
+        label={c.sharing}
+        value={sessionSharingOf(project)}
+        disabled={!editable || busy === 'sharing'}
+        onChange={choose}
+        options={[{ value: 'isolated', label: c.sharingIsolated }, { value: 'shared', label: c.sharingShared }]}
+      />
+    </section>
+  );
 }
 
 // ─── 基本信息 ────────────────────────────────────────────────────────────

@@ -11,7 +11,17 @@ import { isInsideTeamWorktree } from '@/utils/teamWorktree';
 export function projectSettingsPath(projectId: string, section?: ProjectSettingsSection): string {
   return `/projects/${encodeURIComponent(projectId)}/settings${section ? `#${section}` : ''}`;
 }
-export const PROJECT_SETTINGS_SECTIONS = ['basics', 'context', 'folders', 'accounts', 'teams', 'sessions', 'danger'] as const;
+export const PROJECT_SETTINGS_SECTIONS = ['basics', 'context', 'sharing', 'folders', 'accounts', 'teams', 'sessions', 'danger'] as const;
+
+/** B-939b: 会话之间——absent (every existing project) = isolated. */
+export function sessionSharingOf(project: Pick<ProjectView, 'defaults'>): 'isolated' | 'shared' {
+  return project.defaults.sessionSharing === 'shared' ? 'shared' : 'isolated';
+}
+
+/** B-939b: the PATCH for a new sharing choice (null = unchanged); other defaults ride along unchanged. */
+export function sharingPatch(project: Pick<ProjectView, 'defaults'>, next: 'isolated' | 'shared'): { defaults: ProjectView['defaults'] } | null {
+  return sessionSharingOf(project) === next ? null : { defaults: { ...project.defaults, sessionSharing: next } };
+}
 export type ProjectSettingsSection = typeof PROJECT_SETTINGS_SECTIONS[number];
 
 /**

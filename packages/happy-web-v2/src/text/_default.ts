@@ -3422,6 +3422,12 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov17b: {
+                title: 'Sessions in a project are kept separate by default',
+                summary: 'A session in a project now starts with only your project instructions and your decisions. It no longer gets the list of other sessions, their notes or their messages, and it does not message other sessions unless you ask. Existing projects work this way too.',
+                setting: 'To let sessions see each other and coordinate, set “Between sessions” to “Shared” in the project settings. Agent team sessions always share context.',
+                cleanup: 'In a shared project, findings and handoffs written by sessions drop out of what sessions are shown after 7 days. The project page still lists them, and your own decisions never expire.',
+            },
             nov17a: {
                 title: 'Sessions in a project no longer hand work to each other',
                 summary: 'Only you assign a session its task. When another session in the same project asks it to take over work, or claims you decided it should, the session declines, tells that session, and tells you in its own chat.',

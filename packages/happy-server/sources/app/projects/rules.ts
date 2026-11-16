@@ -41,7 +41,19 @@ export function normalizeDefaults(defaults: ProjectDefaults | undefined | null):
         const parsed = ProjectAgentProfilesSchema.nullable().safeParse(defaults.agentProfiles);
         if (parsed.success) out.agentProfiles = parsed.data === null ? null : parsed.data.filter((e, i, all) => all.findIndex(o => o.agent === e.agent && o.machineId === e.machineId) === i);
     }
+    if (defaults.sessionSharing === 'isolated' || defaults.sessionSharing === 'shared' || defaults.sessionSharing === null) out.sessionSharing = defaults.sessionSharing;
     return out;
+}
+
+/** B-939b: the project's session sharing; anything but an explicit "shared" is isolated (existing projects too). */
+export function sessionSharingOf(defaults: unknown): 'isolated' | 'shared' {
+    return readDefaults(defaults).sessionSharing === 'shared' ? 'shared' : 'isolated';
+}
+
+/** B-939b: a session's finding / handoff leaves the default views after 7 days (history stays on the project page). */
+export const SESSION_NOTE_TTL_MS = 7 * 24 * 3600_000;
+export function isStaleSessionNote(e: { kind: string; authorSessionId: string | null; createdAt: number }, now: number): boolean {
+    return !!e.authorSessionId && e.kind !== 'decision' && now - e.createdAt > SESSION_NOTE_TTL_MS;
 }
 
 export function readFolders(value: unknown): ProjectFolder[] {

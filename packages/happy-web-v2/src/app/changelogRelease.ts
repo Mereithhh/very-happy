@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-17-project-sessions-isolated-by-default',
+    cliVersion: '0.2.216',
+    date: '2026-11-17',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov17b.title',
+    summaryKey: 'changelog.releases.nov17b.summary',
+    itemKeys: ['changelog.releases.nov17b.setting', 'changelog.releases.nov17b.cleanup'],
+  },
+  {
     id: '2026-11-17-sessions-do-not-assign-each-other-work',
     cliVersion: '0.2.216',
     date: '2026-11-17',

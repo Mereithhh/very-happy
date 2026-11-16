@@ -20,10 +20,11 @@ export const PROJECT_TOOL_SCHEMAS: Record<ProjectToolName, { title: string; desc
     project_context: {
         title: 'Read Project Context',
         readOnly: true,
-        description: 'Read this session\'s Very Happy project: instructions, decisions in effect, recent log entries, other sessions and unread messages. By default returns only what changed since you last read it (≤2KB); full=true returns everything. Returns "not in a project" when the session has no project.',
+        description: 'Read this session\'s Very Happy project: instructions, decisions in effect, recent log entries, other sessions and unread messages. By default returns only what changed since you last read it (≤2KB); full=true returns everything. In a project that keeps its sessions separate (the default) you get the user\'s instructions and decisions, your own notes and your parent session\'s handoff; others=true adds the other sessions and their notes as reference — use it only when the user asks. Returns "not in a project" when the session has no project.',
         inputSchema: {
             section: z.enum(['instructions', 'log', 'sessions', 'messages']).optional().describe('Only this part'),
             full: z.boolean().optional().describe('Everything, not just changes since your last read'),
+            others: z.boolean().optional().describe('Also the other sessions and their notes (reference only) — only when the user asks'),
         },
     },
     project_note: {
@@ -54,13 +55,13 @@ function describeError(error: unknown): string {
     return error instanceof Error && error.message ? error.message : 'Project request failed';
 }
 
-export function createProjectToolExecutor(sessionId: () => string, client: ProjectsClient = sharedProjectsClient()): ProjectToolExecutor {
+export function createProjectToolExecutor(sessionId: () => string, client: ProjectsClient = sharedProjectsClient(), parentSessionId: () => string | null | undefined = () => null): ProjectToolExecutor {
     return async (name, args) => {
         const sid = sessionId();
         if (name === 'project_context') {
             const full = args?.full === true;
             const ctx = await client.context(sid, { full });
-            return { text: formatContextForTool(ctx, { full, section: typeof args?.section === 'string' ? args.section : undefined }) };
+            return { text: formatContextForTool(ctx, { full, section: typeof args?.section === 'string' ? args.section : undefined, selfId: sid, parentId: parentSessionId() ?? null, others: args?.others === true }) };
         }
         const membership = await client.membership(sid);
         if (!membership.projectId) return { text: 'not in a project' };

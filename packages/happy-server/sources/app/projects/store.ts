@@ -13,6 +13,7 @@ import { configuredResourceLimit, enforceAccountWriteRate, isAccountResourceLimi
 import {
     ProjectError, requireProject, normalizeFolders, normalizeDefaults, readFolders, readDefaults, noteQuotaRefusal, parseLogRef,
     teamMachineAllowed, snapshotTeamDefaults,
+    sessionSharingOf, isStaleSessionNote,
 } from './rules';
 
 /**
@@ -253,14 +254,16 @@ export async function getProject(accountId: string, id: string): Promise<Project
 
 export async function updateProject(accountId: string, id: string, input: ProjectUpdate): Promise<ProjectView> {
     return run(async tx => {
-        await loadProject(tx, accountId, id);
+        const current = await loadProject(tx, accountId, id);
         const folders = input.folders ? normalizeFolders(input.folders) : undefined;
+        // B-939b: a defaults write that does not mention sessionSharing keeps the project's choice.
+        const keepSharing = input.defaults && input.defaults.sessionSharing === undefined ? readDefaults(current.defaults).sessionSharing : undefined;
         if (folders) await requireFolderMachines(tx, accountId, folders);
         const row = await tx.project.update({ where: { id }, data: {
             ...(input.name !== undefined ? { name: input.name } : {}),
             ...(input.goal !== undefined ? { goal: input.goal } : {}),
             ...(folders ? { folders } : {}),
-            ...(input.defaults !== undefined ? { defaults: normalizeDefaults(input.defaults) } : {}),
+            ...(input.defaults !== undefined ? { defaults: normalizeDefaults({ ...input.defaults, ...(keepSharing !== undefined ? { sessionSharing: keepSharing } : {}) }) } : {}),
             ...(input.archived !== undefined ? { archivedAt: input.archived ? new Date() : null } : {}),
             updatedAt: new Date(),
         } });
@@ -654,7 +657,8 @@ export async function sessionContext(accountId: string, sessionId: string, opts:
         const logRows = await tx.projectLogEntry.findMany({ where: { projectId: project.id }, orderBy: { seq: 'asc' } });
         const leads = await teamLeadSessions(tx, accountId, m.teamId);
         const decisions = liveDecisions(logRows).slice(-CONTEXT_DECISIONS).map(r => ({ id: r.id, seq: r.seq, title: r.title, createdAt: r.createdAt.getTime(), ...decisionAuthor(r, leads) }));
-        const log = (opts.full ? logViews(logRows) : logViews(logRows).filter(e => e.createdAt > previousReadAt || (e.revokedAt ?? 0) > previousReadAt))
+        const nowMs = now.getTime();
+        const log = (opts.full ? logViews(logRows) : logViews(logRows).filter(e => (e.createdAt > previousReadAt || (e.revokedAt ?? 0) > previousReadAt) && !isStaleSessionNote(e, nowMs)))
             .map(e => (e.authorSessionId && leads.has(e.authorSessionId) ? { ...e, authorTeamLead: true } : e));
         const presence = await tx.projectPresence.findMany({ where: { projectId: project.id, accountId, sessionId: { not: sessionId }, OR: [{ state: null }, { state: { not: 'offline' } }] }, orderBy: { updatedAt: 'desc' }, take: opts.full ? 200 : CONTEXT_SESSIONS });
         const unread = await tx.projectMessage.findMany({ where: { accountId, toSessionId: sessionId, deliveredAt: null }, orderBy: { createdAt: 'asc' }, take: opts.full ? 50 : CONTEXT_UNREAD });
@@ -666,7 +670,7 @@ export async function sessionContext(accountId: string, sessionId: string, opts:
             via: m.via, team: m.teamId ? { id: m.teamId, name: m.teamName ?? m.teamId, lead: m.teamLead === true } : null,
             decisions, log, sessions: presence.map(presenceView),
             unread: unread.map(u => ({ id: u.id, fromSessionId: u.fromSessionId, body: u.body, createdAt: u.createdAt.getTime() })),
-            asOf: now.getTime(), previousReadAt,
+            asOf: now.getTime(), previousReadAt, sharing: sessionSharingOf(project.defaults),
         };
     });
 }
@@ -692,9 +696,9 @@ export async function sessionDigest(accountId: string, sessionId: string, since:
         return {
             projectId: project.id, name: project.name, instructions,
             decisions: newDecisions.map(r => ({ id: r.id, seq: r.seq, title: r.title, ...decisionAuthor(r, leads) })),
-            revoked: revoked.map(r => ({ id: r.id, seq: r.seq, title: r.title })),
+            revoked: revoked.map(r => ({ id: r.id, seq: r.seq, title: r.title, ...decisionAuthor(r, leads) })),
             messages: messages.map(u => ({ id: u.id, fromSessionId: u.fromSessionId, body: u.body, createdAt: u.createdAt.getTime() })),
-            asOf: now,
+            asOf: now, sharing: sessionSharingOf(project.defaults),
         };
     });
 }
