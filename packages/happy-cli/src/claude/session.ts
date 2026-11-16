@@ -22,6 +22,8 @@ export type ClaudeSteerInput = {
     attachments?: PendingAttachment[];
     /** B-631: the web message's localKey; becomes the steer's transcript uuid so a Stop that sweeps it can be reported (B-332). */
     localKey?: string;
+    /** B-940: another session's message (an edit-conflict notice) — steered as a synthetic, non-user message. */
+    synthetic?: boolean;
 };
 
 export class Session {

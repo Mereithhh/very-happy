@@ -542,6 +542,8 @@ export async function claudeRemoteLauncher(
         finalized?: boolean;
         /** B-924: the parked batch's prompt localIds, so its replayed turn still knows who sent it (turn origin, board). */
         sourceIds?: string[];
+        /** B-940: another session's message — pushed as a synthetic, non-user prompt. */
+        synthetic?: boolean;
     };
 
     try {
@@ -699,6 +701,7 @@ export async function claudeRemoteLauncher(
                                     mode: msg.mode,
                                     uuid: promptUuidFor(msg.sourceIds),
                                     sourceIds: msg.sourceIds,
+                                    ...(msg.nonUser ? { synthetic: true } : {}),
                                 });
                                 return null;
                             }
@@ -721,6 +724,7 @@ export async function claudeRemoteLauncher(
                                     mode: msg.mode,
                                     enqueuedAt: msg.enqueuedAt,
                                     uuid: promptUuidFor(msg.sourceIds),
+                                    ...(msg.nonUser ? { synthetic: true } : {}),
                                 };
                             }
 
@@ -730,6 +734,7 @@ export async function claudeRemoteLauncher(
                                 mode: msg.mode,
                                 enqueuedAt: msg.enqueuedAt,
                                 uuid: promptUuidFor(msg.sourceIds),
+                                ...(msg.nonUser ? { synthetic: true } : {}),
                             }
                         }
 
@@ -792,7 +797,7 @@ export async function claudeRemoteLauncher(
                             // to the ordinary durable queue in runClaude.
                             if (!session.thinking || !modeGate.matches(input.mode)) return false;
                             if (typeof message === 'string') onPromptFinalized?.(message);
-                            q.steer(message, input.mode, input.localKey);
+                            q.steer(message, input.mode, input.localKey, input.synthetic);
                             return true;
                         });
                         permissionHandler.setPermissionModeUpdater(async (mode) => {

@@ -27,7 +27,7 @@ describe('/compact wiring', () => {
     it('ACP routes /compact before steering or queueing it', () => {
         const acp = read('agent/acp/runAcp.ts');
         const routeAt = acp.indexOf('const route = routeAcpUserText(message.content.text, agentCommands);');
-        const steerAt = acp.indexOf("if (message.meta?.delivery === 'steer' && piSteer?.ready && thinking && !attachments?.length) {");
+        const steerAt = acp.indexOf("if (message.meta?.delivery === 'steer' && !fromPeer && piSteer?.ready && thinking && !attachments?.length) {");
         expect(routeAt).toBeGreaterThan(0);
         expect(steerAt).toBeGreaterThan(routeAt);
         const branch = acp.slice(routeAt, steerAt);

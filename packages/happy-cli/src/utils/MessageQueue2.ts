@@ -13,6 +13,8 @@ interface QueueItem<T> {
     sourceId?: string;
     /** B-515 phase 0: Date.now() when the item entered the queue (latency measurement only). */
     enqueuedAt?: number;
+    /** B-940: another session's message — a prompt of its own, never joined with the owner's text. */
+    nonUser?: boolean;
 }
 
 /**
@@ -95,12 +97,26 @@ export class MessageQueue2<T> {
      * attachments that travel with this message.
      */
     push(message: string, mode: T, attachments?: PendingAttachment[], sourceId?: string): void {
+        this.append(message, mode, attachments, sourceId, false);
+    }
+
+    /**
+     * B-940: push another session's message. It runs as a prompt of its own
+     * (never joined with the owner's text around it, so the agent can tell it
+     * apart), on the current launch — unlike `pushIsolate`, it is not a reason
+     * to relaunch.
+     */
+    pushNonUser(message: string, mode: T, attachments?: PendingAttachment[], sourceId?: string): void {
+        this.append(message, mode, attachments, sourceId, true);
+    }
+
+    private append(message: string, mode: T, attachments: PendingAttachment[] | undefined, sourceId: string | undefined, nonUser: boolean): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
 
         const modeHash = this.modeHasher(mode);
-        logger.debug(`[MessageQueue2] push() called with mode hash: ${modeHash}`);
+        logger.debug(`[MessageQueue2] push() called with mode hash: ${modeHash}${nonUser ? ' (non-user)' : ''}`);
 
         this.queue.push({
             message,
@@ -110,6 +126,7 @@ export class MessageQueue2<T> {
             attachments,
             sourceId,
             enqueuedAt: Date.now(),
+            ...(nonUser ? { nonUser: true } : {}),
         });
 
         // Trigger message handler if set
@@ -349,7 +366,7 @@ export class MessageQueue2<T> {
      * Wait for messages and return all messages with the same mode as a single string
      * Returns { message: string, mode: T } or null if aborted/closed
      */
-    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: string, mode: T, isolate: boolean, hash: string, attachments?: PendingAttachment[], enqueuedAt?: number, sourceIds?: string[] } | null> {
+    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: string, mode: T, isolate: boolean, hash: string, attachments?: PendingAttachment[], enqueuedAt?: number, sourceIds?: string[], nonUser?: boolean } | null> {
         // If we have messages, return them immediately
         if (this.queue.length > 0) {
             return this.collectBatch();
@@ -373,7 +390,7 @@ export class MessageQueue2<T> {
     /**
      * Collect a batch of messages with the same mode, respecting isolation requirements
      */
-    private collectBatch(): { message: string, mode: T, hash: string, isolate: boolean, attachments?: PendingAttachment[], enqueuedAt?: number, sourceIds?: string[] } | null {
+    private collectBatch(): { message: string, mode: T, hash: string, isolate: boolean, attachments?: PendingAttachment[], enqueuedAt?: number, sourceIds?: string[], nonUser?: boolean } | null {
         if (this.queue.length === 0) {
             return null;
         }
@@ -391,7 +408,8 @@ export class MessageQueue2<T> {
         const enqueuedAt = firstItem.enqueuedAt;
 
         // If the first message requires isolation, only process it alone
-        if (firstItem.isolate) {
+        // (B-940: so does another session's message — on its own, not isolated).
+        if (firstItem.isolate || firstItem.nonUser) {
             const item = this.queue.shift()!;
             sameModeMessages.push(item.message);
             if (item.sourceId) sourceIds.push(item.sourceId);
@@ -401,7 +419,8 @@ export class MessageQueue2<T> {
             // Collect all messages with the same mode until we hit an isolated message
             while (this.queue.length > 0 &&
                 this.queue[0].modeHash === targetModeHash &&
-                !this.queue[0].isolate) {
+                !this.queue[0].isolate &&
+                !this.queue[0].nonUser) {
                 const item = this.queue.shift()!;
                 sameModeMessages.push(item.message);
                 if (item.sourceId) sourceIds.push(item.sourceId);
@@ -430,6 +449,7 @@ export class MessageQueue2<T> {
             attachments: collectedAttachments.length > 0 ? collectedAttachments : undefined,
             ...(enqueuedAt !== undefined ? { enqueuedAt } : {}),
             ...(sourceIds.length > 0 ? { sourceIds } : {}),
+            ...(firstItem.nonUser ? { nonUser: true } : {}),
         };
     }
 

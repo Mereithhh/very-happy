@@ -20,7 +20,7 @@ describe('Codex steer wiring (B-628)', () => {
     });
 
     it('tries the running turn first for a delivery=steer message, and queues it otherwise', () => {
-        const steerAt = source.indexOf("if (message.meta?.delivery === 'steer' && !isCodexControlText(message.content.text)) {");
+        const steerAt = source.indexOf("if (message.meta?.delivery === 'steer' && !fromPeer && !isCodexControlText(message.content.text)) {");
         expect(steerAt).toBeGreaterThan(0);
         expect(source.slice(steerAt, steerAt + 300)).toContain('if (await steerIntoRunningTurn(steerDeps, message.content.text, attachments, message.localKey)) {');
         expect(source.slice(steerAt, steerAt + 400)).toContain('return;');

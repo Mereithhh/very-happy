@@ -1,4 +1,5 @@
 import type { RuntimeQuery } from './runtimeControls';
+import { promptIdentity, shouldHoldNonUser } from './nonUserPrompt';
 import type { SideQuestionLiveAsk, SideQuestionLiveResponse } from './sideQuestion';
 import { EnhancedMode } from "./loop";
 import { query, type QueryOptions, type SDKMessage, type SDKResultMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
@@ -75,7 +76,8 @@ export async function claudeRemote(opts: {
         setModel: (model?: string) => Promise<void>;
         interrupt: () => Promise<void>;
         /** `localKey` (B-631) becomes the steer's transcript uuid when it is a real UUID. */
-        steer: (message: MessageParam['content'], mode: EnhancedMode, localKey?: string) => void;
+        /** B-940: `synthetic` — another session's message, pushed as non-user (nonUserPrompt.ts). */
+        steer: (message: MessageParam['content'], mode: EnhancedMode, localKey?: string, synthetic?: boolean) => void;
         /** B-482: Claude Code's own `/btw` — a `side_question` control request answered in-process from live messages. */
         sideQuestion: SideQuestionLiveAsk;
     }) => void,
@@ -89,7 +91,7 @@ export async function claudeRemote(opts: {
      * `enqueuedAt` (optional) only feeds the B-515 timing log. `uuid` (B-528)
      * becomes the prompt's transcript uuid so a web edit/delete can find it.
      */
-    nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode, enqueuedAt?: number, uuid?: string } | null>,
+    nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode, enqueuedAt?: number, uuid?: string, /** B-940: another session's message (nonUserPrompt.ts). */ synthetic?: boolean } | null>,
     onReady: (result?: SDKResultMessage) => void,
     isAborted: (toolCallId: string) => boolean,
 
@@ -125,7 +127,7 @@ export async function claudeRemote(opts: {
      * Code; the launcher owns it again and must run it in the next launch or
      * tombstone it — never drop it.
      */
-    onUndeliveredMessage?: (message: { message: MessageParam['content'], mode: EnhancedMode, enqueuedAt?: number, uuid?: string }) => void,
+    onUndeliveredMessage?: (message: { message: MessageParam['content'], mode: EnhancedMode, enqueuedAt?: number, uuid?: string, synthetic?: boolean }) => void,
     /** B-634 ③: session-scoped retired model ids; a message asking for one runs on the default. */
     retiredModels?: RetiredModels,
     /** B-883b: the provider refused a `[1m]` request — remember it, and retry once on the plain id when following latest. */
@@ -475,7 +477,7 @@ export async function claudeRemote(opts: {
     const initialUserMessage: SDKUserMessage = {
         type: 'user',
         parent_tool_use_id: null,
-        origin: { kind: 'human' },
+        ...promptIdentity(initial.synthetic),
         ...promptUuid(initial.uuid),
         message: {
             role: 'user',
@@ -579,7 +581,7 @@ export async function claudeRemote(opts: {
                 const body = raw?.response;
                 return (body && typeof body === 'object' ? body : { response: null }) as SideQuestionLiveResponse;
             },
-            steer: (message, nextMode, localKey) => {
+            steer: (message, nextMode, localKey, synthetic) => {
                 // Steer injects into the CURRENT turn, and a model cannot change
                 // mid-turn — keep the one that is actually running so the next
                 // turn boundary still sees (and applies) the difference.
@@ -593,7 +595,7 @@ export async function claudeRemote(opts: {
                     type: 'user',
                     parent_tool_use_id: null,
                     priority: 'now',
-                    origin: { kind: 'human' },
+                    ...promptIdentity(synthetic),
                     ...uuid,
                     message: { role: 'user', content: message },
                 });
@@ -609,6 +611,8 @@ export async function claudeRemote(opts: {
     // B-883b: the prompt of the current turn (what a long-context refusal
     // retries) and a retry owed once that turn's result arrives.
     let currentPrompt: MessageParam['content'] = initial.message;
+    /** B-940: the current turn's prompt is another session's (a long-context retry resends it as such). */
+    let currentSynthetic = initial.synthetic === true;
     let longContextRetry: LongContextRejection | null = null;
     /** The current turn failed on a 1M refusal: its auth-looking error is not a login failure. */
     let longContextRefusedTurn = false;
@@ -650,6 +654,12 @@ export async function claudeRemote(opts: {
     // `queryClosed` covers the Query ending while a pull was in flight.
     let queryClosed = false;
     const inputClosed = () => queryClosed || messages.done;
+    // B-940: another session's message pulled while Claude Code runs a turn
+    // of its own (a background task's notification turn, a steer that became
+    // a turn) — the wrapper's pull was parked, so pushing it now would join
+    // that turn as a queued command. It waits for that turn's end, where the
+    // next pull hands it over first.
+    let heldNonUser: NonNullable<Awaited<ReturnType<typeof opts.nextMessage>>> | null = null;
     const pullNextMessage = () => {
         if (pullingNext) {
             logger.debug('[claudeRemote] Already waiting for the next message');
@@ -660,7 +670,9 @@ export async function claudeRemote(opts: {
             return;
         }
         pullingNext = true;
-        opts.nextMessage().then(async (pulled) => {
+        const held = heldNonUser;
+        heldNonUser = null;
+        (held ? Promise.resolve(held) : opts.nextMessage()).then(async (pulled) => {
             let next = withoutRetiredModel(pulled);
             if (!next) {
                 pullingNext = false;
@@ -675,6 +687,12 @@ export async function claudeRemote(opts: {
             };
             if (inputClosed()) {
                 handBack(next);
+                return;
+            }
+            if (shouldHoldNonUser({ synthetic: next.synthetic, turnOpen: turn.isOpen })) {
+                logger.debug('[claudeRemote] Session-peer message held until the running turn ends');
+                heldNonUser = next;
+                pullingNext = false;
                 return;
             }
             // A model change is applied IN PLACE (see claudeLiveModel.ts)
@@ -714,6 +732,7 @@ export async function claudeRemote(opts: {
             }
             mode = next.mode;
             currentPrompt = next.message;
+            currentSynthetic = next.synthetic === true;
             turnAnswered = false;
             updateThinking(true);
             turn.pushed();
@@ -724,7 +743,7 @@ export async function claudeRemote(opts: {
             messages.push({
                 type: 'user',
                 parent_tool_use_id: null,
-                origin: { kind: 'human' },
+                ...promptIdentity(next.synthetic),
                 ...uuid,
                 message: { role: 'user', content: next.message },
             });
@@ -860,7 +879,7 @@ export async function claudeRemote(opts: {
                         messages.push({
                             type: 'user',
                             parent_tool_use_id: null,
-                            origin: { kind: 'human' },
+                            ...promptIdentity(currentSynthetic),
                             message: { role: 'user', content: currentPrompt },
                         });
                     });
@@ -1060,6 +1079,13 @@ export async function claudeRemote(opts: {
     } finally {
         updateThinking(false);
         queryClosed = true;
+        // B-940: a held session-peer message never reached this Query: the launcher runs it next.
+        if (heldNonUser) {
+            const held = heldNonUser;
+            heldNonUser = null;
+            if (opts.onUndeliveredMessage) opts.onUndeliveredMessage(held);
+            else logger.warn('[claudeRemote] Held session-peer message could not be delivered and no owner took it back');
+        }
         // B-634 ②: whatever the Query ended on (a crash, a teardown), a
         // message Claude Code never started is not answered — say so. Only a
         // CLI that emits lifecycle frames can confirm at all; without them

@@ -1,4 +1,5 @@
 import os from 'node:os';
+import { isSessionPeerPrompt } from './nonUserPrompt';
 import { MAIN_AGENT_PROVENANCE_SYSTEM_PROMPT, mainAgentPromptText } from '@/assistant/turnOrigin';
 import { registerSystemCardRunner, systemCardPromptText } from '@/assistant/systemCardChoice';
 import { applyReconnectReplay, applyServerSnapshot, exitCursorStamp, mergeReconnectMetadata, withoutServerSnapshot, type ReconnectReplay } from '@/utils/reconnectSession';
@@ -1233,6 +1234,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         const systemText = mainAgent ? await systemCardPromptText(routedLocalId, (line) => logger.debug(line)) : null;
         const modelText = systemText ?? mainAgentPromptText(Boolean(mainAgent), message.content.text, routedLocalId, message.meta);
 
+        // B-940: another session's message (session message, edit-conflict
+        // notice) never reaches the model as the user's (claude/nonUserPrompt.ts).
+        const fromPeer = isSessionPeerPrompt(message.meta);
         if (message.meta?.delivery === 'steer' && currentRunMode === 'remote') {
             const accepted = await currentSession?.trySteer({
                 message: modelText,
@@ -1242,6 +1246,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 // Code's command_lifecycle / interrupt receipt can name it when a
                 // Stop sweeps it before the model read it.
                 localKey: message.localKey,
+                ...(fromPeer ? { synthetic: true } : {}),
             }) === true;
             if (accepted) {
                 logger.debug('User message steered into current turn:', {
@@ -1253,8 +1258,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug('[start] Steer arrived without a compatible live turn; falling back to queue');
         }
 
-        messageQueue.push(modelText, enhancedMode, attachmentsForThisMessage, message.localKey);
-        logger.debug('User message pushed to queue:', {
+        if (fromPeer) messageQueue.pushNonUser(modelText, enhancedMode, attachmentsForThisMessage, message.localKey);
+        else messageQueue.push(modelText, enhancedMode, attachmentsForThisMessage, message.localKey);
+        logger.debug(fromPeer ? 'Session-peer message pushed to queue (non-user):' : 'User message pushed to queue:', {
             ...contentLogMetadata(message.content.text),
             attachmentCount: attachmentsForThisMessage?.length ?? 0,
             hasMetadata: Boolean(message.meta),

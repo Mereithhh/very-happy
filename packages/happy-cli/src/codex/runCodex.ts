@@ -1,4 +1,5 @@
 import { AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_LIVE_PERMISSION_CAPABILITY, CODEX_STEER_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, TURN_FAILURE_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort, type TurnFailure } from '@slopus/happy-wire';
+import { isSessionPeerPrompt } from '@/claude/nonUserPrompt';
 import { codexTurnFailure } from './codexTurnFailure';
 import { issueSessionMetadata } from '@/issues/sessionMetadata';
 import { recordRunIntents, registerRunIntentRpc, withoutEffort } from '@/utils/runIntent';
@@ -595,7 +596,11 @@ export async function runCodex(opts: {
                 effort: messageEffort,
                 ...(effortExplicit ? { effortExplicit: true } : {}),
             };
-            if (message.meta?.delivery === 'steer' && !isCodexControlText(message.content.text)) {
+            // B-940: another session's message never joins a running turn — Codex has no
+            // non-user channel inside a turn (steered text is the user's input); it waits
+            // for the next turn, a turn of its own, under its "not from the user" envelope.
+            const fromPeer = isSessionPeerPrompt(message.meta);
+            if (message.meta?.delivery === 'steer' && !fromPeer && !isCodexControlText(message.content.text)) {
                 if (await steerIntoRunningTurn(steerDeps, message.content.text, attachments, message.localKey)) {
                     logger.debug('[Codex] User message steered into the current turn');
                     return;
@@ -607,6 +612,7 @@ export async function runCodex(opts: {
                 queue: messageQueue,
                 attachments,
                 sourceId: message.localKey,
+                ...(fromPeer ? { nonUser: true } : {}),
             });
             if (enqueueResult === 'clear' || enqueueResult === 'compact') {
                 logger.debug(`[Codex] /${enqueueResult} command pushed to isolated queue`);

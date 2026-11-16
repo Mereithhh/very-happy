@@ -50,7 +50,7 @@ describe('Claude wrapper ↔ Orca alignment wiring (B-631)', () => {
         const trySteer = between(runClaude, 'currentSession?.trySteer({', '}) === true;');
         expect(trySteer).toContain('localKey: message.localKey,');
         const steer = between(launcher, 'session.setSteerHandler(async (input) => {', 'return true;');
-        expect(steer).toContain('q.steer(message, input.mode, input.localKey);');
+        expect(steer).toContain('q.steer(message, input.mode, input.localKey, input.synthetic);');
         const dropped = between(launcher, 'onCommandsDropped: (uuids) => {', '},');
         expect(dropped).toContain("session.client.sendQueueCancelReason(uuids, 'aborted');");
     });

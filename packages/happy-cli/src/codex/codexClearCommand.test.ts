@@ -7,6 +7,7 @@ describe('enqueueCodexUserText', () => {
         const mode = { permissionMode: 'default' as const };
         const queue = {
             push: vi.fn(),
+            pushNonUser: vi.fn(),
             pushIsolate: vi.fn(),
             pushIsolateAndClear: vi.fn(),
         };
@@ -26,15 +27,23 @@ describe('enqueueCodexUserText', () => {
 
     it('threads the source id through ordinary pushes too (B-332)', () => {
         const mode = { permissionMode: 'default' as const };
-        const queue = { push: vi.fn(), pushIsolate: vi.fn(), pushIsolateAndClear: vi.fn() };
+        const queue = { push: vi.fn(), pushNonUser: vi.fn(), pushIsolate: vi.fn(), pushIsolateAndClear: vi.fn() };
         expect(enqueueCodexUserText({ text: 'hello', mode, queue, sourceId: 'web-local-2' })).toBe('queued');
         expect(queue.push).toHaveBeenCalledWith('hello', mode, undefined, 'web-local-2');
+    });
+
+    it('queues another session\'s message as a turn of its own (B-940)', () => {
+        const mode = { permissionMode: 'default' as const };
+        const queue = { push: vi.fn(), pushNonUser: vi.fn(), pushIsolate: vi.fn(), pushIsolateAndClear: vi.fn() };
+        expect(enqueueCodexUserText({ text: '[Very Happy session message 1 from "A" s1]\nhi', mode, queue, sourceId: 'peer-1', nonUser: true })).toBe('queued');
+        expect(queue.pushNonUser).toHaveBeenCalledWith('[Very Happy session message 1 from "A" s1]\nhi', mode, undefined, 'peer-1');
+        expect(queue.push).not.toHaveBeenCalled();
     });
 });
 
 it('keeps attachment ownership and source id on the queued message', () => {
     const attachments = [{ data: new Uint8Array([1, 2]), mimeType: 'image/png', name: 'a.png' }];
-    const queue = { push: vi.fn(), pushIsolate: vi.fn(), pushIsolateAndClear: vi.fn() };
+    const queue = { push: vi.fn(), pushNonUser: vi.fn(), pushIsolate: vi.fn(), pushIsolateAndClear: vi.fn() };
     enqueueCodexUserText({ text: '', mode: 'default', queue, attachments, sourceId: 'image-only' });
     expect(queue.push).toHaveBeenCalledWith('', 'default', attachments, 'image-only');
 });
@@ -46,7 +55,7 @@ describe('/compact on Codex (Owner 10-30: it reached the model, which said it ca
         ['/compact 保留测试结论', '/compact 保留测试结论'],
     ])('%j is queued alone as %j, keeping what is already queued', (text, canonical) => {
         const mode = { permissionMode: 'default' as const };
-        const queue = { push: vi.fn(), pushIsolate: vi.fn(), pushIsolateAndClear: vi.fn() };
+        const queue = { push: vi.fn(), pushNonUser: vi.fn(), pushIsolate: vi.fn(), pushIsolateAndClear: vi.fn() };
         expect(enqueueCodexUserText({ text, mode, queue, sourceId: 'web-local-3' })).toBe('compact');
         expect(queue.pushIsolate).toHaveBeenCalledWith(canonical, mode, undefined, 'web-local-3');
         expect(queue.push).not.toHaveBeenCalled();

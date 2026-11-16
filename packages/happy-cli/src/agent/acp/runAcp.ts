@@ -1,4 +1,5 @@
 import { VERY_HAPPY_DISCOVERY } from '@/skill/discovery';
+import { isSessionPeerPrompt } from '@/claude/nonUserPrompt';
 import { readPiModelsJson, resolvePiContextUsage, type PiContextReport } from './piContextUsage';
 import { buildAcpPrompt, routeAcpUserText } from './acpSlashCommand';
 import { registerAgentAttachmentDownloads } from '@/utils/agentAttachments';
@@ -1234,7 +1235,9 @@ export async function runAcp(opts: {
       // B-632 ①: 「Steer」 on a queued message — into the running pi turn when the
       // extension takes it; otherwise (nothing running, no extension, attachments,
       // not taken in time) it is queued as the next turn exactly as before.
-      if (message.meta?.delivery === 'steer' && piSteer?.ready && thinking && !attachments?.length) {
+      // B-940: another session's message never joins a running turn (a steer is the user's input there).
+      const fromPeer = isSessionPeerPrompt(message.meta);
+      if (message.meta?.delivery === 'steer' && !fromPeer && piSteer?.ready && thinking && !attachments?.length) {
         if (await piSteer.offer(message.content.text, PI_STEER_OFFER_TIMEOUT_MS)) {
           logger.debug(`[${opts.agentName}] User message steered into the running turn`);
           return;
@@ -1242,11 +1245,13 @@ export async function runAcp(opts: {
         logger.debug(`[${opts.agentName}] Steer not taken; queued for the next turn`);
       }
 
-      messageQueue.push(message.content.text, {
+      const queued = {
         permissionMode: currentPermissionMode,
         model: currentModel,
         effort: currentEffort,
-      }, attachments, message.localKey);
+      };
+      if (fromPeer) messageQueue.pushNonUser(message.content.text, queued, attachments, message.localKey);
+      else messageQueue.push(message.content.text, queued, attachments, message.localKey);
     }).catch(() => {
       logger.warn('[ACP] Failed to prepare user attachments');
       session.sendSessionEvent({ type: 'message', message: 'Could not prepare this message. Please send it again.' });
