@@ -3422,6 +3422,12 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov17c: {
+                title: 'A message from another session no longer reads as yours',
+                summary: 'When another session messaged a Claude session while it was busy, Claude received it framed as "The user sent a new message", and took the other session\'s request for yours. Now it is always marked as coming from another session, not from you.',
+                timing: 'A message from another session that arrives mid-task waits until the current step is done, then arrives on its own, never merged with what you typed. An edit-conflict warning still arrives right away. Codex and pi sessions get such messages at the next turn.',
+                unchanged: 'What you send from the app — including a message you send while the session is working, or one a main agent passes on for you — works exactly as before.',
+            },
             nov17b: {
                 title: 'Sessions in a project are kept separate by default',
                 summary: 'A session in a project now starts with only your project instructions and your decisions. It no longer gets the list of other sessions, their notes or their messages, and it does not message other sessions unless you ask. Existing projects work this way too.',

@@ -580,6 +580,16 @@ coordinate directly — no lock, no permission change.
   (B-501): the message goes through `deliverToSession`, so `true` means a
   wrapper was attached before and after the POST; otherwise `--json` carries
   `delivered:false`, `stored` (it is on the server, unread) and `status`.
+- **Never the user's (B-940).** The agent is told the message is another
+  session's, not the user's. Claude: it goes into Claude Code as a synthetic
+  message (`isSynthetic`, no `origin`), which Claude Code frames as
+  `[MESSAGE FROM NON-USER SOURCE - NOT USER INPUT]` — never as "The user sent a
+  new message while you were working". It is never joined with the owner's text
+  in one prompt, and one that arrives while Claude Code runs a turn of its own
+  (a background task's notification turn) waits for that turn to end. Codex and
+  pi: never steered into a running turn; it is the next turn, on its own. The
+  owner's messages (Web, a main agent passing the owner's words on) are
+  unchanged.
 - **Reply-loop guard.** Inside a session, `session_message` refuses the 9th
   message to the same target within 10 minutes with an error that tells the
   agent to stop replying (the footer already says not to reply just to
@@ -590,8 +600,9 @@ that edited it. When a second live session edits a path another one touched in
 the window, **both** get a notice headed
 `[Very Happy edit conflict <id>; file <path>; peer "<title>" <sessionId>; …; peer edited <n>s ago]`
 that names the other session and suggests `session_message` — once per pair
-of sessions per file per window, delivered as a steer into a running turn
-(queued otherwise). Conflicts on several files between the same two sessions
+of sessions per file per window, delivered as a steer into a running Claude
+turn as a synthetic, non-user message (B-940; queued otherwise, and always
+queued for Codex and pi). Conflicts on several files between the same two sessions
 within 10 s are coalesced into ONE notice listing every file (`; more <n>` in
 the header, `Files:` in the body), and a pair gets at most 5 notices per
 window. Each edit report carries the time the runner saw the call; the daemon

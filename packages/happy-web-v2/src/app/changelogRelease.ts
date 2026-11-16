@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-17-session-messages-are-not-yours',
+    cliVersion: '0.2.216',
+    date: '2026-11-17',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov17c.title',
+    summaryKey: 'changelog.releases.nov17c.summary',
+    itemKeys: ['changelog.releases.nov17c.timing', 'changelog.releases.nov17c.unchanged'],
+  },
+  {
     id: '2026-11-17-project-sessions-isolated-by-default',
     cliVersion: '0.2.216',
     date: '2026-11-17',
