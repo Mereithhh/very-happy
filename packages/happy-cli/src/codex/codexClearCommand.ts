@@ -3,6 +3,7 @@ import { compactCommandText, parseSpecialCommand } from '@/parsers/specialComman
 
 type CodexUserTextQueue<T> = {
     push: (message: string, mode: T, attachments?: PendingAttachment[], sourceId?: string) => void;
+    pushNonUser: (message: string, mode: T, attachments?: PendingAttachment[], sourceId?: string) => void;
     pushIsolate: (message: string, mode: T, attachments?: PendingAttachment[], sourceId?: string) => void;
     pushIsolateAndClear: (message: string, mode: T, attachments?: PendingAttachment[], sourceId?: string) => void;
 };
@@ -28,6 +29,8 @@ export function enqueueCodexUserText<T>(opts: {
     /** B-332: the web's localId, so a destroyed item can be tombstoned. */
     sourceId?: string;
     attachments?: PendingAttachment[];
+    /** B-940: another session's message — a turn of its own, never joined with the owner's text. */
+    nonUser?: boolean;
 }): 'clear' | 'compact' | 'queued' {
     if (isCodexClearText(opts.text)) {
         opts.queue.pushIsolateAndClear(opts.text, opts.mode, opts.attachments, opts.sourceId);
@@ -41,6 +44,7 @@ export function enqueueCodexUserText<T>(opts: {
         return 'compact';
     }
 
-    opts.queue.push(opts.text, opts.mode, opts.attachments, opts.sourceId);
+    if (opts.nonUser) opts.queue.pushNonUser(opts.text, opts.mode, opts.attachments, opts.sourceId);
+    else opts.queue.push(opts.text, opts.mode, opts.attachments, opts.sourceId);
     return 'queued';
 }

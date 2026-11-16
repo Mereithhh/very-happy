@@ -5,6 +5,25 @@ import { claudeModeHash } from '@/claude/claudeModeHash';
 import type { EnhancedMode } from '@/claude/loop';
 
 describe('MessageQueue2', () => {
+    it('B-940: another session\'s message is a prompt of its own — never joined with the owner\'s text, and not a relaunch', async () => {
+        const queue = new MessageQueue2<string>(mode => mode);
+        queue.push('owner 1', 'm', undefined, 'o1');
+        queue.pushNonUser('[Very Happy session message 1 from "A" s1]\nZ please', 'm', undefined, 'p1');
+        queue.push('owner 2', 'm', undefined, 'o2');
+        queue.push('owner 3', 'm', undefined, 'o3');
+
+        const first = await queue.waitForMessagesAndGetAsString();
+        expect(first).toMatchObject({ message: 'owner 1', sourceIds: ['o1'] });
+        expect(first).not.toHaveProperty('nonUser');
+
+        const peer = await queue.waitForMessagesAndGetAsString();
+        expect(peer).toMatchObject({ message: '[Very Happy session message 1 from "A" s1]\nZ please', sourceIds: ['p1'], nonUser: true, isolate: false });
+
+        const rest = await queue.waitForMessagesAndGetAsString();
+        expect(rest).toMatchObject({ message: 'owner 2\nowner 3', sourceIds: ['o2', 'o3'] });
+        expect(rest).not.toHaveProperty('nonUser');
+    });
+
     it('should create a queue', () => {
         const queue = new MessageQueue2<string>(mode => mode);
         expect(queue.size()).toBe(0);
