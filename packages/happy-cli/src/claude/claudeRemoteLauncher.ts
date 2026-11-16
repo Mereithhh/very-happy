@@ -555,6 +555,16 @@ export async function claudeRemoteLauncher(
         const modeGate = new LaunchModeGate<EnhancedMode, ParkedMessage>(session.queue.modeHasher);
         // B-634 ②: uuids already sent a second time after a Query died under them (once only).
         const redeliveredCommands = new Set<string>();
+        // B-940b: what this launcher holds without having handed it to Claude
+        // Code — the live Query's held / in-hand pulls and the parked message.
+        // An exiting process hands these to the next wrapper (runClaude cleanup).
+        let liveUndelivered: (() => string[]) | null = null;
+        const parkedSourceIds = (): string[] => {
+            const parked = modeGate.parkedMessage;
+            if (!parked) return [];
+            return parked.sourceIds ?? (parked.uuid ? [parked.uuid] : []);
+        };
+        session.setUndeliveredProbe(() => [...(liveUndelivered?.() ?? []), ...parkedSourceIds()]);
 
         // Track session ID to detect when it actually changes
         // This prevents context loss when mode changes (permission mode, model, etc.)
@@ -724,6 +734,7 @@ export async function claudeRemoteLauncher(
                                     mode: msg.mode,
                                     enqueuedAt: msg.enqueuedAt,
                                     uuid: promptUuidFor(msg.sourceIds),
+                                    sourceIds: msg.sourceIds,
                                     ...(msg.nonUser ? { synthetic: true } : {}),
                                 };
                             }
@@ -734,6 +745,7 @@ export async function claudeRemoteLauncher(
                                 mode: msg.mode,
                                 enqueuedAt: msg.enqueuedAt,
                                 uuid: promptUuidFor(msg.sourceIds),
+                                sourceIds: msg.sourceIds,
                                 ...(msg.nonUser ? { synthetic: true } : {}),
                             }
                         }
@@ -741,6 +753,13 @@ export async function claudeRemoteLauncher(
                         // Exit
                         return null;
                     })()),
+                    // B-940b (QA-T P3): an owner message this Query can run now
+                    // (no relaunch, nothing parked) goes before a held session message.
+                    ownerWaiting: () => {
+                        if (modeGate.hasParked) return false;
+                        const head = session.queue.ownerHead();
+                        return head !== null && !modeGate.requiresRelaunch(head.modeHash, head.isolate);
+                    },
                     onSessionFound: (sessionId) => {
                         // Update converter's session ID when new session is found
                         sdkToLogConverter.updateSessionId(sessionId);
@@ -770,6 +789,7 @@ export async function claudeRemoteLauncher(
                         backgroundTasks.reset();
                         session.setBackgroundTasks([]);
                         turnSteering.setInterrupt(q.interrupt);
+                        liveUndelivered = q.undeliveredSourceIds;
                         // B-482: /btw answers inside this process while it lives.
                         session.setSideQuestionLive({ ask: q.sideQuestion, canControl: q.canControl });
                         session.setSteerHandler(async (input) => {
@@ -874,7 +894,9 @@ export async function claudeRemoteLauncher(
                     onUndeliveredMessage: (message) => {
                         const parked = planUndeliveredMessage(message, { parkFree: !modeGate.hasParked, exiting: exitReason !== null });
                         if (parked) {
-                            logger.debug('[remote]: pulled message missed its Query; replaying it in the next launch');
+                            // B-940b: parked for this process's next launch. If the process is
+                            // exiting instead, runClaude's exit stamp lists it for the next wrapper.
+                            logger.debug(`[remote]: pulled message ${message.uuid ?? '(no uuid)'} missed its Query; parked to run first in the next launch`);
                             modeGate.park(parked);
                         } else if (message.uuid) {
                             logger.debug(`[remote]: pulled message ${message.uuid} missed its Query and cannot be replayed`);
@@ -993,6 +1015,7 @@ export async function claudeRemoteLauncher(
                 turnSteering.reset();
                 session.setSteerHandler(null);
                 session.setSideQuestionLive(null);
+                liveUndelivered = null;
                 livePermissionModeHandler = null;
                 permissionHandler.setPermissionModeUpdater(undefined);
                 sdkToLogConverter.resetTransientState();

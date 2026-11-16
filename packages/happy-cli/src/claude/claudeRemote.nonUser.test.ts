@@ -186,4 +186,74 @@ describe('another session\'s message is never the user\'s (B-940)', () => {
         expect(seen[1]).not.toHaveProperty('origin');
         expect(seen[2]).toMatchObject({ origin: { kind: 'human' }, priority: 'now', message: { content: 'owner steer' } });
     });
+
+    it('B-940b: a held message is reported undelivered (by its localIds) until it is pushed — an exiting process hands it on', async () => {
+        const probes: string[][] = [];
+        let probe!: () => string[];
+        let started!: () => void;
+        const ownTurn = new Promise<void>((r) => { started = r; });
+        vi.mocked(query).mockImplementation((args: any) => ({
+            setPermissionMode: vi.fn(),
+            interrupt: vi.fn(),
+            async *[Symbol.asyncIterator]() {
+                const input = args.prompt[Symbol.asyncIterator]();
+                await input.next();
+                probes.push(probe());
+                yield result;
+                yield running;
+                started();
+                await tick();
+                probes.push(probe()); // held behind the own turn
+                yield result;
+                await input.next();
+                probes.push(probe()); // pushed
+                yield result;
+                expect((await input.next()).done).toBe(true);
+            },
+        } as any));
+        let n = 0;
+        await run(async () => {
+            n += 1;
+            if (n === 1) return { message: 'owner prompt', mode, sourceIds: ['o1'] } as any;
+            if (n === 2) { await ownTurn; return { message: 'peer text', mode, synthetic: true, uuid: 'p1', sourceIds: ['p1'] } as any; }
+            return null;
+        }, { onQueryReady: (q: { undeliveredSourceIds: () => string[] }) => { probe = q.undeliveredSourceIds; } });
+        expect(probes).toEqual([[], ['p1'], []]);
+    });
+
+    it('B-940b (QA-T P3): an owner message waiting at the own turn\'s end runs before the held session message', async () => {
+        const seen: any[] = [];
+        let started!: () => void;
+        const ownTurn = new Promise<void>((r) => { started = r; });
+        vi.mocked(query).mockImplementation((args: any) => ({
+            setPermissionMode: vi.fn(),
+            interrupt: vi.fn(),
+            async *[Symbol.asyncIterator]() {
+                const input = args.prompt[Symbol.asyncIterator]();
+                seen.push((await input.next()).value);
+                yield result;
+                yield running;
+                started();
+                await tick();
+                yield result; // own turn ends: the owner's queued message goes first
+                seen.push((await input.next()).value);
+                yield result;
+                seen.push((await input.next()).value);
+                yield result;
+                expect((await input.next()).done).toBe(true);
+            },
+        } as any));
+        let n = 0;
+        let ownerQueued = false;
+        await run(async () => {
+            n += 1;
+            if (n === 1) return { message: 'owner prompt', mode };
+            if (n === 2) { await ownTurn; ownerQueued = true; return { message: 'peer text', mode, synthetic: true }; }
+            if (n === 3) { ownerQueued = false; return { message: 'owner later', mode }; }
+            return null;
+        }, { ownerWaiting: () => ownerQueued });
+        expect(seen.map((m) => m.message.content)).toEqual(['owner prompt', 'owner later', 'peer text']);
+        expect(seen[1]).toMatchObject({ origin: { kind: 'human' } });
+        expect(seen[2]).toMatchObject({ isSynthetic: true });
+    });
 });

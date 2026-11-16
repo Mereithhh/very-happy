@@ -13,7 +13,7 @@ import { Credentials } from '@/persistence';
 import { connectionState, isNetworkError } from '@/utils/serverConnectionErrors';
 import { NotificationProducer } from '@/claude/notificationProducer';
 import { redactLogValue } from '@/utils/logRedaction';
-import type { ServerSessionSnapshot } from '@/utils/reconnectSession';
+import type { ReplayRedelivery, ServerSessionSnapshot } from '@/utils/reconnectSession';
 
 /**
  * Human-readable reason a POST /v1/sessions failed (B-305).
@@ -323,7 +323,7 @@ export class ApiClient {
     }
   }
 
-  sessionSyncClient(session: Session, opts?: { initialSeq?: number }): ApiSessionClient {
+  sessionSyncClient(session: Session, opts?: { initialSeq?: number; redeliver?: ReplayRedelivery }): ApiSessionClient {
     return new ApiSessionClient(this.credential.token, session, opts);
   }
 

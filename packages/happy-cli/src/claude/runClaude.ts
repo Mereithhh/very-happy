@@ -1,5 +1,6 @@
 import os from 'node:os';
 import { isSessionPeerPrompt } from './nonUserPrompt';
+import { planExitUndelivered } from './exitUndelivered';
 import { MAIN_AGENT_PROVENANCE_SYSTEM_PROMPT, mainAgentPromptText } from '@/assistant/turnOrigin';
 import { registerSystemCardRunner, systemCardPromptText } from '@/assistant/systemCardChoice';
 import { applyReconnectReplay, applyServerSnapshot, exitCursorStamp, mergeReconnectMetadata, withoutServerSnapshot, type ReconnectReplay } from '@/utils/reconnectSession';
@@ -484,7 +485,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     logger.debugLargeJson('[START] Happy process started', getEnvironmentInfo());
 
     // Create realtime session
-    const session = earlySession ?? api.sessionSyncClient(response, reconnectSeeded ? { initialSeq: response.seq } : undefined);
+    // B-940b: `redeliver` — what the previous wrapper held undelivered when it went offline.
+    const session = earlySession ?? api.sessionSyncClient(response, reconnectSeeded ? { initialSeq: response.seq, ...(reconnectReplay?.redeliver ? { redeliver: reconnectReplay.redeliver } : {}) } : undefined);
 
     // On reconnect, un-archive the session; with a server-seeded cursor the
     // history needs neither replay nor skip, otherwise skip it wholesale.
@@ -498,7 +500,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // definition, and the scan would tombstone the records being replayed.
         // B-679: after an offline exit only what the old wrapper saw (≤ its
         // cursor) can have been lost in its queue; above it is being replayed.
-        if (!wakingFromHibernation) void session.cancelUndeliveredQueuedInputs(reconnectReplay ? { maxSeq: reconnectReplay.seq } : undefined);
+        // B-940b: input the previous wrapper held undelivered is re-delivered, never tombstoned.
+        if (!wakingFromHibernation) void session.cancelUndeliveredQueuedInputs(reconnectReplay ? {
+            maxSeq: reconnectReplay.redeliver?.upToSeq ?? reconnectReplay.seq,
+            ...(reconnectReplay.redeliver ? { keep: reconnectReplay.redeliver.localIds } : {}),
+        } : undefined);
         // First write: server truth (handler arg) + this process's identity
         // (the local `metadata` object) + lifecycle back to running.
         session.updateMetadata((meta) => ({
@@ -1314,8 +1320,20 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 // B-679: an offline exit pins its cursor and routes nothing more
                 // (same tick: no record can slip between the two) — everything
                 // above it is the next wrapper's to replay, never both.
-                const exitCursor = intent === 'offline' ? exitCursorStamp(session.messageCursor, Date.now()) : undefined;
+                // B-940b: what this wrapper received but never handed to Claude
+                // Code (its queue; the launcher's parked / held / in-hand
+                // prompts) is not dropped with it. An offline exit lists it on
+                // the stamp so the next wrapper routes it again (same record,
+                // same sender — a session message stays non-user); whatever
+                // cannot ride there, and every other exit, gets a tombstone.
+                const exitDisposal = planExitUndelivered(intent, [...messageQueue.pendingSourceIds(), ...(currentSession?.undeliveredSourceIds() ?? [])], session);
+                const exitCursor = intent === 'offline' ? exitCursorStamp(session.messageCursor, Date.now(), exitDisposal.redeliver) : undefined;
                 if (exitCursor) session.freezeInbound();
+                if (exitDisposal.redeliver.length > 0) logger.debug(`[START] Exit: ${exitDisposal.redeliver.length} undelivered message(s) handed to the next wrapper via the exit cursor`);
+                if (exitDisposal.tombstone.length > 0) {
+                    logger.debug(`[START] Exit: ${exitDisposal.tombstone.length} undelivered message(s) marked not delivered (${exitDisposal.reason})`);
+                    session.sendQueueCancelReason(exitDisposal.tombstone, exitDisposal.reason);
+                }
 
                 // Cleanup session resources (intervals, callbacks)
                 currentSession?.cleanup();

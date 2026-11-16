@@ -790,8 +790,12 @@ export type Metadata = {
    * reconnect. `seq` = its message cursor — user input stored above it (sent
    * to the offline session) was never routed and is replayed on resume. Old
    * clients ignore it.
+   * B-940b: `redeliver` — messages at/below `seq` the wrapper had received
+   * but not yet handed to the agent when it exited (queued, parked, or a
+   * session message held behind Claude Code's own turn); the next wrapper
+   * routes exactly these again. Old clients ignore it (and lose them, as before).
    */
-  exitCursor?: { at: number; seq: number; v: 1 },
+  exitCursor?: { at: number; seq: number; v: 1; redeliver?: Array<{ seq: number; localId: string }> },
   /** B-587: user opted this session out of idle hibernation (web ⋯ menu). */
   keepAwake?: boolean,
   flavor?: string

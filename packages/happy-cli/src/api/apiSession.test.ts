@@ -1102,6 +1102,61 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(onUserMessage).toHaveBeenCalledTimes(2);
     });
 
+    it('B-940b resume: below the previous exit cursor only the messages it held undelivered are routed again — once, in seq order', async () => {
+        // Previous wrapper: cursor 45, held seq 42 (a session message behind
+        // Claude Code's own turn) and 44 (the owner's, still queued); 43 and 45
+        // were delivered. Resume seeds at 41 (just before the oldest held).
+        const client = new ApiSessionClient('fake-token', session, { initialSeq: 41, redeliver: { upToSeq: 45, localIds: ['peer-42', 'owner-44'] } });
+        const onUserMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+        const record = (seq: number, localId: string, text: string, meta?: Record<string, unknown>) => {
+            const update = createNewMessageUpdate(seq, encryptContent(session, { role: 'user', content: { type: 'text', text }, ...(meta ? { meta } : {}) }));
+            const body = update.body as Extract<Update['body'], { t: 'new-message' }>;
+            body.message.localId = localId;
+            return body.message;
+        };
+        mockAxiosGet.mockResolvedValueOnce({ data: { messages: [
+            record(42, 'peer-42', 'from A', { sentFrom: 'session-peer' }),
+            record(43, 'owner-43', 'already answered'),
+            record(44, 'owner-44', 'owner queued'),
+            record(45, 'owner-45', 'already answered too'),
+            record(46, 'owner-46', 'sent while offline'),
+        ], hasMore: false } });
+        await (client as any).fetchMessages();
+        expect(onUserMessage.mock.calls.map(([m]) => m.localKey)).toEqual(['peer-42', 'owner-44', 'owner-46']);
+        // The session message keeps its sender (B-940: still non-user downstream).
+        expect(onUserMessage.mock.calls[0][0].meta).toEqual({ sentFrom: 'session-peer' });
+        expect((client as any).lastSeq).toBe(46);
+        expect((client as any).redeliver).toBeNull();
+        // A later fetch echoing them does not route them again.
+        mockAxiosGet.mockResolvedValueOnce({ data: { messages: [record(42, 'peer-42', 'from A'), record(44, 'owner-44', 'owner queued')], hasMore: false } });
+        await (client as any).fetchMessages();
+        expect(onUserMessage).toHaveBeenCalledTimes(3);
+    });
+
+    it('B-940b exit: undelivered messages with a known seq are handed over (never tombstoned afterwards); the rest is returned for a tombstone', async () => {
+        const client = new ApiSessionClient('fake-token', session, { initialSeq: 40 });
+        client.onUserMessage(vi.fn());
+        const record = (seq: number, localId: string) => {
+            const update = createNewMessageUpdate(seq, encryptContent(session, { role: 'user', content: { type: 'text', text: localId } }));
+            const body = update.body as Extract<Update['body'], { t: 'new-message' }>;
+            body.message.localId = localId;
+            return body.message;
+        };
+        mockAxiosGet.mockResolvedValueOnce({ data: { messages: [record(41, 'a'), record(42, 'b')], hasMore: false } });
+        await (client as any).fetchMessages();
+        const sent = vi.spyOn(client as any, 'sendSessionProtocolMessage').mockImplementation(() => undefined);
+        expect(client.handOverUndelivered(['b', 'a', 'never-routed', 'a'])).toEqual({
+            redeliver: [{ seq: 41, localId: 'a' }, { seq: 42, localId: 'b' }],
+            unreplayable: ['never-routed'],
+        });
+        client.sendQueueCancelReason(['a', 'b'], 'aborted');
+        expect(sent).not.toHaveBeenCalled();
+        client.sendQueueCancelReason(['a', 'other'], 'aborted');
+        expect(sent).toHaveBeenCalledTimes(1);
+        expect(JSON.stringify(sent.mock.calls[0][0])).toContain('"targetLocalKeys":["other"]');
+    });
+
     it('invalidates receive sync for duplicate and stale seq values', async () => {
         const client = new ApiSessionClient('fake-token', session);
         (client as any).lastSeq = 5;
@@ -1794,7 +1849,10 @@ describe('B-332 queue-cancel tombstones from the CLI', () => {
             const end = block.indexOf('\n    }\n');
             // B-587 skips it for a hibernation wake; B-679 bounds it to the
             // previous wrapper's exit cursor when replaying above it.
-            expect(block.slice(0, end)).toContain('if (!wakingFromHibernation) void session.cancelUndeliveredQueuedInputs(reconnectReplay ? { maxSeq: reconnectReplay.seq } : undefined);');
+            // B-940b (runClaude): bounded by the OLD cursor and keeping the held messages it re-delivers.
+            expect(block.slice(0, end)).toContain(file.includes('runClaude')
+                ? 'if (!wakingFromHibernation) void session.cancelUndeliveredQueuedInputs(reconnectReplay ? {\n            maxSeq: reconnectReplay.redeliver?.upToSeq ?? reconnectReplay.seq,\n            ...(reconnectReplay.redeliver ? { keep: reconnectReplay.redeliver.localIds } : {}),\n        } : undefined);'
+                : 'if (!wakingFromHibernation) void session.cancelUndeliveredQueuedInputs(reconnectReplay ? { maxSeq: reconnectReplay.seq } : undefined);');
         }
     });
 });

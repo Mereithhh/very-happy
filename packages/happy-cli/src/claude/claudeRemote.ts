@@ -78,6 +78,13 @@ export async function claudeRemote(opts: {
         /** `localKey` (B-631) becomes the steer's transcript uuid when it is a real UUID. */
         /** B-940: `synthetic` — another session's message, pushed as non-user (nonUserPrompt.ts). */
         steer: (message: MessageParam['content'], mode: EnhancedMode, localKey?: string, synthetic?: boolean) => void;
+        /**
+         * B-940b: localIds of the messages this Query took from the launcher
+         * but has not pushed to Claude Code (a session message held behind
+         * Claude Code's own turn, a pull still in hand) — an exiting process
+         * hands them to the next wrapper.
+         */
+        undeliveredSourceIds: () => string[];
         /** B-482: Claude Code's own `/btw` — a `side_question` control request answered in-process from live messages. */
         sideQuestion: SideQuestionLiveAsk;
     }) => void,
@@ -91,7 +98,13 @@ export async function claudeRemote(opts: {
      * `enqueuedAt` (optional) only feeds the B-515 timing log. `uuid` (B-528)
      * becomes the prompt's transcript uuid so a web edit/delete can find it.
      */
-    nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode, enqueuedAt?: number, uuid?: string, /** B-940: another session's message (nonUserPrompt.ts). */ synthetic?: boolean } | null>,
+    nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode, enqueuedAt?: number, uuid?: string, /** B-940: another session's message (nonUserPrompt.ts). */ synthetic?: boolean, /** B-940b: the server localIds behind this prompt (opaque here). */ sourceIds?: string[] } | null>,
+    /**
+     * B-940b (QA-T P3): the owner has a message waiting that this Query can
+     * take now — it runs before a held session message, which waits for the
+     * next turn end instead.
+     */
+    ownerWaiting?: () => boolean,
     onReady: (result?: SDKResultMessage) => void,
     isAborted: (toolCallId: string) => boolean,
 
@@ -127,7 +140,7 @@ export async function claudeRemote(opts: {
      * Code; the launcher owns it again and must run it in the next launch or
      * tombstone it — never drop it.
      */
-    onUndeliveredMessage?: (message: { message: MessageParam['content'], mode: EnhancedMode, enqueuedAt?: number, uuid?: string, synthetic?: boolean }) => void,
+    onUndeliveredMessage?: (message: { message: MessageParam['content'], mode: EnhancedMode, enqueuedAt?: number, uuid?: string, synthetic?: boolean, sourceIds?: string[] }) => void,
     /** B-634 ③: session-scoped retired model ids; a message asking for one runs on the default. */
     retiredModels?: RetiredModels,
     /** B-883b: the provider refused a `[1m]` request — remember it, and retry once on the plain id when following latest. */
@@ -531,6 +544,12 @@ export async function claudeRemote(opts: {
     // Expose query control methods to permission handler. B-515: a warm Query
     // only gets here once adopted — /btw and runtime controls never bind to a
     // process that has no transcript.
+    // B-940 / B-940b: see pullNextMessage. Declared before onQueryReady hands out `undeliveredSourceIds`.
+    type Pulled = NonNullable<Awaited<ReturnType<typeof opts.nextMessage>>>;
+    const heldNonUser: Pulled[] = [];
+    // B-940b: a pulled message not yet pushed (setModel in flight) — still undelivered.
+    let pulledInHand: Pulled | null = null;
+    const sourceIdsOf = (pulled: Pulled): string[] => pulled.sourceIds ?? (pulled.uuid ? [pulled.uuid] : []);
     if (opts.onQueryReady) {
         opts.onQueryReady({
             canControl: () => callbackDepth === 0,
@@ -581,6 +600,10 @@ export async function claudeRemote(opts: {
                 const body = raw?.response;
                 return (body && typeof body === 'object' ? body : { response: null }) as SideQuestionLiveResponse;
             },
+            undeliveredSourceIds: () => [
+                ...(pulledInHand ? sourceIdsOf(pulledInHand) : []),
+                ...heldNonUser.flatMap(sourceIdsOf),
+            ],
             steer: (message, nextMode, localKey, synthetic) => {
                 // Steer injects into the CURRENT turn, and a model cannot change
                 // mid-turn — keep the one that is actually running so the next
@@ -658,8 +681,9 @@ export async function claudeRemote(opts: {
     // of its own (a background task's notification turn, a steer that became
     // a turn) — the wrapper's pull was parked, so pushing it now would join
     // that turn as a queued command. It waits for that turn's end, where the
-    // next pull hands it over first.
-    let heldNonUser: NonNullable<Awaited<ReturnType<typeof opts.nextMessage>>> | null = null;
+    // next pull hands it over first — unless the owner has a message waiting
+    // (B-940b, QA-T P3): the owner's runs first, the held one at the next end.
+    // (heldNonUser / pulledInHand are declared above onQueryReady.)
     const pullNextMessage = () => {
         if (pullingNext) {
             logger.debug('[claudeRemote] Already waiting for the next message');
@@ -670,8 +694,9 @@ export async function claudeRemote(opts: {
             return;
         }
         pullingNext = true;
-        const held = heldNonUser;
-        heldNonUser = null;
+        const ownerFirst = heldNonUser.length > 0 && opts.ownerWaiting?.() === true;
+        if (ownerFirst) logger.debug(`[claudeRemote] Owner message runs before ${heldNonUser.length} held session-peer message(s)`);
+        const held = ownerFirst ? undefined : heldNonUser.shift();
         (held ? Promise.resolve(held) : opts.nextMessage()).then(async (pulled) => {
             let next = withoutRetiredModel(pulled);
             if (!next) {
@@ -679,8 +704,10 @@ export async function claudeRemote(opts: {
                 messages.end();
                 return;
             }
+            pulledInHand = next;
             const handBack = (message: NonNullable<typeof next>) => {
                 pullingNext = false;
+                pulledInHand = null;
                 logger.debug('[claudeRemote] Query input closed before the pulled message was sent; handing it back to the launcher');
                 if (opts.onUndeliveredMessage) opts.onUndeliveredMessage(message);
                 else logger.warn('[claudeRemote] Pulled message could not be delivered and no owner took it back');
@@ -691,7 +718,10 @@ export async function claudeRemote(opts: {
             }
             if (shouldHoldNonUser({ synthetic: next.synthetic, turnOpen: turn.isOpen })) {
                 logger.debug('[claudeRemote] Session-peer message held until the running turn ends');
-                heldNonUser = next;
+                // A re-held message keeps its place at the front.
+                if (held) heldNonUser.unshift(next);
+                else heldNonUser.push(next);
+                pulledInHand = null;
                 pullingNext = false;
                 return;
             }
@@ -740,6 +770,7 @@ export async function claudeRemote(opts: {
             if (uuid.uuid) commandTracker.track(uuid.uuid, { message: next.message, mode: next.mode });
             timingMarks = { pushedAt: next.enqueuedAt ?? Date.now() };
             pullingNext = false;
+            pulledInHand = null;
             messages.push({
                 type: 'user',
                 parent_tool_use_id: null,
@@ -1080,9 +1111,7 @@ export async function claudeRemote(opts: {
         updateThinking(false);
         queryClosed = true;
         // B-940: a held session-peer message never reached this Query: the launcher runs it next.
-        if (heldNonUser) {
-            const held = heldNonUser;
-            heldNonUser = null;
+        for (const held of heldNonUser.splice(0)) {
             if (opts.onUndeliveredMessage) opts.onUndeliveredMessage(held);
             else logger.warn('[claudeRemote] Held session-peer message could not be delivered and no owner took it back');
         }
