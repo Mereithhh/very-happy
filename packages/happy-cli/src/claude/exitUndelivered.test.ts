@@ -58,7 +58,12 @@ describe('B-940b exit wiring (source assertions; mutation-checked, see PR)', () 
     it('the launcher reports the live Query\'s held / in-hand prompts and the parked one', () => {
         expect(launcher).toContain('session.setUndeliveredProbe(() => [...(liveUndelivered?.() ?? []), ...parkedSourceIds()]);');
         expect(launcher).toContain('liveUndelivered = q.undeliveredSourceIds;');
-        expect(launcher).toMatch(/uuid: promptUuidFor\(msg\.sourceIds\),\s*sourceIds: msg\.sourceIds,\s*\.\.\.\(msg\.nonUser/);
+        // both queue hand-outs (with and without attachments) carry the localIds into the Query
+        expect(launcher.match(/enqueuedAt: msg\.enqueuedAt,\s*uuid: promptUuidFor\(msg\.sourceIds\),\s*sourceIds: msg\.sourceIds,/g)).toHaveLength(2);
+    });
+
+    it('(QA-T P3) an owner message the live Query can take now goes before a held session message — never one that needs a relaunch or with a parked one', () => {
+        expect(launcher).toContain('if (modeGate.hasParked) return false;\n                        const head = session.queue.ownerHead();\n                        return head !== null && !modeGate.requiresRelaunch(head.modeHash, head.isolate);');
     });
 
     it('the misleading "replaying it in the next launch" log is gone', () => {

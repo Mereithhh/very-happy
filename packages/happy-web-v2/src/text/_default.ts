@@ -3422,6 +3422,12 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov17d: {
+                title: 'Messages waiting in a session are no longer lost when it stops',
+                summary: 'A message a Claude session had received but not started yet — yours, or one from another session that was waiting for the current step to finish — was dropped if the session was stopped, restarted or upgraded at that moment, while it still looked delivered. Now it is delivered when the session comes back; if it cannot be, it is marked as not delivered.',
+                order: 'Your messages no longer wait behind messages from other sessions: anything you send goes ahead of them.',
+                scope: 'Applies to Claude sessions. A message from another session still arrives marked as not from you, and nothing is delivered twice.',
+            },
             nov17c: {
                 title: 'A message from another session no longer reads as yours',
                 summary: 'When another session messaged a Claude session while it was busy, Claude received it framed as "The user sent a new message", and took the other session\'s request for yours. Now it is always marked as coming from another session, not from you.',
