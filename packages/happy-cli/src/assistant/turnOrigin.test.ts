@@ -155,7 +155,7 @@ describe('B-924 (from #944 e2e) the owner switching model mid-conversation is st
         // restored before the replay is finalized (finalize emits turn-started with batchSourceIds)
         expect(replay.indexOf('batchSourceIds = parked.sourceIds;')).toBeLessThan(replay.indexOf('await finalize(parked.message)'))
         const park = src.slice(src.indexOf("logger.debug('[remote]: mode has changed, pending message');"), src.indexOf('modeGate.adopt(msg.mode);'))
-        expect(park).toMatch(/modeGate\.park\(\{[\s\S]*uuid: promptUuidFor\(msg\.sourceIds\),\s*sourceIds: msg\.sourceIds,\s*\}\);/)
+        expect(park).toMatch(/modeGate\.park\(\{[\s\S]*uuid: promptUuidFor\(msg\.sourceIds\),\s*sourceIds: msg\.sourceIds,\s*(?:\.\.\.\(msg\.nonUser \? \{ synthetic: true \} : \{\}\),\s*)?\}\);/)
         expect(src).toContain("onTurnStart: (ids) => session.client.emit('turn-started', ids),\n                                sourceIds: batchSourceIds,")
     })
 })
