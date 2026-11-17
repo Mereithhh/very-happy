@@ -141,6 +141,8 @@ export async function claudeRemote(opts: {
      * tombstone it — never drop it.
      */
     onUndeliveredMessage?: (message: { message: MessageParam['content'], mode: EnhancedMode, enqueuedAt?: number, uuid?: string, synthetic?: boolean, sourceIds?: string[] }) => void,
+    /** B-939c: these prompts' localIds were just pushed to Claude Code (initial, next, steer) — the point B-940b counts as handed. */
+    onPromptPushed?: (sourceIds: string[]) => void,
     /** B-634 ③: session-scoped retired model ids; a message asking for one runs on the default. */
     retiredModels?: RetiredModels,
     /** B-883b: the provider refused a `[1m]` request — remember it, and retry once on the plain id when following latest. */
@@ -498,6 +500,7 @@ export async function claudeRemote(opts: {
         },
     };
 
+    const pushedInitial = () => opts.onPromptPushed?.(initial.sourceIds ?? (initial.uuid ? [initial.uuid] : []));
     let messages: PushableAsyncIterable<SDKUserMessage>;
     let response: Query;
     let models: ClaudeSdkMetadata['models'];
@@ -507,7 +510,7 @@ export async function claudeRemote(opts: {
         models = adopted.models;
         // The process is already past its handshake: measure from the push.
         timingMarks.handshakeAt = Date.now();
-        messages.push(initialUserMessage);
+        messages.push(initialUserMessage); pushedInitial();
     } else {
         // Push initial message
         messages = new PushableAsyncIterable<SDKUserMessage>();
@@ -516,7 +519,7 @@ export async function claudeRemote(opts: {
         // Sonnet, previous turn Haiku → the relaunched turn ran Haiku). Put it
         // on the settings model BEFORE the first prompt can start a turn.
         const resumeOnConfigModel = !!startFrom && modelTarget(initial.mode.model) === undefined;
-        if (!resumeOnConfigModel) messages.push(initialUserMessage);
+        if (!resumeOnConfigModel) messages.push(initialUserMessage); pushedInitial();
         timingMarks.spawnAt = Date.now();
         opts.onStartArgsUsed?.();
         response = query({
@@ -535,7 +538,7 @@ export async function claudeRemote(opts: {
                     .then(() => logger.debug(`[claudeRemote] Resumed on the settings model ${target}`))
                     .catch((e) => logger.debug(`[claudeRemote] setModel(settings model) on resume failed: ${e instanceof Error ? e.message : String(e)}`));
             }
-            messages.push(initialUserMessage);
+            messages.push(initialUserMessage); pushedInitial();
         }
         timingMarks.handshakeAt = Date.now();
     }
@@ -622,6 +625,7 @@ export async function claudeRemote(opts: {
                     ...uuid,
                     message: { role: 'user', content: message },
                 });
+                if (localKey) opts.onPromptPushed?.([localKey]);
             },
         });
     }
@@ -778,6 +782,7 @@ export async function claudeRemote(opts: {
                 ...uuid,
                 message: { role: 'user', content: next.message },
             });
+            opts.onPromptPushed?.(sourceIdsOf(next));
         }).catch(() => {
             pullingNext = false;
             messages.end();

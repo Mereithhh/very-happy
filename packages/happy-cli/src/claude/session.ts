@@ -134,8 +134,10 @@ export class Session {
             sessionId: () => this.client.sessionId,
             metadata: () => (this.client.getMetadata?.() ?? null) as Record<string, any> | null,
             agent: 'claude',
-            // B-939c: a message stored while this session was offline arrives like a live session message.
-            postToSelf: (text, localId) => this.client.postSessionPeerToSelf(text, localId),
+            // B-939c: a message stored while this session was offline arrives like a live session message,
+            // counted as delivered once the launcher pushed it to Claude Code (claudeRemote onPromptPushed).
+            dispatchToSelf: (text, localKey) => this.client.routeLocalSessionPeer(text, localKey),
+            handedOn: 'pushed',
         });
     }
 

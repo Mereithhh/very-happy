@@ -3425,7 +3425,7 @@ export const en = {
             nov18a: {
                 title: 'A message sent to a stopped session in your project now reaches it',
                 summary: 'When one session messaged another in the same project while that one was stopped or asleep, the message was stored but — in a project that keeps sessions separate, the default — never shown to it, though the sender was told it would be read. Now the session gets it when its next turn starts.',
-                how: 'It arrives the same way as a message sent while the session is running: on its own, marked as coming from another session, not from you, and only once. Shared projects get it this way too, instead of as a line in front of your next message.',
+                how: 'It arrives the same way as a message sent while the session is running: on its own, marked as coming from another session, not from you, and only once. Shared projects get it this way too, instead of as a line in front of your next message. It is not added to the chat as a message from you; Gemini sessions still get it as a line in front of your next message.',
                 sender: 'Keeping sessions separate still hides other sessions and their notes; it does not block a message sent straight to a session. Sending does not wake a stopped session: it arrives the next time you use it.',
             },
             nov17d: {

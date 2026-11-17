@@ -518,17 +518,15 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
-     * B-939c: post a session message into THIS session the way another session's
-     * online delivery does (`meta.sentFrom === 'session-peer'`, deliverToSession):
-     * a project message stored while this session was offline then reaches the
-     * agent exactly like a live one — the same envelope, NON-USER on Claude
-     * (B-940), a session-message card in the Web. Not our outbox, so the
-     * server's echo is routed to us like any inbound message; `localId` is
-     * stable per stored message, so a repeat post is one message.
+     * B-939c: hand a project message another session stored for this one while
+     * it was offline to this wrapper as a session message — the envelope and
+     * `meta.sentFrom === 'session-peer'` of live delivery, so it takes the same
+     * path (NON-USER on Claude, B-940). Local only: nothing is written to the
+     * session on the server, so the Web shows no new bubble in the owner's name;
+     * the stored message stays unread there until the agent got it.
      */
-    async postSessionPeerToSelf(text: string, localId: string): Promise<void> {
-        const content = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, { role: 'user', content: { type: 'text', text }, meta: { sentFrom: SESSION_PEER_SENT_FROM } }));
-        await axios.post(`${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`, { messages: [{ content, localId }] }, { headers: this.authHeaders(), timeout: 30_000 });
+    routeLocalSessionPeer(text: string, localKey: string): void {
+        this.routeIncomingMessage({ role: 'user', content: { type: 'text', text }, localKey, meta: { sentFrom: SESSION_PEER_SENT_FROM } }, null);
     }
 
     onUserMessage(callback: (data: UserMessage) => void) {

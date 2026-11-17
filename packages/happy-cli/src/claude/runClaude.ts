@@ -1,6 +1,7 @@
 import os from 'node:os';
 import { isSessionPeerPrompt } from './nonUserPrompt';
 import { planExitUndelivered } from './exitUndelivered';
+import { isStoredMessageLocalId } from '@/projects/injector';
 import { MAIN_AGENT_PROVENANCE_SYSTEM_PROMPT, mainAgentPromptText } from '@/assistant/turnOrigin';
 import { registerSystemCardRunner, systemCardPromptText } from '@/assistant/systemCardChoice';
 import { applyReconnectReplay, applyServerSnapshot, exitCursorStamp, mergeReconnectMetadata, withoutServerSnapshot, type ReconnectReplay } from '@/utils/reconnectSession';
@@ -1326,7 +1327,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 // the stamp so the next wrapper routes it again (same record,
                 // same sender — a session message stays non-user); whatever
                 // cannot ride there, and every other exit, gets a tombstone.
-                const exitDisposal = planExitUndelivered(intent, [...messageQueue.pendingSourceIds(), ...(currentSession?.undeliveredSourceIds() ?? [])], session);
+                // B-939c: a stored project message routed here has no server record — not handed on or tombstoned; it stays unread
+                // on the server and the next wrapper routes it again.
+                const exitDisposal = planExitUndelivered(intent, [...messageQueue.pendingSourceIds(), ...(currentSession?.undeliveredSourceIds() ?? [])].filter((id) => !isStoredMessageLocalId(id)), session);
                 const exitCursor = intent === 'offline' ? exitCursorStamp(session.messageCursor, Date.now(), exitDisposal.redeliver) : undefined;
                 if (exitCursor) session.freezeInbound();
                 // B-940c: only for the launcher's log line on a message handed back after this.

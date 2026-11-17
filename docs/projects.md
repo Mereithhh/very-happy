@@ -226,7 +226,9 @@ A `session_message` (or `very-happy sessions message`) to a project session
 that is not running is stored instead of failing. When that session's next turn
 starts (sending does not wake it), the message reaches it the way a live one
 does — as a session message from that session, not from you — in an isolated or
-a shared project alike, once. Automation sessions get a quiet variant: the instructions, but no
+a shared project alike, once (Gemini sessions: a line in front of your next
+message). It is handed to the agent only; the chat gains no message in your
+name, and it counts as read once the agent got it. Automation sessions get a quiet variant: the instructions, but no
 prompting to message others or write notes. Team members coordinate through
 their lead.
 

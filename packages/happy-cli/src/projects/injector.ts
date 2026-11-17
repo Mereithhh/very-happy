@@ -38,17 +38,28 @@ export type ProjectInjectorDeps = {
     teamLanguageBackfill?: Pick<TeamLanguageBackfill, 'decorate'> | null;
     /**
      * B-939c: hand a message another session stored for this one while it was
-     * offline to the agent the way a live session message arrives
-     * (ApiSessionClient.postSessionPeerToSelf). Absent = the old text line in
-     * front of the user's message.
+     * offline to the agent the way a live session message arrives — local
+     * routing, no server write (ApiSessionClient.routeLocalSessionPeer). Absent
+     * (Gemini) = the old text line in front of the user's message.
      */
-    postToSelf?: ((text: string, localId: string) => Promise<void>) | null;
+    dispatchToSelf?: ((text: string, localKey: string) => void) | null;
+    /**
+     * B-939c: when a dispatched message counts as handed to the agent. `decorate`
+     * (default): the turn carrying it is being sent (Codex, pi — sent right
+     * after decorate). `pushed`: only on `handed(localKeys)` — Claude, where a
+     * session message can still be held behind Claude Code's own turn after
+     * its prompt was finalized; the launcher calls it when it pushes it.
+     */
+    handedOn?: 'decorate' | 'pushed';
 };
 
 type StoredMessage = ProjectSessionContext['unread'][number];
 
-/** B-939c: the stable localId of a stored project message re-posted into its recipient (one message however often it is posted). */
-export const storedMessageLocalId = (id: string) => `project-msg-${id}`;
+const STORED_PREFIX = 'project-msg-';
+/** B-939c: the localKey of a stored project message routed into its recipient — not a server record. */
+export const storedMessageLocalId = (id: string) => `${STORED_PREFIX}${id}`;
+/** B-939c: such a key has no server record to replay or tombstone; the stored message itself stays unread until handed. */
+export const isStoredMessageLocalId = (localId: string) => localId.startsWith(STORED_PREFIX);
 
 export type ProjectInjectorState = {
     projectId: string | null;
@@ -67,8 +78,10 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
     let lastPresenceAt = 0;
     let lastPresenceVersion: number | null = null;
     const label = (id: string) => titles.get(id) ?? id.slice(0, 8);
-    /** B-939c: stored messages posted into this session whose delivered ack is not confirmed yet. */
-    const posting = new Set<string>();
+    /** B-939c: stored messages routed to the agent and not yet handed to it (localKey → message id, envelope header). */
+    const dispatched = new Map<string, { id: string; header: string }>();
+    /** B-939c: handed and acked (or the ack is in flight) — never routed again by this process. */
+    const handedIds = new Set<string>();
     const issueDigest = deps.issueDigest === undefined ? createIssueDigest({ sessionId: deps.sessionId, metadata: () => deps.metadata?.() ?? null, timeoutMs }) : deps.issueDigest;
     const teamExitNotice = deps.teamExitNotice === undefined ? createTeamExitNotice({ sessionId: deps.sessionId }) : deps.teamExitNotice;
     const teamLanguageBackfill = deps.teamLanguageBackfill === undefined ? createTeamLanguageBackfill({ sessionId: deps.sessionId }) : deps.teamLanguageBackfill;
@@ -104,24 +117,38 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
     /**
      * B-939c: messages other sessions stored for this one go to the agent as
      * session messages of their own (live delivery's envelope and channel —
-     * NON-USER on Claude), after the turn being decorated; isolated or shared
-     * alike. Marked delivered once posted; a failed post is retried next turn.
-     * Returns the messages left for the text line (no `postToSelf`).
+     * NON-USER on Claude), queued behind the turn being decorated; isolated or
+     * shared alike. Marked delivered only once handed to the agent: a process
+     * that stops first leaves them unread, and the next one routes them again.
+     * Returns the messages left for the text line (no channel).
      */
     function deliverStored(sid: string, messages: StoredMessage[]): StoredMessage[] {
-        const post = deps.postToSelf;
-        if (!post) return messages;
+        const dispatch = deps.dispatchToSelf;
+        if (!dispatch) return messages;
+        const inFlight = new Set([...dispatched.values()].map(d => d.id));
         for (const m of messages) {
-            if (posting.has(m.id)) continue;
-            if (m.body === null) { markDelivered(sid, [m.id]); continue; }
-            posting.add(m.id);
+            if (inFlight.has(m.id) || handedIds.has(m.id)) continue;
+            if (m.body === null) { handedIds.add(m.id); markDelivered(sid, [m.id]); continue; }
             const text = formatSessionPeerMessage({ id: m.id.slice(0, 8), from: { sessionId: m.fromSessionId, ...(titles.get(m.fromSessionId) ? { title: titles.get(m.fromSessionId) } : {}) }, body: m.body });
-            void post(text, storedMessageLocalId(m.id)).then(
-                () => markDelivered(sid, [m.id]),
-                (error) => { posting.delete(m.id); logger.debug(`[projects] stored message ${m.id} not posted, retried next turn: ${String(error)}`); },
-            );
+            const localKey = storedMessageLocalId(m.id);
+            dispatched.set(localKey, { id: m.id, header: text.slice(0, text.indexOf('\n')) });
+            try { dispatch(text, localKey); }
+            catch (error) { dispatched.delete(localKey); logger.debug(`[projects] stored message ${m.id} not routed, tried again next turn: ${String(error)}`); }
         }
         return [];
+    }
+
+    function handed(localKeys: readonly string[]) {
+        const sid = deps.sessionId();
+        const ids: string[] = [];
+        for (const key of localKeys) {
+            const d = dispatched.get(key);
+            if (!d) continue;
+            dispatched.delete(key);
+            handedIds.add(d.id);
+            ids.push(d.id);
+        }
+        if (sid && ids.length) markDelivered(sid, ids);
     }
 
     async function firstTurn(sid: string, message: string): Promise<string> {
@@ -167,10 +194,15 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
 
     return {
         state: () => ({ ...state }),
+        /** B-939c: these prompts reached the agent (Claude: pushed to Claude Code) — mark their stored messages delivered. */
+        handed,
         /** A fresh agent with no memory of earlier turns (ACP backend restart, new Claude conversation) needs P again. */
         reset() { state.prefixSent = false; state.cursor = 0; },
         async decorate<T>(message: T): Promise<T> {
             if (typeof message !== 'string') return message;
+            if ((deps.handedOn ?? 'decorate') === 'decorate' && dispatched.size) {
+                handed([...dispatched].filter(([, d]) => message.includes(d.header)).map(([key]) => key));
+            }
             // The team-exit note goes first: it changes how the model reads everything after it.
             const withIssue = async (text: string) => {
                 const digested = issueDigest ? await issueDigest.decorate(text) : text;
