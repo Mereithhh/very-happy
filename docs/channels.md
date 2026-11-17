@@ -590,6 +590,17 @@ coordinate directly — no lock, no permission change.
   pi: never steered into a running turn; it is the next turn, on its own. The
   owner's messages (Web, a main agent passing the owner's words on) are
   unchanged.
+- **Not lost when the session stops (B-940b).** A message the Claude
+  wrapper has received but not yet handed to Claude Code — still queued,
+  waiting for Claude Code's own turn to end, or parked for the next launch —
+  survives the wrapper's exit. An offline exit (`sessions stop`, a daemon
+  restart or upgrade, shutdown) lists it on the exit cursor
+  (`exitCursor.redeliver`) and the resumed wrapper routes exactly those
+  records once more, as their original sender (a session message stays
+  non-user). A crash or archive, or one the stamp cannot carry, gets a
+  `queue-cancel` tombstone, so the Web shows it as not delivered instead of
+  delivered. The owner's messages go ahead of queued session messages; a
+  session message waits behind them.
 - **Reply-loop guard.** Inside a session, `session_message` refuses the 9th
   message to the same target within 10 minutes with an error that tells the
   agent to stop replying (the footer already says not to reply just to

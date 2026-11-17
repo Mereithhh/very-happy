@@ -85,6 +85,11 @@ export class LaunchModeGate<M, P extends { mode: M } = { mode: M }> {
         this.parked = message;
     }
 
+    /** B-940b: the parked message, without taking it (an exiting process lists what it never ran). */
+    get parkedMessage(): P | null {
+        return this.parked;
+    }
+
     /** Whether a parked message is waiting for the next launch. */
     get hasParked(): boolean {
         return this.parked !== null;

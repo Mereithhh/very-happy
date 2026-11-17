@@ -20,6 +20,7 @@ import { registerCommonHandlers } from '../modules/common/registerCommonHandlers
 import { calculateCost } from '@/utils/pricing';
 import { shouldReconnect } from '@/utils/lidState';
 import { createReconnectGate } from './reconnectGate';
+import { EXIT_REDELIVER_LIMIT, type ExitRedelivery, type ReplayRedelivery } from '@/utils/reconnectSession';
 import { RelayAssignmentResponseSchema, type SessionEnvelope, type SessionStreamFrame, type SessionTurnEndStatus } from '@slopus/happy-wire';
 import {
     closeClaudeTurnWithStatus,
@@ -190,14 +191,27 @@ export class ApiSessionClient extends EventEmitter {
     private awaitingInitialFetch = false;
     /** B-509: server-side prompt queue drain, attached by the runner. */
     private promptQueueDrain: PromptQueueDrain | null = null;
+    /**
+     * B-940b: a resume below the previous exit cursor — at/below `upToSeq`
+     * only these localIds (held undelivered by the previous wrapper) are
+     * routed; the rest was handled there. Cleared once the cursor passes it.
+     */
+    private redeliver: { upToSeq: number; localIds: Set<string> } | null = null;
+    /** B-940b: seq of each routed user message (bounded), for the exit stamp's `redeliver`. */
+    private readonly routedSeqByLocalId = new Map<string, number>();
+    /** B-940b: localIds an exiting wrapper handed to the next one — never tombstoned on the way out. */
+    private readonly handedToNextWrapper = new Set<string>();
 
-    constructor(token: string, session: Session, opts?: { initialSeq?: number }) {
+    constructor(token: string, session: Session, opts?: { initialSeq?: number; redeliver?: ReplayRedelivery }) {
         super()
         this.token = token;
         this.sessionId = session.id;
         if (opts?.initialSeq !== undefined && opts.initialSeq >= 0) {
             this.lastSeq = opts.initialSeq;
             this.awaitingInitialFetch = true;
+            if (opts.redeliver && opts.redeliver.localIds.length > 0 && opts.redeliver.upToSeq > opts.initialSeq) {
+                this.redeliver = { upToSeq: opts.redeliver.upToSeq, localIds: new Set(opts.redeliver.localIds) };
+            }
         }
         this.metadata = session.metadata;
         this.metadataVersion = session.metadataVersion;
@@ -338,9 +352,14 @@ export class ApiSessionClient extends EventEmitter {
                     if (relayAccepted) {
                         logger.debug(`[API] Routing relay-accepted message ${localId} from the central echo (own persist still pending or failed)`);
                     }
+                    if (this.skipsRedelivered(messageSeq, localId)) {
+                        this.lastSeq = messageSeq;
+                        this.advanceCursorThroughHandled();
+                        return;
+                    }
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.message.content.c));
                     logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
-                    this.routeIncomingMessage(body, localId);
+                    this.routeIncomingMessage(body, localId, messageSeq);
                     if (localId) this.rememberRoutedInbound(localId);
                     this.lastSeq = messageSeq;
                     this.advanceCursorThroughHandled();
@@ -651,14 +670,14 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
-    private routeIncomingMessage(message: unknown, sourceLocalId?: string | null) {
+    private routeIncomingMessage(message: unknown, sourceLocalId?: string | null, seq?: number) {
         // B-587: a hibernating wrapper routes nothing more — whatever arrives
         // now has a seq above the stamp and is replayed by the next wrapper.
         if (this.inboundFrozen) {
             // Held, not dropped: an aborted hibernation routes it after all;
             // a committed one leaves it to the next wrapper's replay (seq).
             logger.debug(`[API] Hibernating: holding inbound ${sourceLocalId ?? '(no localId)'}`);
-            this.frozenInbound.push({ message, sourceLocalId });
+            this.frozenInbound.push({ message, sourceLocalId, seq });
             // Still "moved": a commit that has not passed its last check aborts.
             this.inboundRoutedDuringCommit = true;
             return;
@@ -672,6 +691,10 @@ export class ApiSessionClient extends EventEmitter {
         const userResult = UserMessageSchema.safeParse(messageWithSource);
         if (userResult.success) {
             this.routedLocalIds.set(userResult.data, sourceLocalId ?? null);
+            if (sourceLocalId && typeof seq === 'number') {
+                this.routedSeqByLocalId.set(sourceLocalId, seq);
+                if (this.routedSeqByLocalId.size > 2_000) this.routedSeqByLocalId.delete(this.routedSeqByLocalId.keys().next().value!);
+            }
             // B-766 tap (owner briefing board): the server localId of every routed user message.
             try { this.emit('user-message-routed', { localId: sourceLocalId ?? null, message: userResult.data }); }
             catch (error) { logger.debug('[API] user-message-routed listener failed:', error); }
@@ -758,10 +781,12 @@ export class ApiSessionClient extends EventEmitter {
                 if (message.content?.t !== 'encrypted') {
                     continue;
                 }
+                // B-940b: below the previous exit cursor only its held messages are routed again.
+                if (this.skipsRedelivered(message.seq, message.localId)) continue;
 
                 try {
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(message.content.c));
-                    this.routeIncomingMessage(body, message.localId);
+                    this.routeIncomingMessage(body, message.localId, message.seq);
                     if (message.localId) this.rememberRoutedInbound(message.localId);
                 } catch (error) {
                     logger.debug('[API] Failed to decrypt fetched message', {
@@ -787,6 +812,24 @@ export class ApiSessionClient extends EventEmitter {
             }
         }
         this.awaitingInitialFetch = false;
+        if (this.redeliver && this.lastSeq >= this.redeliver.upToSeq) {
+            if (this.redeliver.localIds.size > 0) logger.debug(`[API] Exit redelivery: ${this.redeliver.localIds.size} held message(s) not found below seq ${this.redeliver.upToSeq}`);
+            this.redeliver = null;
+        }
+    }
+
+    /**
+     * B-940b: a record at/below the previous wrapper's exit cursor is routed
+     * again only when that wrapper listed it as held undelivered.
+     */
+    private skipsRedelivered(seq: number, localId: string | null | undefined): boolean {
+        const redeliver = this.redeliver;
+        if (!redeliver || seq > redeliver.upToSeq) return false;
+        if (localId && redeliver.localIds.delete(localId)) {
+            logger.debug(`[API] Re-delivering ${localId} (seq ${seq}): the previous wrapper exited before handing it to the agent`);
+            return false;
+        }
+        return true;
     }
 
     private async flushOutbox() {
@@ -1034,7 +1077,7 @@ export class ApiSessionClient extends EventEmitter {
                         }
                         this.noteHandledSeqs([seq]);
                         const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(item.content));
-                        this.routeIncomingMessage(body, item.localId);
+                        this.routeIncomingMessage(body, item.localId, seq);
                         this.rememberRoutedInbound(item.localId);
                     }
                     if (deferred > 0) {
@@ -1098,6 +1141,8 @@ export class ApiSessionClient extends EventEmitter {
 
     /** B-332: emit a queue-cancel tombstone, mirroring the web's own signal. */
     sendQueueCancelReason(localKeys: string[], reason: QueueDiscardReason): void {
+        // B-940b: a message handed to the next wrapper is replayed there, not lost.
+        if (this.handedToNextWrapper.size > 0) localKeys = localKeys.filter((key) => !this.handedToNextWrapper.has(key));
         if (localKeys.length === 0) return;
         const envelope = createEnvelope('user', { t: 'queue-cancel', targetLocalKeys: localKeys, reason });
         this.sendSessionProtocolMessage(envelope);
@@ -1116,10 +1161,11 @@ export class ApiSessionClient extends EventEmitter {
      * session down. Needs no socket; POSTs through the same session-message
      * channel so the web receives it identically to a cancel-button tombstone.
      */
-    async cancelUndeliveredQueuedInputs(opts?: { maxSeq?: number }): Promise<void> {
+    async cancelUndeliveredQueuedInputs(opts?: { maxSeq?: number; keep?: readonly string[] }): Promise<void> {
         const MAX_SCAN_PAGES = 10; // bounded; a healthy tail is ≪ 1000 records.
         // Dedup: tombstones we emit this run and ones the web already made.
-        const canceled = new Set<string>();
+        // B-940b: `keep` — held messages this wrapper re-delivers (never tombstoned).
+        const canceled = new Set<string>(opts?.keep ?? []);
         const undelivered: string[] = [];
         let beforeSeq = 2_147_483_647; // same sentinel the web uses for "start at end"
         let reachedBoundary = false;
@@ -1331,7 +1377,7 @@ export class ApiSessionClient extends EventEmitter {
     /** Last user/agent activity this wrapper saw (spec §2.1). */
     private lastActivity = Date.now();
     private inboundFrozen = false;
-    private frozenInbound: Array<{ message: unknown; sourceLocalId?: string | null }> = [];
+    private frozenInbound: Array<{ message: unknown; sourceLocalId?: string | null; seq?: number }> = [];
     private heartbeatsMuted = false;
     private lastHeartbeat = 0;
 
@@ -1354,6 +1400,25 @@ export class ApiSessionClient extends EventEmitter {
 
     get lastActivityAt(): number {
         return this.lastActivity;
+    }
+
+    /**
+     * B-940b: an exiting wrapper's undelivered messages, by localId → the
+     * stamp entries (those with a known seq at/below the cursor). The rest
+     * cannot be replayed and is returned for a tombstone. From here on a
+     * tombstone never targets a handed-over message (the next wrapper runs it).
+     */
+    handOverUndelivered(localIds: readonly string[]): { redeliver: ExitRedelivery[]; unreplayable: string[] } {
+        const redeliver: ExitRedelivery[] = [];
+        const unreplayable: string[] = [];
+        for (const localId of new Set(localIds)) {
+            const seq = this.routedSeqByLocalId.get(localId);
+            if (typeof seq === 'number' && seq <= this.lastSeq && redeliver.length < EXIT_REDELIVER_LIMIT) redeliver.push({ seq, localId });
+            else unreplayable.push(localId);
+        }
+        redeliver.sort((a, b) => a.seq - b.seq);
+        for (const item of redeliver) this.handedToNextWrapper.add(item.localId);
+        return { redeliver, unreplayable };
     }
 
     /** The message cursor (highest seq this wrapper has seen). */
@@ -1381,7 +1446,7 @@ export class ApiSessionClient extends EventEmitter {
         this.inboundFrozen = false;
         const held = this.frozenInbound;
         this.frozenInbound = [];
-        for (const item of held) this.routeIncomingMessage(item.message, item.sourceLocalId);
+        for (const item of held) this.routeIncomingMessage(item.message, item.sourceLocalId, item.seq);
     }
 
     /**

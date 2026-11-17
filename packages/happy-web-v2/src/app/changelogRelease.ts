@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-17-messages-survive-a-session-restart',
+    cliVersion: '0.2.217',
+    date: '2026-11-17',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov17d.title',
+    summaryKey: 'changelog.releases.nov17d.summary',
+    itemKeys: ['changelog.releases.nov17d.order', 'changelog.releases.nov17d.scope'],
+  },
+  {
     id: '2026-11-17-session-messages-are-not-yours',
     cliVersion: '0.2.216',
     date: '2026-11-17',

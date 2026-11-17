@@ -92,6 +92,7 @@ export class Session {
 
     /** Live remote-query input sink. Absent in local mode and between SDK queries. */
     private steerHandler: ((input: ClaudeSteerInput) => Promise<boolean>) | null = null;
+    private undeliveredProbe: (() => string[]) | null = null;
     /** B-482: the live remote Query's in-process side-question entry; null between Queries and in local mode. */
     private sideQuestionLive: SideQuestionLiveQuery | null = null;
 
@@ -223,6 +224,20 @@ export class Session {
     }
 
     getSideQuestionLive = (): SideQuestionLiveQuery | null => this.sideQuestionLive;
+
+    /**
+     * B-940b: localIds the remote launcher holds but has not handed to Claude
+     * Code (parked, held behind Claude Code's own turn, in hand). null removes it.
+     */
+    setUndeliveredProbe = (probe: (() => string[]) | null): void => {
+        this.undeliveredProbe = probe;
+    }
+
+    /** B-940b: see setUndeliveredProbe. Never throws (an exiting process asks). */
+    undeliveredSourceIds = (): string[] => {
+        try { return this.undeliveredProbe?.() ?? []; }
+        catch (error) { logger.debug('[Session] undelivered probe failed:', error); return []; }
+    }
 
     /** Register the current remote query's Steer sink; null removes it. */
     setSteerHandler = (handler: ((input: ClaudeSteerInput) => Promise<boolean>) | null): void => {

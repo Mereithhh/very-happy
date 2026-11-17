@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyHibernationReplay, applyReconnectReplay, applyServerSnapshot, exitCursorStamp, mergeReconnectMetadata, processIdentityFields, withoutServerSnapshot } from './reconnectSession';
+import { applyHibernationReplay, applyReconnectReplay, applyServerSnapshot, exitCursorStamp, readExitCursor, mergeReconnectMetadata, processIdentityFields, withoutServerSnapshot } from './reconnectSession';
 import type { Metadata, Session } from '@/api/types';
 
 const base: Metadata = { path: '/p', host: 'h', homeDir: '/home', happyHomeDir: '/h/.happy', happyLibDir: '/lib', happyToolsDir: '/tools' };
@@ -93,6 +93,24 @@ describe('B-679 resuming after an offline exit', () => {
     it('a hibernation stamp wins (same replay, but the B-332 scan is skipped for it)', () => {
         const hibernation = { at: 1, seq: 18, idleMs: 1, v: 1 as const };
         expect(applyReconnectReplay(session(22, { ...base, hibernation, exitCursor: cursor })).replay).toEqual({ source: 'hibernation', seq: 18 });
+    });
+
+    it('B-940b: messages the exiting wrapper held undelivered ride on the stamp; the resume starts just before the oldest and re-routes only those below the old cursor', () => {
+        const stamp = exitCursorStamp(45, 5, [{ seq: 44, localId: 'owner-44' }, { seq: 42, localId: 'peer-42' }]);
+        expect(stamp).toEqual({ at: 5, seq: 45, v: 1, redeliver: [{ seq: 42, localId: 'peer-42' }, { seq: 44, localId: 'owner-44' }] });
+        const { response, replay } = applyReconnectReplay(session(46, { ...base, exitCursor: stamp }));
+        expect(response.seq).toBe(41);
+        expect(replay).toEqual({ source: 'offline-exit', seq: 41, redeliver: { upToSeq: 45, localIds: ['peer-42', 'owner-44'] } });
+        // Nothing new arrived after the exit: the held ones are still replayed (QA-T ③: the lost P1).
+        expect(applyReconnectReplay(session(45, { ...base, exitCursor: stamp })).replay).toEqual({ source: 'offline-exit', seq: 41, redeliver: { upToSeq: 45, localIds: ['peer-42', 'owner-44'] } });
+    });
+
+    it('B-940b: a stamp without held messages behaves exactly as B-679; malformed entries are dropped', () => {
+        expect(exitCursorStamp(21, 5, [])).toEqual({ at: 5, seq: 21, v: 1 });
+        // above the cursor (never routed there), duplicate, bad types
+        const read = readExitCursor({ exitCursor: { at: 1, seq: 21, v: 1, redeliver: [{ seq: 22, localId: 'x' }, { seq: 20, localId: 'y' }, { seq: 19, localId: 'y' }, { seq: 'a', localId: 'z' }, { seq: 18 }] } });
+        expect(read).toEqual({ at: 1, seq: 21, v: 1, redeliver: [{ seq: 20, localId: 'y' }] });
+        expect(readExitCursor({ exitCursor: { at: 1, seq: 21, redeliver: 'junk' } })).toEqual({ at: 1, seq: 21, v: 1 });
     });
 
     it('the reconnect merge clears the previous wrapper\'s exit cursor', () => {

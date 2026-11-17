@@ -110,6 +110,35 @@ export class MessageQueue2<T> {
         this.append(message, mode, attachments, sourceId, true);
     }
 
+    /**
+     * B-940b (QA-T P3): the owner goes first. Another session's messages wait
+     * behind everything the owner queued — an owner item is placed ahead of
+     * the trailing run of session messages (each a turn of its own), so it
+     * never waits N turns behind N of them. Owner items keep their order
+     * among themselves; session messages keep theirs.
+     */
+    private enqueue(item: QueueItem<T>): void {
+        if (item.nonUser) {
+            this.queue.push(item);
+            return;
+        }
+        let at = this.queue.length;
+        while (at > 0 && this.queue[at - 1].nonUser) at -= 1;
+        if (at < this.queue.length) logger.debug(`[MessageQueue2] Owner message placed ahead of ${this.queue.length - at} queued session message(s)`);
+        this.queue.splice(at, 0, item);
+    }
+
+    /** B-940b: the next item is the owner's (not another session's), with its mode hash. */
+    ownerHead(): { modeHash: string; isolate: boolean } | null {
+        const head = this.queue[0];
+        return head && !head.nonUser ? { modeHash: head.modeHash, isolate: head.isolate ?? false } : null;
+    }
+
+    /** B-940b: localIds of everything still queued (received, never handed to the agent). */
+    pendingSourceIds(): string[] {
+        return this.queue.flatMap((item) => (item.sourceId ? [item.sourceId] : []));
+    }
+
     private append(message: string, mode: T, attachments: PendingAttachment[] | undefined, sourceId: string | undefined, nonUser: boolean): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
@@ -118,7 +147,7 @@ export class MessageQueue2<T> {
         const modeHash = this.modeHasher(mode);
         logger.debug(`[MessageQueue2] push() called with mode hash: ${modeHash}${nonUser ? ' (non-user)' : ''}`);
 
-        this.queue.push({
+        this.enqueue({
             message,
             mode,
             modeHash,
@@ -234,7 +263,7 @@ export class MessageQueue2<T> {
             throw new Error('Cannot push to closed queue');
         }
 
-        this.queue.push({
+        this.enqueue({
             message,
             mode,
             modeHash: this.modeHasher(mode),

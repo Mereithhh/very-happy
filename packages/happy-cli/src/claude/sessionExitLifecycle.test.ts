@@ -144,10 +144,10 @@ describe('B-679 offline exit cursor', () => {
 
     it('runClaude pins the cursor and freezes inbound in the same tick, hands it to settle, and bounds the B-332 scan on replay', () => {
         const src = readFileSync(join(__dirname, 'runClaude.ts'), 'utf8').replace(/\/\/.*$/gm, '');
-        expect(src).toContain("const exitCursor = intent === 'offline' ? exitCursorStamp(session.messageCursor, Date.now()) : undefined;\n                if (exitCursor) session.freezeInbound();");
+        expect(src).toContain("const exitCursor = intent === 'offline' ? exitCursorStamp(session.messageCursor, Date.now(), exitDisposal.redeliver) : undefined;\n                if (exitCursor) session.freezeInbound();");
         expect(src).toMatch(/updateMetadataAndWait: \(handler, timeoutMs\) => session\.updateMetadataAndWait\(handler, timeoutMs\),\s*exitCursor,/);
         expect(src).toContain('const wake = applyReconnectReplay(response);');
-        expect(src).toContain('void session.cancelUndeliveredQueuedInputs(reconnectReplay ? { maxSeq: reconnectReplay.seq } : undefined);');
+        expect(src).toContain('void session.cancelUndeliveredQueuedInputs(reconnectReplay ? {\n            maxSeq: reconnectReplay.redeliver?.upToSeq ?? reconnectReplay.seq,');
     });
 });
 

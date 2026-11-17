@@ -109,22 +109,52 @@ export function applyHibernationReplay(response: Session): { response: Session; 
 }
 
 export type ExitCursor = NonNullable<Metadata['exitCursor']>;
+export type ExitRedelivery = NonNullable<ExitCursor['redeliver']>[number];
+
+/** B-940b: at most this many held messages ride on the stamp (the rest are tombstoned by the exiting wrapper). */
+export const EXIT_REDELIVER_LIMIT = 50;
+
+function readRedeliver(raw: unknown, cursorSeq: number): ExitRedelivery[] {
+    if (!Array.isArray(raw)) return [];
+    const out: ExitRedelivery[] = [];
+    const seen = new Set<string>();
+    for (const item of raw.slice(0, EXIT_REDELIVER_LIMIT)) {
+        const { seq, localId } = (item ?? {}) as { seq?: unknown; localId?: unknown };
+        if (typeof seq !== 'number' || !Number.isInteger(seq) || seq < 1 || seq > cursorSeq) continue;
+        if (typeof localId !== 'string' || !localId || seen.has(localId)) continue;
+        seen.add(localId);
+        out.push({ seq, localId });
+    }
+    return out.sort((a, b) => a.seq - b.seq);
+}
 
 export function readExitCursor(metadata: unknown): ExitCursor | null {
     const raw = (metadata as { exitCursor?: unknown } | null | undefined)?.exitCursor;
     if (!raw || typeof raw !== 'object') return null;
-    const { at, seq } = raw as { at?: unknown; seq?: unknown };
+    const { at, seq, redeliver } = raw as { at?: unknown; seq?: unknown; redeliver?: unknown };
     if (typeof at !== 'number' || typeof seq !== 'number' || !Number.isInteger(seq) || seq < 0) return null;
-    return { at, seq, v: 1 };
+    const held = readRedeliver(redeliver, seq);
+    return held.length > 0 ? { at, seq, v: 1, redeliver: held } : { at, seq, v: 1 };
 }
 
 /** The stamp an offline exit writes: the cursor of a wrapper whose inbound is
- *  frozen from here on, so nothing above `seq` was routed into it. */
-export function exitCursorStamp(seq: number, now: number): ExitCursor {
-    return { at: now, seq, v: 1 };
+ *  frozen from here on, so nothing above `seq` was routed into it.
+ *  B-940b: `redeliver` — messages AT/BELOW the cursor this wrapper received
+ *  but never handed to the agent (its queue, a parked prompt, a held session
+ *  message); the next wrapper routes exactly those once more. */
+export function exitCursorStamp(seq: number, now: number, redeliver: readonly ExitRedelivery[] = []): ExitCursor {
+    const held = readRedeliver(redeliver, seq);
+    return held.length > 0 ? { at: now, seq, v: 1, redeliver: held } : { at: now, seq, v: 1 };
 }
 
-export type ReconnectReplay = { source: 'hibernation' | 'offline-exit'; seq: number };
+/**
+ * B-940b: what a resumed wrapper routes again from below the previous exit
+ * cursor — only these localIds; every other record at/below `upToSeq` was
+ * already handled by the previous wrapper and is skipped.
+ */
+export type ReplayRedelivery = { upToSeq: number; localIds: string[] };
+
+export type ReconnectReplay = { source: 'hibernation' | 'offline-exit'; seq: number; redeliver?: ReplayRedelivery };
 
 /**
  * B-679: resuming a session whose previous wrapper went OFFLINE. Same rule as
@@ -142,6 +172,18 @@ export function applyReconnectReplay(response: Session): { response: Session; re
     const wake = applyHibernationReplay(response);
     if (wake.replaying) return { response: wake.response, replay: { source: 'hibernation', seq: wake.response.seq } };
     const cursor = readExitCursor(response.metadata);
-    if (!cursor || cursor.seq >= response.seq) return { response, replay: null };
+    if (!cursor) return { response, replay: null };
+    // B-940b: messages the previous wrapper held without delivering sit at or
+    // below its cursor — start just before the oldest of them, and route only
+    // those below the old cursor (the fetch filter in ApiSessionClient).
+    const held = (cursor.redeliver ?? []).filter((item) => item.seq <= response.seq);
+    if (held.length > 0) {
+        const seq = Math.min(cursor.seq, held[0].seq - 1);
+        return {
+            response: { ...response, seq },
+            replay: { source: 'offline-exit', seq, redeliver: { upToSeq: Math.min(cursor.seq, response.seq), localIds: held.map((item) => item.localId) } },
+        };
+    }
+    if (cursor.seq >= response.seq) return { response, replay: null };
     return { response: { ...response, seq: cursor.seq }, replay: { source: 'offline-exit', seq: cursor.seq } };
 }

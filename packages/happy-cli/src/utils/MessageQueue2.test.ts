@@ -12,16 +12,31 @@ describe('MessageQueue2', () => {
         queue.push('owner 2', 'm', undefined, 'o2');
         queue.push('owner 3', 'm', undefined, 'o3');
 
+        // B-940b (QA-T P3): the owner's later messages go ahead of the session message.
         const first = await queue.waitForMessagesAndGetAsString();
-        expect(first).toMatchObject({ message: 'owner 1', sourceIds: ['o1'] });
+        expect(first).toMatchObject({ message: 'owner 1\nowner 2\nowner 3', sourceIds: ['o1', 'o2', 'o3'] });
         expect(first).not.toHaveProperty('nonUser');
 
         const peer = await queue.waitForMessagesAndGetAsString();
         expect(peer).toMatchObject({ message: '[Very Happy session message 1 from "A" s1]\nZ please', sourceIds: ['p1'], nonUser: true, isolate: false });
+        expect(queue.size()).toBe(0);
+    });
 
-        const rest = await queue.waitForMessagesAndGetAsString();
-        expect(rest).toMatchObject({ message: 'owner 2\nowner 3', sourceIds: ['o2', 'o3'] });
-        expect(rest).not.toHaveProperty('nonUser');
+    it('B-940b (QA-T P3): an owner message never waits behind N session messages — it goes ahead of them, in order, and not ahead of the owner\'s own isolated command', async () => {
+        const queue = new MessageQueue2<string>(mode => mode);
+        queue.pushNonUser('peer 1', 'm', undefined, 'p1');
+        queue.pushNonUser('peer 2', 'm', undefined, 'p2');
+        queue.pushNonUser('peer 3', 'm', undefined, 'p3');
+        expect(queue.ownerHead()).toBeNull();
+        queue.push('owner A', 'm', undefined, 'oA');
+        expect(queue.ownerHead()).toEqual({ modeHash: 'm', isolate: false });
+        queue.pushIsolate('/compact', 'm', undefined, 'oC');
+        queue.push('owner B', 'm', undefined, 'oB');
+        queue.pushNonUser('peer 4', 'm', undefined, 'p4');
+        expect(queue.pendingSourceIds()).toEqual(['oA', 'oC', 'oB', 'p1', 'p2', 'p3', 'p4']);
+        const order: string[] = [];
+        while (queue.size() > 0) order.push((await queue.waitForMessagesAndGetAsString())!.message);
+        expect(order).toEqual(['owner A', '/compact', 'owner B', 'peer 1', 'peer 2', 'peer 3', 'peer 4']);
     });
 
     it('should create a queue', () => {
