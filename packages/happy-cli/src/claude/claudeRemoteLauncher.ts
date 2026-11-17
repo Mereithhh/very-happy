@@ -579,7 +579,11 @@ export async function claudeRemoteLauncher(
             rewindReconciler.startup().catch((error) => logger.debug('[rewind] startup reconcile failed', error)),
             new Promise((resolve) => setTimeout(resolve, REWIND_STARTUP_BUDGET_MS).unref?.()),
         ]);
-        while (!exitReason) {
+        // B-939d: once runClaude's exit cleanup began (session.exiting) no new
+        // Query starts — Claude Code's 143 exit from that cleanup used to fall
+        // into the relaunch below and hand the next queued prompt to a process
+        // about to be killed.
+        while (!exitReason && !session.exiting) {
             logger.debug('[remote]: launch');
             messageBuffer.addMessage('═'.repeat(40), 'status');
 
@@ -870,7 +874,7 @@ export async function claudeRemoteLauncher(
                     // starting them — sent once more, or tombstoned (B-332).
                     onCommandsUnconfirmed: (commands, { aborted }) => {
                         const plan = planUnconfirmedCommands(commands, {
-                            aborted: aborted || exitReason !== null,
+                            aborted: aborted || exitReason !== null || session.exiting,
                             parkFree: !modeGate.hasParked,
                             redelivered: redeliveredCommands,
                         });
@@ -892,7 +896,8 @@ export async function claudeRemoteLauncher(
                     // mode is the user's stop (`aborted`); otherwise the Query
                     // was replaced before it took the message (`restarted`).
                     // B-939c: a stored project message routed to this session counts as delivered once pushed.
-                    onPromptPushed: (sourceIds) => session.projectInjector.handed(sourceIds),
+                    // B-939d: not while the process is exiting — Claude Code is about to be terminated.
+                    onPromptPushed: (sourceIds) => { if (!session.exiting) session.projectInjector.handed(sourceIds); },
                     onUndeliveredMessage: (message) => {
                         const parked = planUndeliveredMessage(message, { parkFree: !modeGate.hasParked, exiting: exitReason !== null });
                         if (parked) {
@@ -987,13 +992,14 @@ export async function claudeRemoteLauncher(
                 // an empty conversation and the history is gone (QA21).
                 if (startArgsUsed) session.consumeOneTimeFlags();
                 
-                if (!exitReason && abortController.signal.aborted && !silentRelaunch) {
+                if (!exitReason && !session.exiting && abortController.signal.aborted && !silentRelaunch) {
                     session.client.closeClaudeSessionTurn('cancelled');
                     session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                 }
             } catch (e) {
                 logger.debug('[remote]: launch error', e);
-                if (!exitReason) {
+                // B-939d: Claude Code killed by the exit cleanup is not a failed turn, and is never relaunched.
+                if (!exitReason && !session.exiting) {
                     if (isClaudeEdeOnlySdkError(e)) {
                         session.client.closeClaudeSessionTurn('cancelled');
                         continue;
@@ -1063,8 +1069,13 @@ export async function claudeRemoteLauncher(
         }
         // B-853: a message parked for a launch that will never come (Ctrl-C,
         // switch to local) is reported, not dropped with the launcher.
+        // B-939d: not when the process is exiting — the exit stamp already
+        // listed what this launcher held (B-940b), so a tombstone would
+        // contradict the hand-over.
         const stranded = modeGate.takeParked();
-        if (stranded?.uuid) {
+        if (stranded?.uuid && session.exiting) {
+            logger.debug(`[remote]: process exiting with parked message ${stranded.uuid}; left to the exit stamp`);
+        } else if (stranded?.uuid) {
             logger.debug(`[remote]: leaving remote mode with parked message ${stranded.uuid}; tombstoning it`);
             session.client.sendQueueCancelReason([stranded.uuid], 'aborted');
         }

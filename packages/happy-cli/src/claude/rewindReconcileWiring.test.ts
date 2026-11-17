@@ -27,7 +27,7 @@ describe('rewind reconcile wiring (B-544)', () => {
     it('startup reconcile runs before the first launch, bounded', () => {
         const startup = launcher.indexOf('rewindReconciler.startup()');
         expect(startup).toBeGreaterThan(-1);
-        expect(startup).toBeLessThan(launcher.indexOf('while (!exitReason) {'));
+        expect(startup).toBeLessThan(launcher.indexOf('while (!exitReason && !session.exiting) {'));
         expect(launcher).toContain('new Promise((resolve) => setTimeout(resolve, REWIND_STARTUP_BUDGET_MS)');
     });
 

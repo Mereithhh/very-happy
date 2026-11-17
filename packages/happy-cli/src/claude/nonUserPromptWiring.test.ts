@@ -55,7 +55,7 @@ describe('session-peer message wiring (B-940)', () => {
 describe('stored project message wiring (B-939c)', () => {
     it('Claude: routed locally, delivered on push, not handed on or tombstoned at exit', () => {
         expect(read('./session.ts')).toContain("dispatchToSelf: (text, localKey) => this.client.routeLocalSessionPeer(text, localKey),\n            handedOn: 'pushed',");
-        expect(read('./claudeRemoteLauncher.ts')).toContain('onPromptPushed: (sourceIds) => session.projectInjector.handed(sourceIds),');
+        expect(read('./claudeRemoteLauncher.ts')).toContain('onPromptPushed: (sourceIds) => { if (!session.exiting) session.projectInjector.handed(sourceIds); },');
         expect(read('./runClaude.ts')).toContain('.filter((id) => !isStoredMessageLocalId(id)), session);');
     });
     it('Codex and pi route it; Gemini does not', () => {
