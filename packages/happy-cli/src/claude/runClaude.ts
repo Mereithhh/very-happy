@@ -1329,6 +1329,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 const exitDisposal = planExitUndelivered(intent, [...messageQueue.pendingSourceIds(), ...(currentSession?.undeliveredSourceIds() ?? [])], session);
                 const exitCursor = intent === 'offline' ? exitCursorStamp(session.messageCursor, Date.now(), exitDisposal.redeliver) : undefined;
                 if (exitCursor) session.freezeInbound();
+                // B-940c: only for the launcher's log line on a message handed back after this.
+                if (currentSession) currentSession.exitDisposed = true;
                 if (exitDisposal.redeliver.length > 0) logger.debug(`[START] Exit: ${exitDisposal.redeliver.length} undelivered message(s) handed to the next wrapper via the exit cursor`);
                 if (exitDisposal.tombstone.length > 0) {
                     logger.debug(`[START] Exit: ${exitDisposal.tombstone.length} undelivered message(s) marked not delivered (${exitDisposal.reason})`);
