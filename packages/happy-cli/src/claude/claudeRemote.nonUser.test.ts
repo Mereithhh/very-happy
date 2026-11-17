@@ -252,6 +252,32 @@ describe('another session\'s message is never the user\'s (B-940)', () => {
         expect(log).toEqual(['pushed o1', 'own turn ends', 'pushed project-msg-m1']);
     });
 
+    it('B-939c: resuming on 「本机配置」 reports the first prompt pushed once, after setModel and the push — not before', async () => {
+        const log: string[] = [];
+        vi.mocked(query).mockImplementation((args: any) => ({
+            setPermissionMode: vi.fn(),
+            interrupt: vi.fn(),
+            getSettings: async () => ({ effective: { model: 'claude-sonnet-test' } }),
+            setModel: async () => { log.push('setModel'); },
+            async *[Symbol.asyncIterator]() {
+                const input = args.prompt[Symbol.asyncIterator]();
+                await input.next();
+                log.push('prompt reached Claude Code');
+                yield result;
+                expect((await input.next()).done).toBe(true);
+            },
+        } as any));
+        let n = 0;
+        await run(async () => {
+            n += 1;
+            return n === 1 ? { message: 'owner prompt', mode, sourceIds: ['project-msg-m1'] } as any : null;
+        }, {
+            claudeArgs: ['--resume', '11111111-2222-3333-4444-555555555555'],
+            onPromptPushed: (ids: string[]) => log.push(`pushed ${ids.join(',')}`),
+        });
+        expect(log).toEqual(['setModel', 'pushed project-msg-m1', 'prompt reached Claude Code']);
+    });
+
     it('B-940b (QA-T P3): an owner message waiting at the own turn\'s end runs before the held session message', async () => {
         const seen: any[] = [];
         let started!: () => void;

@@ -1,6 +1,6 @@
 import type { ProjectPresenceEntry, ProjectSessionContext } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
-import { buildDigestLine, buildFirstTurnPrefix, isolateContext, isolateDigest, prependToMessage } from './prompt';
+import { buildDigestLine, buildFirstTurnPrefix, FIRST_TURN_UNREAD_SHOWN, fitDigestMessages, isolateContext, isolateDigest, prependToMessage } from './prompt';
 import { ProjectsUnsupportedError, type ProjectsClient } from './client';
 import { createIssueDigest, type IssueDigest } from '@/issues/digest';
 import { createTeamExitNotice, type TeamExitNotice } from '@/teams/exitNotice';
@@ -159,7 +159,8 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
         teamReader = !!raw.team || raw.via === 'team';
         for (const s of ctx.sessions) if (s.title) titles.set(s.sessionId, s.title);
         if (!ctx.project) { state.projectId = null; return message; }
-        const unread = deliverStored(sid, ctx.unread);
+        // Text-line fallback: only the messages the prefix shows are marked delivered.
+        const unread = deliverStored(sid, ctx.unread).slice(0, FIRST_TURN_UNREAD_SHOWN);
         const built = buildFirstTurnPrefix({ ...ctx, unread }, { label, selfId: sid, parentId });
         if (!built) { state.projectId = null; return message; }
         state.projectId = ctx.project.id;
@@ -186,7 +187,8 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
         }
         state.cursor = d.asOf;
         if (d.instructions) state.injectedVersion = d.instructions.version;
-        const messages = deliverStored(sid, d.messages);
+        // Text-line fallback: a message cut off by the line's length cap stays unread for a later digest.
+        const messages = fitDigestMessages({ ...d, messages: deliverStored(sid, d.messages) }, { label });
         markDelivered(sid, messages.map(m => m.id));
         reportPresence(!!d.instructions);
         return prependToMessage(message, buildDigestLine({ ...d, messages }, { label }));

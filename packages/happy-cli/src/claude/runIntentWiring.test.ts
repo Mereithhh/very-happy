@@ -77,7 +77,8 @@ describe('Claude run facts (claudeRemote / launcher)', () => {
         // REGRESSION (e2e 2026-10-31): an effort change relaunched the Query and
         // Claude Code resumed on the transcript's last model (Haiku), not settings (Sonnet).
         expect(remote).toContain('const resumeOnConfigModel = !!startFrom && modelTarget(initial.mode.model) === undefined;');
-        expect(remote).toContain('if (!resumeOnConfigModel) messages.push(initialUserMessage);');
+        // B-939c: braced — the prompt counts as pushed (onPromptPushed) only inside the branch that pushes it.
+        expect(remote).toContain('if (!resumeOnConfigModel) {\n            messages.push(initialUserMessage);\n            pushedInitial();\n        }');
         const after = between(remote, 'if (resumeOnConfigModel) {', 'timingMarks.handshakeAt = Date.now();');
         expect(after).toContain('const target = await liveModelTarget(response, undefined);');
         expect(after.indexOf('response.setModel(target)')).toBeLessThan(after.indexOf('messages.push(initialUserMessage);'));

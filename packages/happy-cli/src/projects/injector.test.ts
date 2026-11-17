@@ -242,6 +242,33 @@ describe('B-939c: stored messages reach the recipient like live session messages
         expect(line).toContain('MK-pong'); // every message it acks is shown, not only the first
         expect(client.delivered).toHaveBeenCalledWith('s1', ['m9', 'm10']);
     });
+    it('Gemini (no channel): a message the 600-char line cuts off is not marked delivered; it comes in a later digest', async () => {
+        const client = fakeClient({ context: vi.fn(async () => ctx({ sharing: 'isolated' })) });
+        const inj = make(client);
+        await inj.decorate('x');
+        const body = (tag: string) => `${tag} ${'z'.repeat(140)}`;
+        client.digest.mockResolvedValueOnce(digest({
+            sharing: 'isolated',
+            instructions: { version: 2, summary: 's'.repeat(200) },
+            messages: [stored('m11', body('MK-A')), stored('m12', body('MK-B')), stored('m13', body('MK-C'))],
+        }));
+        const line = await inj.decorate('y');
+        expect(line.split('\n')[0].length).toBeLessThanOrEqual(600);
+        const acked = client.delivered.mock.calls.flatMap((c: any[]) => c[1] as string[]);
+        expect(acked.length).toBeGreaterThan(0);
+        expect(acked).not.toContain('m13');
+        for (const [id, tag] of [['m11', 'MK-A'], ['m12', 'MK-B'], ['m13', 'MK-C']]) {
+            expect(acked.includes(id)).toBe(line.includes(tag)); // acked ⇔ shown
+        }
+    });
+    it('Gemini (no channel): the first-turn prefix shows 3 stored messages and marks only those delivered', async () => {
+        const client = fakeClient({ context: vi.fn(async () => ctx({ unread: ['m21', 'm22', 'm23', 'm24'].map((id) => stored(id, `body-${id}`)) })) });
+        const inj = make(client);
+        const out = await inj.decorate('x');
+        expect(out).toContain('body-m23');
+        expect(out).not.toContain('body-m24');
+        expect(client.delivered).toHaveBeenCalledWith('s1', ['m21', 'm22', 'm23']);
+    });
     it('isStoredMessageLocalId tells routed stored messages apart from server records', () => {
         expect(isStoredMessageLocalId(storedMessageLocalId('abc'))).toBe(true);
         expect(isStoredMessageLocalId('3f1c2a4e-0000-4000-8000-000000000000')).toBe(false);

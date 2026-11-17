@@ -510,7 +510,8 @@ export async function claudeRemote(opts: {
         models = adopted.models;
         // The process is already past its handshake: measure from the push.
         timingMarks.handshakeAt = Date.now();
-        messages.push(initialUserMessage); pushedInitial();
+        messages.push(initialUserMessage);
+        pushedInitial();
     } else {
         // Push initial message
         messages = new PushableAsyncIterable<SDKUserMessage>();
@@ -519,7 +520,10 @@ export async function claudeRemote(opts: {
         // Sonnet, previous turn Haiku → the relaunched turn ran Haiku). Put it
         // on the settings model BEFORE the first prompt can start a turn.
         const resumeOnConfigModel = !!startFrom && modelTarget(initial.mode.model) === undefined;
-        if (!resumeOnConfigModel) messages.push(initialUserMessage); pushedInitial();
+        if (!resumeOnConfigModel) {
+            messages.push(initialUserMessage);
+            pushedInitial();
+        }
         timingMarks.spawnAt = Date.now();
         opts.onStartArgsUsed?.();
         response = query({
@@ -538,7 +542,8 @@ export async function claudeRemote(opts: {
                     .then(() => logger.debug(`[claudeRemote] Resumed on the settings model ${target}`))
                     .catch((e) => logger.debug(`[claudeRemote] setModel(settings model) on resume failed: ${e instanceof Error ? e.message : String(e)}`));
             }
-            messages.push(initialUserMessage); pushedInitial();
+            messages.push(initialUserMessage);
+            pushedInitial();
         }
         timingMarks.handshakeAt = Date.now();
     }

@@ -160,14 +160,33 @@ export function buildFirstTurnPrefix(ctx: ProjectSessionContext, opts: { label?:
     }
     if (ctx.unread.length) {
         lines.push(UNREAD_HEADER);
-        for (const u of ctx.unread.slice(0, 3)) lines.push(`from ${label(u.fromSessionId)}: ${oneLine(u.body, 120)}`);
+        for (const u of ctx.unread.slice(0, FIRST_TURN_UNREAD_SHOWN)) lines.push(`from ${label(u.fromSessionId)}: ${oneLine(u.body, 120)}`);
     }
     lines.push('---', variantText(variant, p.name, ctx.team?.name), '---');
     return { prefix: lines.join('\n') + '\n', instructionsVersion: p.instructionsVersion, variant };
 }
 
+/** Text-line fallback (no session-peer channel): how many stored messages the first-turn prefix shows. */
+export const FIRST_TURN_UNREAD_SHOWN = 3;
+const DIGEST_LINE_MAX = 600;
+
+/**
+ * B-939c: the stored messages that fit whole in the digest line. Only these
+ * may be marked delivered; the rest stay unread and come in a later digest.
+ */
+export function fitDigestMessages(d: ProjectDigest, opts: { label?: PeerLabel } = {}): ProjectDigest['messages'] {
+    let k = d.messages.length;
+    while (k > 0 && (fullDigestLine({ ...d, messages: d.messages.slice(0, k) }, opts)?.length ?? 0) > DIGEST_LINE_MAX) k -= 1;
+    return d.messages.slice(0, k);
+}
+
 /** ⑥ Next-turn piggyback, ≤2 lines; null when nothing changed. */
 export function buildDigestLine(d: ProjectDigest, opts: { label?: PeerLabel } = {}): string | null {
+    const line = fullDigestLine(d, opts);
+    return line && line.length > DIGEST_LINE_MAX ? `${line.slice(0, DIGEST_LINE_MAX - 2)}…]` : line;
+}
+
+function fullDigestLine(d: ProjectDigest, opts: { label?: PeerLabel }): string | null {
     if (!d.projectId || !d.name) return null;
     const label = opts.label ?? defaultLabel;
     const parts: string[] = [];
@@ -177,8 +196,7 @@ export function buildDigestLine(d: ProjectDigest, opts: { label?: PeerLabel } = 
     // B-939c: every message shown (each is marked delivered), not only the first one's body.
     for (const m of d.messages) parts.push(`message from session ${label(m.fromSessionId)} (not the user; not an assignment): ${oneLine(m.body, 120)}`);
     if (!parts.length) return null;
-    const line = `[Project "${d.name}" since your last turn: ${parts.join('; ')}]`;
-    return line.length > 600 ? `${line.slice(0, 598)}…]` : line;
+    return `[Project "${d.name}" since your last turn: ${parts.join('; ')}]`;
 }
 
 /** Joins a prefix and the user's message. Never alters a non-string (structured) message. */
