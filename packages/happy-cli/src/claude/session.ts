@@ -244,6 +244,22 @@ export class Session {
      */
     exitDisposed = false;
 
+    private _exiting = false;
+    /**
+     * B-939d: runClaude's exit cleanup started (signal, archive, hibernation,
+     * superseded). The launcher starts no new Query after this, and nothing
+     * handed to Claude Code from now on is acked as delivered: Claude Code is
+     * about to be terminated (QA-T R67: a relaunch after its 143 exit acked a
+     * stored message the model never read).
+     */
+    get exiting(): boolean { return this._exiting; }
+
+    /** B-939d: see `exiting`. Called first thing in runClaude's exit cleanup, before any await. */
+    beginExit = (): void => {
+        this._exiting = true;
+        this._projectInjector?.close();
+    }
+
     /** B-940b: see setUndeliveredProbe. Never throws (an exiting process asks). */
     undeliveredSourceIds = (): string[] => {
         try { return this.undeliveredProbe?.() ?? []; }

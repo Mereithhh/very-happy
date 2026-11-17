@@ -1305,6 +1305,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             return;
         }
         hibernationProbe?.stop();
+        // B-939d: before any await — the launcher starts no new Query and acks nothing pushed from here on.
+        currentSession?.beginExit();
         logger.debug(`[START] Received termination signal, cleaning up (archive=${intent === 'archive'})...`);
         // B-509: first thing — never pop another server-queued prompt into a
         // process that is leaving (a popped item is a message the next wrapper
@@ -1540,6 +1542,14 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         hookSettingsPath,
         jsRuntime: options.jsRuntime
     });
+
+    // B-939d: the launcher returned because the exit cleanup started — that
+    // cleanup owns the rest (terminateSurvivors, process.exit); running the
+    // normal teardown too would race it.
+    if ((currentSession as Session | null)?.exiting) {
+        logger.debug('[START] Launcher stopped for the exit cleanup; leaving the exit to it');
+        await new Promise<never>(() => { });
+    }
 
     // Cleanup session resources (intervals, callbacks) - prevents memory leak
     // Note: currentSession is set by onSessionReady callback during loop()

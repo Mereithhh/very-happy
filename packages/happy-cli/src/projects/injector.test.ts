@@ -274,3 +274,25 @@ describe('B-939c: stored messages reach the recipient like live session messages
         expect(isStoredMessageLocalId('3f1c2a4e-0000-4000-8000-000000000000')).toBe(false);
     });
 });
+
+/** B-939d: an exiting process acks nothing — a stored message it routed stays unread for the next one. */
+describe('B-939d: close() withholds every delivered ack', () => {
+    const unread = [{ id: 'm1', fromSessionId: 's2', body: 'b', createdAt: 1 }];
+    it('a routed stored message pushed after close() is not marked delivered', async () => {
+        const client = fakeClient({ context: vi.fn(async () => ctx({ unread })) });
+        const dispatch = vi.fn();
+        const inj = createProjectInjector({ client, sessionId: () => 's1', metadata: () => null, agent: 'claude', timeoutMs: 50, dispatchToSelf: dispatch, handedOn: 'pushed' });
+        await inj.decorate('x');
+        expect(dispatch).toHaveBeenCalledTimes(1);
+        inj.close();
+        inj.handed([storedMessageLocalId('m1')]);
+        expect(client.delivered).not.toHaveBeenCalled();
+    });
+    it('a text-line message shown after close() is not marked delivered', async () => {
+        const client = fakeClient({ context: vi.fn(async () => ctx({ sharing: 'shared', unread })) });
+        const inj = make(client);
+        inj.close();
+        expect(await inj.decorate('x')).toContain('b');
+        expect(client.delivered).not.toHaveBeenCalled();
+    });
+});

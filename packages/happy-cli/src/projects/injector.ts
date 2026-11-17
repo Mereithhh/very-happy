@@ -82,6 +82,8 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
     const dispatched = new Map<string, { id: string; header: string }>();
     /** B-939c: handed and acked (or the ack is in flight) — never routed again by this process. */
     const handedIds = new Set<string>();
+    /** B-939d: see close(). */
+    let closed = false;
     const issueDigest = deps.issueDigest === undefined ? createIssueDigest({ sessionId: deps.sessionId, metadata: () => deps.metadata?.() ?? null, timeoutMs }) : deps.issueDigest;
     const teamExitNotice = deps.teamExitNotice === undefined ? createTeamExitNotice({ sessionId: deps.sessionId }) : deps.teamExitNotice;
     const teamLanguageBackfill = deps.teamLanguageBackfill === undefined ? createTeamLanguageBackfill({ sessionId: deps.sessionId }) : deps.teamLanguageBackfill;
@@ -111,6 +113,8 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
     }
 
     function markDelivered(sid: string, ids: string[]) {
+        // B-939d: an exiting process acks nothing — what it routed stays unread for the next one.
+        if (closed) { if (ids.length) logger.debug(`[projects] delivered ack withheld for ${ids.length} message(s): process exiting`); return; }
         if (ids.length) void deps.client.delivered(sid, ids).catch(error => logger.debug(`[projects] delivered ack skipped: ${String(error)}`));
     }
 
@@ -139,6 +143,7 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
     }
 
     function handed(localKeys: readonly string[]) {
+        if (closed) return;
         const sid = deps.sessionId();
         const ids: string[] = [];
         for (const key of localKeys) {
@@ -198,6 +203,8 @@ export function createProjectInjector(deps: ProjectInjectorDeps) {
         state: () => ({ ...state }),
         /** B-939c: these prompts reached the agent (Claude: pushed to Claude Code) — mark their stored messages delivered. */
         handed,
+        /** B-939d: the process is exiting — from now on nothing is marked delivered (handed or shown). */
+        close() { closed = true; },
         /** A fresh agent with no memory of earlier turns (ACP backend restart, new Claude conversation) needs P again. */
         reset() { state.prefixSent = false; state.cursor = 0; },
         async decorate<T>(message: T): Promise<T> {
