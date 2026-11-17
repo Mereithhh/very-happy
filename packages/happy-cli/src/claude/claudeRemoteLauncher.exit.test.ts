@@ -166,3 +166,25 @@ describe('B-939d: a process that is exiting starts no new Query and acks no stor
         session.cleanup();
     });
 });
+
+describe('B-939d runClaude wiring (source assertions; mutation-checked, see PR)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const strip = (src: string) => src.replace(/\/\/.*$/gm, '');
+    const runClaude = strip(readFileSync(join(__dirname, 'runClaude.ts'), 'utf8'));
+
+    it('the exit cleanup marks the session exiting right after claiming the gate, before its first await', () => {
+        const cleanup = runClaude.slice(runClaude.indexOf('const cleanup = async ('));
+        const begin = cleanup.indexOf('currentSession?.beginExit();');
+        expect(begin).toBeGreaterThan(cleanup.indexOf('hibernationProbe?.stop();'));
+        expect(begin).toBeLessThan(cleanup.indexOf('await '));
+        expect(begin).toBeLessThan(cleanup.indexOf('promptQueueDrain.close();'));
+    });
+
+    it('a launcher that returned for the exit leaves the teardown to the cleanup', () => {
+        const afterLoop = runClaude.slice(runClaude.indexOf('const exitCode = await loop({'));
+        const wait = afterLoop.indexOf("if ((currentSession as Session | null)?.exiting) {\n        logger.debug('[START] Launcher stopped for the exit cleanup; leaving the exit to it');\n        await new Promise<never>(() => { });");
+        expect(wait).toBeGreaterThan(-1);
+        expect(wait).toBeLessThan(afterLoop.indexOf('session.sendSessionDeath();'));
+    });
+});

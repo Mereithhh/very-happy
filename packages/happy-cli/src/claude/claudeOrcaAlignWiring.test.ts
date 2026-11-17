@@ -108,7 +108,7 @@ describe('Claude wrapper ↔ Orca follow-ups wiring (B-634)', () => {
     it('② the launcher re-sends once or tombstones what a Query ended without starting', () => {
         const launcher = read('./claudeRemoteLauncher.ts');
         const handler = between(launcher, 'onCommandsUnconfirmed: (commands, { aborted }) => {', 'onCommandsDropped:');
-        expect(handler).toContain('aborted: aborted || exitReason !== null,');
+        expect(handler).toContain('aborted: aborted || exitReason !== null || session.exiting,');
         expect(handler).toContain('parkFree: !modeGate.hasParked,');
         expect(handler).toContain('modeGate.park({ message: plan.redeliver.payload.message, mode: plan.redeliver.payload.mode, uuid: plan.redeliver.uuid, finalized: true });');
         expect(handler).toContain("session.client.sendQueueCancelReason(plan.tombstone, 'aborted');");
