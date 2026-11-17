@@ -3422,6 +3422,12 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov18a: {
+                title: 'A message sent to a stopped session in your project now reaches it',
+                summary: 'When one session messaged another in the same project while that one was stopped or asleep, the message was stored but — in a project that keeps sessions separate, the default — never shown to it, though the sender was told it would be read. Now the session gets it when its next turn starts.',
+                how: 'It arrives the same way as a message sent while the session is running: on its own, marked as coming from another session, not from you, and only once. Shared projects get it this way too, instead of as a line in front of your next message.',
+                sender: 'Keeping sessions separate still hides other sessions and their notes; it does not block a message sent straight to a session. Sending does not wake a stopped session: it arrives the next time you use it.',
+            },
             nov17d: {
                 title: 'Messages waiting in a session are no longer lost when it stops',
                 summary: 'A message a Claude session had received but not started yet — yours, or one from another session that was waiting for the current step to finish — was dropped if the session was stopped, restarted or upgraded at that moment, while it still looked delivered. Now it is delivered when the session comes back; if it cannot be, it is marked as not delivered.',
