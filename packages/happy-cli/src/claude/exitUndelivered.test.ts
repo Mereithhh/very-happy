@@ -46,7 +46,7 @@ describe('B-940b exit wiring (source assertions; mutation-checked, see PR)', () 
     const launcher = strip(readFileSync(join(__dirname, 'claudeRemoteLauncher.ts'), 'utf8'));
 
     it('runClaude lists the queue AND the launcher\'s held prompts before stamping, and stamps them on the exit cursor', () => {
-        expect(runClaude).toContain('const exitDisposal = planExitUndelivered(intent, [...messageQueue.pendingSourceIds(), ...(currentSession?.undeliveredSourceIds() ?? [])], session);\n                const exitCursor = intent === \'offline\' ? exitCursorStamp(session.messageCursor, Date.now(), exitDisposal.redeliver) : undefined;');
+        expect(runClaude).toContain('const exitDisposal = planExitUndelivered(intent, [...messageQueue.pendingSourceIds(), ...(currentSession?.undeliveredSourceIds() ?? [])].filter((id) => !isStoredMessageLocalId(id)), session);\n                const exitCursor = intent === \'offline\' ? exitCursorStamp(session.messageCursor, Date.now(), exitDisposal.redeliver) : undefined;');
         expect(runClaude).toContain('session.sendQueueCancelReason(exitDisposal.tombstone, exitDisposal.reason);');
     });
 
