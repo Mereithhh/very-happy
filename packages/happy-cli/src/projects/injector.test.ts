@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ProjectDigest, ProjectSessionContext } from '@slopus/happy-wire';
-import { createProjectInjector } from './injector';
+import { createProjectInjector, isStoredMessageLocalId, storedMessageLocalId } from './injector';
 import { ProjectsUnsupportedError, type ProjectsClient } from './client';
 
 const project = { id: 'p1', name: 'very-happy', goal: null, instructions: 'Use pnpm.', instructionsVersion: 3 };
@@ -55,7 +55,7 @@ describe('project injector', () => {
         await make(client).decorate('x');
         expect(client.delivered).toHaveBeenCalledWith('s1', ['u1']);
     });
-    it('B-939b: an isolated session (the default; an older server sends no sharing) gets no other sessions, notes or messages — and marks nothing delivered', async () => {
+    it('B-939b: an isolated session (the default; an older server sends no sharing) gets no other sessions or notes — messages to it still arrive (B-939c)', async () => {
         const client = fakeClient({ context: vi.fn(async () => ctx({
             unread: [{ id: 'u1', fromSessionId: 's2', body: 'please take over Z', createdAt: 1 }],
             sessions: [{ sessionId: 's2', projectId: 'p1', machineId: 'm', title: 'notify list', agent: 'claude', machine: null, branch: null, state: 'running', doing: null, injectedInstructionsVersion: 1, capabilities: [], updatedAt: 1 }],
@@ -67,18 +67,17 @@ describe('project injector', () => {
         const inj = make(client);
         const first = await inj.decorate('x');
         expect(first).toContain('Decisions in effect:\n#1 ship server first');
-        expect(first).not.toMatch(/Z belongs to s1|notify list|please take over|Other active sessions|Unread/);
+        expect(first).not.toMatch(/Z belongs to s1|notify list|Other active sessions/);
         expect(first).toContain('The user keeps this project\'s sessions separate');
-        expect(client.delivered).not.toHaveBeenCalled();
-        // Next turn: only the user's changes.
+        expect(first).toContain('please take over Z');
+        expect(client.delivered).toHaveBeenCalledWith('s1', ['u1']);
+        // Next turn: only the user's decisions; a message to this session still comes through.
         client.digest.mockResolvedValueOnce(digest({
             decisions: [{ id: 'd3', seq: 3, title: 'X is mine now', authorUser: false, authorSessionId: 's2' }],
-            messages: [{ id: 'u2', fromSessionId: 's2', body: 'ping', createdAt: 2 }],
         }));
         expect(await inj.decorate('y')).toBe('y');
         client.digest.mockResolvedValueOnce(digest({ decisions: [{ id: 'd4', seq: 4, title: 'freeze Friday', authorUser: true, authorSessionId: null }] }));
         expect(await inj.decorate('z')).toContain('decision #4: freeze Friday');
-        expect(client.delivered).not.toHaveBeenCalled();
     });
     it('B-939b: a shared project keeps the B-939 behaviour; a team session shares even in an isolated project', async () => {
         const peer = { sessionId: 's2', projectId: 'p1', machineId: 'm', title: 'notify list', agent: 'claude', machine: null, branch: null, state: 'running', doing: null, injectedInstructionsVersion: 1, capabilities: [], updatedAt: 1 };
@@ -147,5 +146,131 @@ describe('project injector', () => {
             const off = createProjectInjector({ client: fakeClient({ isDisabled: vi.fn(() => true) }), sessionId: () => 's1', agent, issueDigest: null, teamExitNotice: null, teamLanguageBackfill: backfill });
             expect(await off.decorate('hi')).toBe('[rule for hi]\nhi');
         }
+    });
+});
+
+/**
+ * B-939c: a message another session stored for this one while it was offline
+ * reached the agent only in a shared project, and only as text in front of the
+ * user's message (origin human). Isolation (B-939b) filtered it out entirely,
+ * though the sender was told it would be read at the next turn. It now goes to
+ * the agent as its own session message — the live envelope and channel, so
+ * NON-USER on Claude — in both modes, once, and is marked delivered only after
+ * the agent got it.
+ */
+describe('B-939c: stored messages reach the recipient like live session messages', () => {
+    const stored = (id: string, body: string | null = `body ${id}`) => ({ id, fromSessionId: 'sender-session-1', body, createdAt: 1 });
+    const withDispatch = (client: ProjectsClient, handedOn: 'decorate' | 'pushed' = 'pushed') => {
+        const dispatch = vi.fn((_text: string, _localKey: string) => {});
+        return { dispatch, inj: createProjectInjector({ client, sessionId: () => 's1', metadata: () => null, agent: 'claude', timeoutMs: 50, dispatchToSelf: dispatch, handedOn }) };
+    };
+
+    for (const sharing of ['isolated', 'shared'] as const) {
+        it(`${sharing}: the first turn routes each unread message once as a session message; the user's text is left alone; delivered only when pushed`, async () => {
+            const client = fakeClient({ context: vi.fn(async () => ctx({ sharing, unread: [stored('m1-aaaaaaaa'), stored('m2-bbbbbbbb')] })) });
+            const { dispatch, inj } = withDispatch(client);
+            const out = await inj.decorate('owner text');
+            expect(out.endsWith('---\nowner text')).toBe(true);
+            expect(out).not.toMatch(/body m1|body m2|Unread messages/);
+            expect(dispatch.mock.calls.map((c) => c[1])).toEqual(['project-msg-m1-aaaaaaaa', 'project-msg-m2-bbbbbbbb']);
+            expect(dispatch.mock.calls[0][0]).toMatch(/^\[Very Happy session message m1-aaaaa from "" sender-session-1\]\nbody m1-aaaaaaaa\n\nThis message comes from another agent session/);
+            // Routed, not yet pushed to the agent: nothing is marked delivered.
+            expect(client.delivered).not.toHaveBeenCalled();
+            inj.handed(['project-msg-m1-aaaaaaaa', 'some-owner-localid']);
+            expect(client.delivered).toHaveBeenCalledTimes(1);
+            expect(client.delivered).toHaveBeenCalledWith('s1', ['m1-aaaaaaaa']);
+        });
+        it(`${sharing}: a later turn routes all of the digest's messages (not just the first), never one twice`, async () => {
+            const client = fakeClient({ context: vi.fn(async () => ctx({ sharing })) });
+            const { dispatch, inj } = withDispatch(client);
+            await inj.decorate('x');
+            client.digest.mockResolvedValue(digest({ sharing, messages: [stored('m3'), stored('m4')] }));
+            expect(await inj.decorate('y')).toBe('y');
+            // Still unread on the server while it waits (held / ack in flight): not routed again.
+            await inj.decorate('z');
+            inj.handed(['project-msg-m3']);
+            await inj.decorate('w');
+            expect(dispatch.mock.calls.map((c) => c[1])).toEqual(['project-msg-m3', 'project-msg-m4']);
+            expect(client.delivered).toHaveBeenCalledWith('s1', ['m3']);
+            expect(client.delivered).not.toHaveBeenCalledWith('s1', ['m4']);
+        });
+    }
+    it('stopped before it was pushed: nothing marked delivered, and the next process routes it again', async () => {
+        const make1 = () => withDispatch(fakeClient({ context: vi.fn(async () => ctx({ unread: [stored('m5')] })) }));
+        const first = make1();
+        await first.inj.decorate('x');
+        expect(first.dispatch).toHaveBeenCalledTimes(1);
+        // Process stops here (held behind Claude Code's own turn) — no handed().
+        const second = make1();
+        await second.inj.decorate('resume');
+        expect(second.dispatch.mock.calls.map((c) => c[1])).toEqual(['project-msg-m5']);
+        second.inj.handed(['project-msg-m5']);
+        expect(second.inj).toBeDefined();
+    });
+    it('Codex / pi (handed on decorate): the turn that carries the envelope marks it delivered', async () => {
+        const client = fakeClient({ context: vi.fn(async () => ctx({ unread: [stored('m6')] })) });
+        const { dispatch, inj } = withDispatch(client, 'decorate');
+        await inj.decorate('owner');
+        expect(client.delivered).not.toHaveBeenCalled();
+        await inj.decorate(`queued owner line\n${dispatch.mock.calls[0][0]}`);
+        expect(client.delivered).toHaveBeenCalledWith('s1', ['m6']);
+    });
+    it('a route that throws is not marked delivered and is tried again next turn', async () => {
+        const client = fakeClient({ context: vi.fn(async () => ctx({ unread: [stored('m7')] })) });
+        const { dispatch, inj } = withDispatch(client);
+        dispatch.mockImplementationOnce(() => { throw new Error('no session'); });
+        await inj.decorate('x');
+        client.digest.mockResolvedValueOnce(digest({ messages: [stored('m7')] }));
+        await inj.decorate('y');
+        expect(dispatch).toHaveBeenCalledTimes(2);
+        expect(client.delivered).not.toHaveBeenCalled();
+    });
+    it('an erased body (delivered elsewhere > 7 days ago) is acked without routing', async () => {
+        const client = fakeClient({ context: vi.fn(async () => ctx({ unread: [stored('m8', null)] })) });
+        const { dispatch, inj } = withDispatch(client);
+        await inj.decorate('x');
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(client.delivered).toHaveBeenCalledWith('s1', ['m8']);
+    });
+    it('Gemini (no channel): the message still reaches an isolated session, as the text line', async () => {
+        const client = fakeClient({ context: vi.fn(async () => ctx({ sharing: 'isolated' })) });
+        const inj = make(client);
+        await inj.decorate('x');
+        client.digest.mockResolvedValueOnce(digest({ sharing: 'isolated', messages: [stored('m9', 'MK-ping'), stored('m10', 'MK-pong')] }));
+        const line = await inj.decorate('y');
+        expect(line).toContain('MK-ping');
+        expect(line).toContain('MK-pong'); // every message it acks is shown, not only the first
+        expect(client.delivered).toHaveBeenCalledWith('s1', ['m9', 'm10']);
+    });
+    it('Gemini (no channel): a message the 600-char line cuts off is not marked delivered; it comes in a later digest', async () => {
+        const client = fakeClient({ context: vi.fn(async () => ctx({ sharing: 'isolated' })) });
+        const inj = make(client);
+        await inj.decorate('x');
+        const body = (tag: string) => `${tag} ${'z'.repeat(140)}`;
+        client.digest.mockResolvedValueOnce(digest({
+            sharing: 'isolated',
+            instructions: { version: 2, summary: 's'.repeat(200) },
+            messages: [stored('m11', body('MK-A')), stored('m12', body('MK-B')), stored('m13', body('MK-C'))],
+        }));
+        const line = await inj.decorate('y');
+        expect(line.split('\n')[0].length).toBeLessThanOrEqual(600);
+        const acked = client.delivered.mock.calls.flatMap((c: any[]) => c[1] as string[]);
+        expect(acked.length).toBeGreaterThan(0);
+        expect(acked).not.toContain('m13');
+        for (const [id, tag] of [['m11', 'MK-A'], ['m12', 'MK-B'], ['m13', 'MK-C']]) {
+            expect(acked.includes(id)).toBe(line.includes(tag)); // acked ⇔ shown
+        }
+    });
+    it('Gemini (no channel): the first-turn prefix shows 3 stored messages and marks only those delivered', async () => {
+        const client = fakeClient({ context: vi.fn(async () => ctx({ unread: ['m21', 'm22', 'm23', 'm24'].map((id) => stored(id, `body-${id}`)) })) });
+        const inj = make(client);
+        const out = await inj.decorate('x');
+        expect(out).toContain('body-m23');
+        expect(out).not.toContain('body-m24');
+        expect(client.delivered).toHaveBeenCalledWith('s1', ['m21', 'm22', 'm23']);
+    });
+    it('isStoredMessageLocalId tells routed stored messages apart from server records', () => {
+        expect(isStoredMessageLocalId(storedMessageLocalId('abc'))).toBe(true);
+        expect(isStoredMessageLocalId('3f1c2a4e-0000-4000-8000-000000000000')).toBe(false);
     });
 });

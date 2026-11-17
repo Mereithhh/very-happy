@@ -1176,7 +1176,7 @@ export async function runCodex(opts: {
     let first = true;
     let appendSystemPromptInjected = false;
     // B-645: project prefix (first turn) / digest (later turns) on the user turn; Codex has no system layer for it.
-    const projectInjector = createProjectInjector({ client: sharedProjectsClient(), sessionId: () => session?.sessionId, metadata: () => (session?.getMetadata?.() ?? null) as Record<string, any> | null, agent: 'codex' });
+    const projectInjector = createProjectInjector({ client: sharedProjectsClient(), sessionId: () => session?.sessionId, metadata: () => (session?.getMetadata?.() ?? null) as Record<string, any> | null, agent: 'codex', dispatchToSelf: (text, localKey) => { if (!session) throw new Error('no session'); session.routeLocalSessionPeer(text, localKey); } });
 
     // B-497: the app-server child (and the MCP bridge it starts) inherit
     // process.env — a `very-happy sessions message` from a Codex shell names

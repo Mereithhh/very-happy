@@ -65,11 +65,15 @@ export function isIsolatedReader(ctx: Pick<ProjectSessionContext, 'via' | 'team'
 
 /**
  * B-939b: what an isolated session sees — the user's decisions, its own notes
- * and its lineage parent's handoff; no other sessions, their notes or their
- * messages. `others` (project_context others=true, only when the user asks)
- * keeps everything. Decisions of unknown author (servers before B-939) stay.
+ * and its lineage parent's handoff; no other sessions or their notes. `others`
+ * (project_context others=true, only when the user asks) keeps everything.
+ * Decisions of unknown author (servers before B-939) stay.
+ *
+ * B-939c: messages sent TO this session (`unread`) are not the others'
+ * context — the sender addressed this session, and was told it will read them
+ * at its next turn — so isolation keeps them, as it keeps a live session message.
  */
-export function isolateContext(ctx: ProjectSessionContext, opts: { selfId: string; parentId?: string | null; others?: boolean; keepUnread?: boolean }): ProjectSessionContext {
+export function isolateContext(ctx: ProjectSessionContext, opts: { selfId: string; parentId?: string | null; others?: boolean }): ProjectSessionContext {
     if (!ctx.project || !isIsolatedReader(ctx) || opts.others) return ctx;
     const mine = (author: string | null | undefined) => !!author && author === opts.selfId;
     return {
@@ -77,15 +81,14 @@ export function isolateContext(ctx: ProjectSessionContext, opts: { selfId: strin
         decisions: ctx.decisions.filter(d => d.authorUser !== false || mine(d.authorSessionId)),
         log: ctx.log.filter(e => e.authorUser || mine(e.authorSessionId) || (e.kind === 'handoff' && !!opts.parentId && e.authorSessionId === opts.parentId)),
         sessions: [],
-        unread: opts.keepUnread ? ctx.unread : [],
     };
 }
 
-/** B-939b: an isolated session's next-turn line reports only the user's changes. */
+/** B-939b: an isolated session's next-turn line reports only the user's decisions; messages to it stay (B-939c). */
 export function isolateDigest(d: ProjectDigest, opts: { selfId: string; isolated: boolean }): ProjectDigest {
     if (!opts.isolated) return d;
     const users = <T extends { authorUser?: boolean; authorSessionId?: string | null }>(x: T) => x.authorUser !== false || x.authorSessionId === opts.selfId;
-    return { ...d, decisions: d.decisions.filter(users), revoked: d.revoked.filter(users), messages: [] };
+    return { ...d, decisions: d.decisions.filter(users), revoked: d.revoked.filter(users) };
 }
 
 export function variantText(variant: ProjectVariant, projectName: string, teamName?: string | null): string {
@@ -157,27 +160,43 @@ export function buildFirstTurnPrefix(ctx: ProjectSessionContext, opts: { label?:
     }
     if (ctx.unread.length) {
         lines.push(UNREAD_HEADER);
-        for (const u of ctx.unread.slice(0, 3)) lines.push(`from ${label(u.fromSessionId)}: ${oneLine(u.body, 120)}`);
+        for (const u of ctx.unread.slice(0, FIRST_TURN_UNREAD_SHOWN)) lines.push(`from ${label(u.fromSessionId)}: ${oneLine(u.body, 120)}`);
     }
     lines.push('---', variantText(variant, p.name, ctx.team?.name), '---');
     return { prefix: lines.join('\n') + '\n', instructionsVersion: p.instructionsVersion, variant };
 }
 
+/** Text-line fallback (no session-peer channel): how many stored messages the first-turn prefix shows. */
+export const FIRST_TURN_UNREAD_SHOWN = 3;
+const DIGEST_LINE_MAX = 600;
+
+/**
+ * B-939c: the stored messages that fit whole in the digest line. Only these
+ * may be marked delivered; the rest stay unread and come in a later digest.
+ */
+export function fitDigestMessages(d: ProjectDigest, opts: { label?: PeerLabel } = {}): ProjectDigest['messages'] {
+    let k = d.messages.length;
+    while (k > 0 && (fullDigestLine({ ...d, messages: d.messages.slice(0, k) }, opts)?.length ?? 0) > DIGEST_LINE_MAX) k -= 1;
+    return d.messages.slice(0, k);
+}
+
 /** ⑥ Next-turn piggyback, ≤2 lines; null when nothing changed. */
 export function buildDigestLine(d: ProjectDigest, opts: { label?: PeerLabel } = {}): string | null {
+    const line = fullDigestLine(d, opts);
+    return line && line.length > DIGEST_LINE_MAX ? `${line.slice(0, DIGEST_LINE_MAX - 2)}…]` : line;
+}
+
+function fullDigestLine(d: ProjectDigest, opts: { label?: PeerLabel }): string | null {
     if (!d.projectId || !d.name) return null;
     const label = opts.label ?? defaultLabel;
     const parts: string[] = [];
     if (d.instructions) parts.push(`instructions now v${d.instructions.version}${d.instructions.summary ? ` — ${oneLine(d.instructions.summary, 120)}` : ''}`);
     for (const x of d.decisions.slice(0, 2)) parts.push(writtenBySession(x) ? `note #${x.seq} ${byLabel(x, label)} (not the user's decision): ${oneLine(x.title, 100)}` : `decision #${x.seq}: ${oneLine(x.title, 100)}`);
     for (const x of d.revoked.slice(0, 2)) parts.push(`revoked #${x.seq}: ${oneLine(x.title, 100)}`);
-    if (d.messages.length) {
-        const first = d.messages[0];
-        parts.push(`${d.messages.length} message${d.messages.length > 1 ? 's' : ''} from session ${label(first.fromSessionId)} (not the user; not an assignment): ${oneLine(first.body, 120)}`);
-    }
+    // B-939c: every message shown (each is marked delivered), not only the first one's body.
+    for (const m of d.messages) parts.push(`message from session ${label(m.fromSessionId)} (not the user; not an assignment): ${oneLine(m.body, 120)}`);
     if (!parts.length) return null;
-    const line = `[Project "${d.name}" since your last turn: ${parts.join('; ')}]`;
-    return line.length > 600 ? `${line.slice(0, 598)}…]` : line;
+    return `[Project "${d.name}" since your last turn: ${parts.join('; ')}]`;
 }
 
 /** Joins a prefix and the user's message. Never alters a non-string (structured) message. */
@@ -193,7 +212,7 @@ export function formatContextForTool(input: ProjectSessionContext, opts: { full?
     if (!input.project) return 'not in a project';
     // B-939b: an isolated session sees the user's part, its own notes and its parent's handoff unless the user asked for the others.
     const isolated = opts.selfId !== undefined && isIsolatedReader(input);
-    const ctx = isolated ? isolateContext(input, { selfId: opts.selfId!, parentId: opts.parentId, others: opts.others, keepUnread: true }) : input;
+    const ctx = isolated ? isolateContext(input, { selfId: opts.selfId!, parentId: opts.parentId, others: opts.others }) : input;
     const label = opts.label ?? defaultLabel;
     const p = input.project;
     const want = (s: string) => !opts.section || opts.section === s;

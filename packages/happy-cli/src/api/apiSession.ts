@@ -28,6 +28,7 @@ import {
     type ClaudeSessionProtocolState,
 } from '@/claude/utils/sessionProtocolMapper';
 import { InvalidateSync } from '@/utils/sync';
+import { SESSION_PEER_SENT_FROM } from '@/sessions/peerMessage';
 import axios from 'axios';
 import { createEnvelope, type TurnFailure } from '@slopus/happy-wire';
 import { scanUndeliveredQueuedInputs, type UndeliveredScan } from '@/utils/undeliveredQueuedInputs';
@@ -514,6 +515,18 @@ export class ApiSessionClient extends EventEmitter {
      */
     routedLocalIdOf(message: UserMessage): string | null {
         return this.routedLocalIds.has(message) ? this.routedLocalIds.get(message) ?? null : message.localKey ?? null;
+    }
+
+    /**
+     * B-939c: hand a project message another session stored for this one while
+     * it was offline to this wrapper as a session message — the envelope and
+     * `meta.sentFrom === 'session-peer'` of live delivery, so it takes the same
+     * path (NON-USER on Claude, B-940). Local only: nothing is written to the
+     * session on the server, so the Web shows no new bubble in the owner's name;
+     * the stored message stays unread there until the agent got it.
+     */
+    routeLocalSessionPeer(text: string, localKey: string): void {
+        this.routeIncomingMessage({ role: 'user', content: { type: 'text', text }, localKey, meta: { sentFrom: SESSION_PEER_SENT_FROM } }, null);
     }
 
     onUserMessage(callback: (data: UserMessage) => void) {

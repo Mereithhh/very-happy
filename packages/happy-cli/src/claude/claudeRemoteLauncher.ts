@@ -891,6 +891,8 @@ export async function claudeRemoteLauncher(
                     // it can put back and resend, never silence. Leaving remote
                     // mode is the user's stop (`aborted`); otherwise the Query
                     // was replaced before it took the message (`restarted`).
+                    // B-939c: a stored project message routed to this session counts as delivered once pushed.
+                    onPromptPushed: (sourceIds) => session.projectInjector.handed(sourceIds),
                     onUndeliveredMessage: (message) => {
                         const parked = planUndeliveredMessage(message, { parkFree: !modeGate.hasParked, exiting: exitReason !== null });
                         if (parked) {

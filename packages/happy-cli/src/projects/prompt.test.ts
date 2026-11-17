@@ -85,7 +85,7 @@ describe('next-turn digest (D)', () => {
     });
     it('one bracketed line with version, decisions and messages', () => {
         const line = buildDigestLine(d({ instructions: { version: 8, summary: 'add rule' }, decisions: [{ id: 'x', seq: 12, title: 'ship server first' }], messages: [{ id: 'm', fromSessionId: 'abcdefgh123', body: 'heads up', createdAt: 1 }] }))!;
-        expect(line).toBe('[Project "very-happy" since your last turn: instructions now v8 — add rule; decision #12: ship server first; 1 message from session abcdefgh (not the user; not an assignment): heads up]');
+        expect(line).toBe('[Project "very-happy" since your last turn: instructions now v8 — add rule; decision #12: ship server first; message from session abcdefgh (not the user; not an assignment): heads up]');
         expect(line.split('\n')).toHaveLength(1);
     });
     it('stays bounded', () => {
@@ -195,8 +195,10 @@ describe('B-939b: isolated project sessions', () => {
     });
     it('first turn (no sharing from an older server = isolated): the user\'s instructions and decisions only, isolated wording', () => {
         const prefix = buildFirstTurnPrefix(iso(), { selfId: 'me-session' })!.prefix;
-        expect(prefix).toContain('Use pnpm.\nDecisions in effect:\n#1 freeze Friday\n---\n');
-        expect(prefix).not.toMatch(/Z is B|Other active sessions|fix sidebar|Unread|take Z/);
+        expect(prefix).toContain('Use pnpm.\nDecisions in effect:\n#1 freeze Friday\nUnread');
+        expect(prefix).not.toMatch(/Z is B|Other active sessions|fix sidebar/);
+        // B-939c: a message sent to this session is not the others' context — it stays.
+        expect(prefix).toContain('from peer-ses: take Z');
         expect(prefix).toContain(variantText('isolated', 'very-happy'));
         expect(variantText('isolated', 'p')).toMatch(/do not message other sessions or read their notes unless the user asks/);
         expect(variantText('isolated', 'p')).toContain(SCOPE_RULE);

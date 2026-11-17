@@ -183,6 +183,16 @@ describe('ApiSessionClient v3 messages API migration', () => {
         vi.unstubAllGlobals();
     });
 
+    it('B-939c: routeLocalSessionPeer hands a session-peer message to this wrapper without writing it to the server', () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const received: any[] = [];
+        client.onUserMessage((m) => received.push(m));
+        mockAxiosPost.mockClear();
+        client.routeLocalSessionPeer('[Very Happy session message abc from "" s2]\nhi', 'project-msg-abc');
+        expect(received).toEqual([{ role: 'user', content: { type: 'text', text: '[Very Happy session message abc from "" s2]\nhi' }, localKey: 'project-msg-abc', meta: { sentFrom: 'session-peer' } }]);
+        expect(mockAxiosPost).not.toHaveBeenCalled();
+    });
+
     it('registers core socket handlers and connects', () => {
         mockSocket.connected = false;
         new ApiSessionClient('fake-token', session);
