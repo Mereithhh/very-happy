@@ -60,12 +60,17 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     // B-513: failed > sending across the text and its attachments.
     const send = turnSendStatus(message, attachments);
     useSendSpinnerReset(send, message.localId);
+    // B-332 / B-940c: the CLI destroyed this queued message before it ever ran.
+    // Team and session-message cards say so too — under the card, no restore
+    // action (their text is another agent's envelope, not the user's draft).
+    const discarded = discardedReasonKey(message);
+    const cardNote = discarded ? <DiscardedNote sessionId={sessionId} reason={discarded} text="" /> : undefined;
     const teamContent = presentTeamMessage(message);
-    if (teamContent) return <TeamMessageCard content={teamContent} sessionId={sessionId} localId={message.localId} createdAt={message.createdAt} />;
+    if (teamContent) return <TeamMessageCard content={teamContent} sessionId={sessionId} localId={message.localId} createdAt={message.createdAt} footer={cardNote} />;
     // B-497: a message from another session on the same machine, or the
     // daemon's edit-conflict notice — a source card with a link to that session.
     const peerContent = presentSessionPeerMessage(message);
-    if (peerContent) return <SessionPeerMessageCard content={peerContent} sessionId={sessionId} createdAt={message.createdAt} />;
+    if (peerContent) return <SessionPeerMessageCard content={peerContent} sessionId={sessionId} createdAt={message.createdAt} footer={cardNote} />;
     // B-619: a message another person wrote into this (shared) session — an
     // ordinary user bubble with the sender's name above it.
     const shared = presentSharedMessage(message);
@@ -127,9 +132,6 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     if (!text && attachmentItems.length === 0) return null;
     const canCollapse = shouldCollapseBubble(estimateWrappedLines(text));
     const clamped = canCollapse && !expanded;
-    // B-332: the CLI destroyed this queued message before it ever ran. Say so
-    // under the bubble instead of letting it pass for a delivered prompt.
-    const discarded = discardedReasonKey(message);
     const answeredChip = <AnsweredChip messageId={message.id} />;
     return (
         <div className="msg msg--user" data-chat-prompt-id={message.id} data-message-id={message.id} data-message-seq={message.seq ?? undefined}>

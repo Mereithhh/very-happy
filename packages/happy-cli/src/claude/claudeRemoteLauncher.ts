@@ -896,7 +896,10 @@ export async function claudeRemoteLauncher(
                         if (parked) {
                             // B-940b: parked for this process's next launch. If the process is
                             // exiting instead, runClaude's exit stamp lists it for the next wrapper.
-                            logger.debug(`[remote]: pulled message ${message.uuid ?? '(no uuid)'} missed its Query; parked to run first in the next launch`);
+                            // B-940c: say which — after the stamp there is no next launch here.
+                            logger.debug(session.exitDisposed
+                                ? `[remote]: pulled message ${message.uuid ?? '(no uuid)'} missed its Query while the process is exiting; the exit stamp already handed it to the next wrapper or marked it not delivered`
+                                : `[remote]: pulled message ${message.uuid ?? '(no uuid)'} missed its Query; parked to run first in the next launch`);
                             modeGate.park(parked);
                         } else if (message.uuid) {
                             logger.debug(`[remote]: pulled message ${message.uuid} missed its Query and cannot be replayed`);

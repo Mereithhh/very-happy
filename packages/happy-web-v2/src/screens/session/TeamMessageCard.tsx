@@ -1,4 +1,4 @@
-import { useContext, useRef, useState } from 'react';
+import { useContext, useRef, useState, type ReactNode } from 'react';
 import { UsersRound, ArrowUpRight, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -29,10 +29,10 @@ const KIND_LABEL: Record<TeamMessageKind, TranslationKey> = {
     message: 'session.messageReader.kind.message',
 };
 
-export function TeamMessageCard({ content, sessionId, localId, createdAt }: { content: PresentedTeamMessage; sessionId?: string; localId?: string | null; createdAt?: number | null }) {
+export function TeamMessageCard({ content, sessionId, localId, createdAt, footer }: { content: PresentedTeamMessage; sessionId?: string; localId?: string | null; createdAt?: number | null; footer?: ReactNode }) {
     const teams = useTeamNavigation();
     const execution = useMemberExecution();
-    return <TeamMessageCardView content={content} team={teamForMessage(teams, sessionId, localId ?? null)} localId={localId ?? null} createdAt={createdAt} execution={execution} />;
+    return <TeamMessageCardView content={content} team={teamForMessage(teams, sessionId, localId ?? null)} localId={localId ?? null} createdAt={createdAt} execution={execution} footer={footer} />;
 }
 
 /**
@@ -41,7 +41,7 @@ export function TeamMessageCard({ content, sessionId, localId, createdAt }: { co
  * 3-line preview (no markdown syntax); the whole card opens MessageReader with
  * the body rendered in full. The task link stays on the card.
  */
-export function TeamMessageCardView({ content, team, localId, createdAt, execution = () => undefined }: { content: PresentedTeamMessage; team: TeamState | undefined; localId: string | null; createdAt?: number | null; execution?: MemberExecution }) {
+export function TeamMessageCardView({ content, team, localId, createdAt, execution = () => undefined, footer }: { content: PresentedTeamMessage; team: TeamState | undefined; localId: string | null; createdAt?: number | null; execution?: MemberExecution; footer?: ReactNode }) {
     const { t } = useTranslation();
     const copy = useFirstUseCopy();
     const [open, setOpen] = useState(false);
@@ -97,5 +97,6 @@ export function TeamMessageCardView({ content, team, localId, createdAt, executi
             links={links}
             raw={content.raw}
         />
+        {footer}
     </div>;
 }

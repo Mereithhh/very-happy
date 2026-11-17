@@ -233,6 +233,13 @@ export class Session {
         this.undeliveredProbe = probe;
     }
 
+    /**
+     * B-940c: the exit stamp already disposed of what this process held (handed
+     * to the next wrapper, or marked not delivered). Read only by log lines — a
+     * message the closing Query hands back after this is not "for the next launch".
+     */
+    exitDisposed = false;
+
     /** B-940b: see setUndeliveredProbe. Never throws (an exiting process asks). */
     undeliveredSourceIds = (): string[] => {
         try { return this.undeliveredProbe?.() ?? []; }

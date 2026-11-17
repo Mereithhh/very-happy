@@ -12,7 +12,7 @@
  * B-716: the body is previewed as plain lines (markdown stripped); clicking
  * the card opens MessageReader with the body rendered and the source folded.
  */
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { ArrowUpRight, MessageSquareShare, TriangleAlert } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -29,7 +29,7 @@ import { cardClickOpens } from './cardClick';
 import './sessionPeerMessage.css';
 
 /** B-716: the folded card previews the body in plain lines; the whole card opens the reader. */
-export function SessionPeerMessageCard({ content, sessionId, createdAt }: { content: PresentedPeerMessage; sessionId?: string; createdAt?: number | null }) {
+export function SessionPeerMessageCard({ content, sessionId, createdAt, footer }: { content: PresentedPeerMessage; sessionId?: string; createdAt?: number | null; footer?: ReactNode }) {
     const { t } = useTranslation();
     const self = useSession(sessionId ?? '');
     const [open, setOpen] = useState(false);
@@ -86,5 +86,6 @@ export function SessionPeerMessageCard({ content, sessionId, createdAt }: { cont
             links={sessionLink ? [{ to: sessionLink, label: t('session.peerMessage.openSession'), title: content.fromSessionId }] : []}
             raw={content.raw}
         />
+        {footer}
     </div>;
 }
