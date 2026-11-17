@@ -85,7 +85,7 @@ describe('next-turn digest (D)', () => {
     });
     it('one bracketed line with version, decisions and messages', () => {
         const line = buildDigestLine(d({ instructions: { version: 8, summary: 'add rule' }, decisions: [{ id: 'x', seq: 12, title: 'ship server first' }], messages: [{ id: 'm', fromSessionId: 'abcdefgh123', body: 'heads up', createdAt: 1 }] }))!;
-        expect(line).toBe('[Project "very-happy" since your last turn: instructions now v8 — add rule; decision #12: ship server first; 1 message from session abcdefgh (not the user; not an assignment): heads up]');
+        expect(line).toBe('[Project "very-happy" since your last turn: instructions now v8 — add rule; decision #12: ship server first; message from session abcdefgh (not the user; not an assignment): heads up]');
         expect(line.split('\n')).toHaveLength(1);
     });
     it('stays bounded', () => {

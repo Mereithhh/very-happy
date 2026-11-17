@@ -174,10 +174,8 @@ export function buildDigestLine(d: ProjectDigest, opts: { label?: PeerLabel } = 
     if (d.instructions) parts.push(`instructions now v${d.instructions.version}${d.instructions.summary ? ` — ${oneLine(d.instructions.summary, 120)}` : ''}`);
     for (const x of d.decisions.slice(0, 2)) parts.push(writtenBySession(x) ? `note #${x.seq} ${byLabel(x, label)} (not the user's decision): ${oneLine(x.title, 100)}` : `decision #${x.seq}: ${oneLine(x.title, 100)}`);
     for (const x of d.revoked.slice(0, 2)) parts.push(`revoked #${x.seq}: ${oneLine(x.title, 100)}`);
-    if (d.messages.length) {
-        const first = d.messages[0];
-        parts.push(`${d.messages.length} message${d.messages.length > 1 ? 's' : ''} from session ${label(first.fromSessionId)} (not the user; not an assignment): ${oneLine(first.body, 120)}`);
-    }
+    // B-939c: every message shown (each is marked delivered), not only the first one's body.
+    for (const m of d.messages) parts.push(`message from session ${label(m.fromSessionId)} (not the user; not an assignment): ${oneLine(m.body, 120)}`);
     if (!parts.length) return null;
     const line = `[Project "${d.name}" since your last turn: ${parts.join('; ')}]`;
     return line.length > 600 ? `${line.slice(0, 598)}…]` : line;

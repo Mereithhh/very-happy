@@ -237,7 +237,9 @@ describe('B-939c: stored messages reach the recipient like live session messages
         const inj = make(client);
         await inj.decorate('x');
         client.digest.mockResolvedValueOnce(digest({ sharing: 'isolated', messages: [stored('m9', 'MK-ping'), stored('m10', 'MK-pong')] }));
-        expect(await inj.decorate('y')).toContain('MK-ping');
+        const line = await inj.decorate('y');
+        expect(line).toContain('MK-ping');
+        expect(line).toContain('MK-pong'); // every message it acks is shown, not only the first
         expect(client.delivered).toHaveBeenCalledWith('s1', ['m9', 'm10']);
     });
     it('isStoredMessageLocalId tells routed stored messages apart from server records', () => {
