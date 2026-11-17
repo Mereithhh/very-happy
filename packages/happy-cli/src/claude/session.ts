@@ -134,6 +134,8 @@ export class Session {
             sessionId: () => this.client.sessionId,
             metadata: () => (this.client.getMetadata?.() ?? null) as Record<string, any> | null,
             agent: 'claude',
+            // B-939c: a message stored while this session was offline arrives like a live session message.
+            postToSelf: (text, localId) => this.client.postSessionPeerToSelf(text, localId),
         });
     }
 

@@ -831,7 +831,7 @@ export async function runAcp(opts: {
   let backendGone: Error | null = null;
   let todoDiscoverySent = false;
   // B-645: project prefix / digest on the prompt; reset with todoDiscoverySent when a fresh agent forgets the conversation.
-  const projectInjector = createProjectInjector({ client: sharedProjectsClient(), sessionId: () => session?.sessionId, metadata: () => (session?.getMetadata?.() ?? null) as Record<string, any> | null, agent: opts.agentName });
+  const projectInjector = createProjectInjector({ client: sharedProjectsClient(), sessionId: () => session?.sessionId, metadata: () => (session?.getMetadata?.() ?? null) as Record<string, any> | null, agent: opts.agentName, postToSelf: (text, localId) => session ? session.postSessionPeerToSelf(text, localId) : Promise.reject(new Error('no session')) });
 
   const stopRunnerFromBackendStatus = (status: 'error' | 'stopped', detail?: string) => {
     const reason = detail

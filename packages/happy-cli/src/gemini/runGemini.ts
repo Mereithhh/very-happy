@@ -895,7 +895,7 @@ export async function runGemini(opts: {
 
   let first = true;
   // B-645: project prefix / digest on the prompt actually sent (a model switch starts a fresh ACP session → reset).
-  const projectInjector = createProjectInjector({ client: sharedProjectsClient(), sessionId: () => session?.sessionId, metadata: () => (session?.getMetadata?.() ?? null) as Record<string, any> | null, agent: 'gemini' });
+  const projectInjector = createProjectInjector({ client: sharedProjectsClient(), sessionId: () => session?.sessionId, metadata: () => (session?.getMetadata?.() ?? null) as Record<string, any> | null, agent: 'gemini', postToSelf: (text, localId) => session ? session.postSessionPeerToSelf(text, localId) : Promise.reject(new Error('no session')) });
 
   try {
     let currentModeHash: string | null = null;

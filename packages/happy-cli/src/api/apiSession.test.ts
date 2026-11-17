@@ -183,6 +183,19 @@ describe('ApiSessionClient v3 messages API migration', () => {
         vi.unstubAllGlobals();
     });
 
+    it('B-939c: postSessionPeerToSelf posts a session-peer user message into this session under the given localId', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        mockAxiosPost.mockResolvedValueOnce({ data: {} });
+        await client.postSessionPeerToSelf('[Very Happy session message abc from "" s2]\nhi', 'project-msg-abc');
+        const [url, body, opts] = mockAxiosPost.mock.calls.at(-1)!;
+        expect(url).toBe('https://server.test/v3/sessions/test-session-id/messages');
+        expect(body.messages).toHaveLength(1);
+        expect(body.messages[0].localId).toBe('project-msg-abc');
+        expect(opts.headers.Authorization).toBe('Bearer fake-token');
+        const plain = decrypt(session.encryptionKey, session.encryptionVariant, decodeBase64(body.messages[0].content));
+        expect(plain).toEqual({ role: 'user', content: { type: 'text', text: '[Very Happy session message abc from "" s2]\nhi' }, meta: { sentFrom: 'session-peer' } });
+    });
+
     it('registers core socket handlers and connects', () => {
         mockSocket.connected = false;
         new ApiSessionClient('fake-token', session);

@@ -177,7 +177,7 @@ export function createWrapupTracker(deps: WrapupTrackerDeps) {
             const note = delivery === 'delivered'
                 ? `Delivered to ${input.to}${machine ? ` on ${machine}` : ''}.${archive ? ' This session is archived when this turn ends: finish the turn now and start no new work.' : ' Start no new work here.'}`
                 : delivery === 'offline-stored'
-                    ? `${input.to} is not running; the handoff is stored and read at its next turn.${archiveAfter ? ' This session is NOT archived (delivery to a live session was not confirmed).' : ''}`
+                    ? `${input.to} is not running; the handoff is stored and reaches it as a session message when its next turn starts.${archiveAfter ? ' This session is NOT archived (delivery to a live session was not confirmed).' : ''}`
                     : `Handoff NOT delivered: ${error}.${archiveAfter ? ' This session is NOT archived.' : ''} Tell the user.`
             return {
                 to: input.to, delivery, ...(error ? { error } : {}), ...(machine ? { machine } : {}), card,

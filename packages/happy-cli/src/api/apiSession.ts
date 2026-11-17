@@ -28,6 +28,7 @@ import {
     type ClaudeSessionProtocolState,
 } from '@/claude/utils/sessionProtocolMapper';
 import { InvalidateSync } from '@/utils/sync';
+import { SESSION_PEER_SENT_FROM } from '@/sessions/peerMessage';
 import axios from 'axios';
 import { createEnvelope, type TurnFailure } from '@slopus/happy-wire';
 import { scanUndeliveredQueuedInputs, type UndeliveredScan } from '@/utils/undeliveredQueuedInputs';
@@ -514,6 +515,20 @@ export class ApiSessionClient extends EventEmitter {
      */
     routedLocalIdOf(message: UserMessage): string | null {
         return this.routedLocalIds.has(message) ? this.routedLocalIds.get(message) ?? null : message.localKey ?? null;
+    }
+
+    /**
+     * B-939c: post a session message into THIS session the way another session's
+     * online delivery does (`meta.sentFrom === 'session-peer'`, deliverToSession):
+     * a project message stored while this session was offline then reaches the
+     * agent exactly like a live one — the same envelope, NON-USER on Claude
+     * (B-940), a session-message card in the Web. Not our outbox, so the
+     * server's echo is routed to us like any inbound message; `localId` is
+     * stable per stored message, so a repeat post is one message.
+     */
+    async postSessionPeerToSelf(text: string, localId: string): Promise<void> {
+        const content = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, { role: 'user', content: { type: 'text', text }, meta: { sentFrom: SESSION_PEER_SENT_FROM } }));
+        await axios.post(`${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`, { messages: [{ content, localId }] }, { headers: this.authHeaders(), timeout: 30_000 });
     }
 
     onUserMessage(callback: (data: UserMessage) => void) {

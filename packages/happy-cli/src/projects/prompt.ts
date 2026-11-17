@@ -65,11 +65,15 @@ export function isIsolatedReader(ctx: Pick<ProjectSessionContext, 'via' | 'team'
 
 /**
  * B-939b: what an isolated session sees — the user's decisions, its own notes
- * and its lineage parent's handoff; no other sessions, their notes or their
- * messages. `others` (project_context others=true, only when the user asks)
- * keeps everything. Decisions of unknown author (servers before B-939) stay.
+ * and its lineage parent's handoff; no other sessions or their notes. `others`
+ * (project_context others=true, only when the user asks) keeps everything.
+ * Decisions of unknown author (servers before B-939) stay.
+ *
+ * B-939c: messages sent TO this session (`unread`) are not the others'
+ * context — the sender addressed this session, and was told it will read them
+ * at its next turn — so isolation keeps them, as it keeps a live session message.
  */
-export function isolateContext(ctx: ProjectSessionContext, opts: { selfId: string; parentId?: string | null; others?: boolean; keepUnread?: boolean }): ProjectSessionContext {
+export function isolateContext(ctx: ProjectSessionContext, opts: { selfId: string; parentId?: string | null; others?: boolean }): ProjectSessionContext {
     if (!ctx.project || !isIsolatedReader(ctx) || opts.others) return ctx;
     const mine = (author: string | null | undefined) => !!author && author === opts.selfId;
     return {
@@ -77,15 +81,14 @@ export function isolateContext(ctx: ProjectSessionContext, opts: { selfId: strin
         decisions: ctx.decisions.filter(d => d.authorUser !== false || mine(d.authorSessionId)),
         log: ctx.log.filter(e => e.authorUser || mine(e.authorSessionId) || (e.kind === 'handoff' && !!opts.parentId && e.authorSessionId === opts.parentId)),
         sessions: [],
-        unread: opts.keepUnread ? ctx.unread : [],
     };
 }
 
-/** B-939b: an isolated session's next-turn line reports only the user's changes. */
+/** B-939b: an isolated session's next-turn line reports only the user's decisions; messages to it stay (B-939c). */
 export function isolateDigest(d: ProjectDigest, opts: { selfId: string; isolated: boolean }): ProjectDigest {
     if (!opts.isolated) return d;
     const users = <T extends { authorUser?: boolean; authorSessionId?: string | null }>(x: T) => x.authorUser !== false || x.authorSessionId === opts.selfId;
-    return { ...d, decisions: d.decisions.filter(users), revoked: d.revoked.filter(users), messages: [] };
+    return { ...d, decisions: d.decisions.filter(users), revoked: d.revoked.filter(users) };
 }
 
 export function variantText(variant: ProjectVariant, projectName: string, teamName?: string | null): string {
@@ -193,7 +196,7 @@ export function formatContextForTool(input: ProjectSessionContext, opts: { full?
     if (!input.project) return 'not in a project';
     // B-939b: an isolated session sees the user's part, its own notes and its parent's handoff unless the user asked for the others.
     const isolated = opts.selfId !== undefined && isIsolatedReader(input);
-    const ctx = isolated ? isolateContext(input, { selfId: opts.selfId!, parentId: opts.parentId, others: opts.others, keepUnread: true }) : input;
+    const ctx = isolated ? isolateContext(input, { selfId: opts.selfId!, parentId: opts.parentId, others: opts.others }) : input;
     const label = opts.label ?? defaultLabel;
     const p = input.project;
     const want = (s: string) => !opts.section || opts.section === s;

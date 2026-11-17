@@ -32,7 +32,7 @@ export const SESSION_PEER_TOOL_SCHEMAS: Record<SessionPeerToolName, { descriptio
     session_message: {
         title: 'Message Another Session',
         readOnly: false,
-        description: 'Send a message to another agent session (find ids with session_peers). It lands in that session\'s chat with your title, session id and cwd, and tells the peer how to reply to you. Use it only to coordinate: you both edit the same files (say what you are changing and ask what they are changing), you changed something it depends on, or to ask whether you are both doing the same work. It is not for assigning work: only the user gives each session its task, so do not ask a session to take over or add work, and do not tell it the user decided it should — if work needs another owner, tell the user here. Returns as soon as the message is queued; the reply arrives later as a message from that session. Sessions on this machine are reached directly; a session spawned by another machine of this account is routed to that machine\'s daemon (it must be online). If the target is not running but is in your Very Happy project, the message is stored and read at its next turn (stored: true). Terminal-mirror sessions cannot receive messages.',
+        description: 'Send a message to another agent session (find ids with session_peers). It lands in that session\'s chat with your title, session id and cwd, and tells the peer how to reply to you. Use it only to coordinate: you both edit the same files (say what you are changing and ask what they are changing), you changed something it depends on, or to ask whether you are both doing the same work. It is not for assigning work: only the user gives each session its task, so do not ask a session to take over or add work, and do not tell it the user decided it should — if work needs another owner, tell the user here. Returns as soon as the message is queued; the reply arrives later as a message from that session. Sessions on this machine are reached directly; a session spawned by another machine of this account is routed to that machine\'s daemon (it must be online). If the target is not running but is in your Very Happy project, the message is stored and reaches it as a session message when its next turn starts (stored: true; sending does not wake it). Terminal-mirror sessions cannot receive messages.',
         inputSchema: {
             to: z.string().min(1).max(128).describe('Target session id (from session_peers, or a peer\'s message header)'),
             body: z.string().min(1).max(16_000).describe('The message text'),
@@ -103,7 +103,8 @@ async function defaultStoreOffline(args: { from: string; to: string; body: strin
     }
 }
 
-export const OFFLINE_STORED_NOTE = 'stored, will be read at recipient\'s next turn'
+/** B-939c: what the recipient gets — the message as a session message at its next turn, isolated project or shared alike. */
+export const OFFLINE_STORED_NOTE = 'stored: the recipient is not running; it gets this as a session message when its next turn starts (sending does not wake it)'
 
 /** B-646: same-project fallback when the target is not running anywhere we can reach. */
 async function storeOfflineOrThrow(context: PeerToolContext, self: PeerSelf, to: string, body: string, original: Error): Promise<SendPeerMessageResult> {
