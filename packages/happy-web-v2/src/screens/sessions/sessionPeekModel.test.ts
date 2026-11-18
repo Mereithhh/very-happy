@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from '@/sync/storageTypes';
-import { placeHoverPeek, PEEK_BRANCH_TTL_MS, PEEK_HOVER_DELAY_MS, PEEK_HOVER_MEDIA, cachedBranch, lookupBranch, parseBranch, peekFacts, resetBranchCache } from './sessionPeekModel';
+import { dismissesHoverPeek, placeHoverPeek, PEEK_BRANCH_TTL_MS, PEEK_HOVER_DELAY_MS, PEEK_HOVER_MEDIA, cachedBranch, lookupBranch, parseBranch, peekFacts, resetBranchCache } from './sessionPeekModel';
 
 function session(over: Omit<Partial<Session>, 'metadata'> & { metadata?: Partial<NonNullable<Session['metadata']>> } = {}): Session {
   const { metadata, ...rest } = over;
@@ -75,5 +75,21 @@ describe('session peek model (B-588)', () => {
     const vp = { width: 1280, height: 800 };
     expect(placeHoverPeek({ left: 8, top: 300, width: 244, height: 32 }, { width: 320, height: 200 }, vp)).toEqual({ left: 260, top: 300 });
     expect(placeHoverPeek({ left: 1000, top: 700, width: 244, height: 32 }, { width: 320, height: 200 }, vp)).toEqual({ left: 672, top: 588 });
+  });
+});
+
+describe('dismissesHoverPeek (B-941)', () => {
+  it('closes on everything but the pointer still on its row, an unrelated scroll, other keys, a visible page', () => {
+    expect(dismissesHoverPeek({ type: 'pointermove', inRow: true })).toBe(false);
+    expect(dismissesHoverPeek({ type: 'pointermove', inRow: false })).toBe(true);
+    expect(dismissesHoverPeek({ type: 'pointerdown' })).toBe(true);
+    expect(dismissesHoverPeek({ type: 'keydown', key: 'Escape' })).toBe(true);
+    expect(dismissesHoverPeek({ type: 'keydown', key: 'Enter' })).toBe(false);
+    expect(dismissesHoverPeek({ type: 'scroll', holdsRow: true })).toBe(true);
+    expect(dismissesHoverPeek({ type: 'scroll', holdsRow: false })).toBe(false);
+    expect(dismissesHoverPeek({ type: 'blur' })).toBe(true);
+    expect(dismissesHoverPeek({ type: 'resize' })).toBe(true);
+    expect(dismissesHoverPeek({ type: 'visibilitychange', hidden: true })).toBe(true);
+    expect(dismissesHoverPeek({ type: 'visibilitychange', hidden: false })).toBe(false);
   });
 });

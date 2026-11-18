@@ -13,6 +13,37 @@ import { compactResolvedModelCode } from '@/components/modelModeOptions';
 
 export const PEEK_HOVER_DELAY_MS = 600;
 export const PEEK_HOVER_MEDIA = '(hover: hover) and (pointer: fine)';
+/**
+ * B-941: what ends a HOVER preview besides the row's own pointerleave, which a
+ * browser can skip (the row node moved under a resting pointer, the window
+ * lost the OS pointer, a list scrolled under it). One missed leave used to
+ * leave the preview up with nothing that could close it.
+ *
+ * `inRow`: the event's target is inside the hovered row. `holdsRow`: the
+ * scrolled element contains the row (the chat stream auto-scrolling beside
+ * the sidebar must not close it). Listening only — Escape is never
+ * preventDefault()ed here (the terminal / composer still get it, #515).
+ */
+export type HoverPeekEvent =
+  | { type: 'pointermove'; inRow: boolean }
+  | { type: 'pointerdown' }
+  | { type: 'keydown'; key: string }
+  | { type: 'scroll'; holdsRow: boolean }
+  | { type: 'blur' | 'resize' }
+  | { type: 'visibilitychange'; hidden: boolean };
+
+export function dismissesHoverPeek(e: HoverPeekEvent): boolean {
+  switch (e.type) {
+    case 'pointermove': return !e.inRow;
+    case 'pointerdown': return true;
+    case 'keydown': return e.key === 'Escape';
+    case 'scroll': return e.holdsRow;
+    case 'blur':
+    case 'resize': return true;
+    case 'visibilitychange': return e.hidden;
+  }
+}
+
 /** Branch lookups are cached per session for this long (one RPC per hover at most). */
 export const PEEK_BRANCH_TTL_MS = 60_000;
 
