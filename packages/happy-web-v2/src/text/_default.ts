@@ -3422,6 +3422,11 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov19a: {
+                title: 'The session preview in the sidebar now closes when you want it to',
+                summary: 'The preview that pops up when you hover over a session in the sidebar could stay open after you moved on. Now it closes as soon as you do something else.',
+                close: 'Press Esc, click anywhere, scroll the session list or switch to another window, and the preview closes.',
+            },
             nov18a: {
                 title: 'A message sent to a stopped session in your project now reaches it',
                 summary: 'When one session messaged another in the same project while that one was stopped or asleep, the message was stored but — in a project that keeps sessions separate, the default — never shown to it, though the sender was told it would be read. Now the session gets it when its next turn starts.',
