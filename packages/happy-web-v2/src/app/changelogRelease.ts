@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-19-sidebar-preview-closes',
+    date: '2026-11-19',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov19a.title',
+    summaryKey: 'changelog.releases.nov19a.summary',
+    itemKeys: ['changelog.releases.nov19a.close'],
+  },
+  {
     id: '2026-11-18-messages-to-stopped-project-sessions-arrive',
     cliVersion: '0.2.218',
     date: '2026-11-18',
