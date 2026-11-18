@@ -72,7 +72,8 @@
 }
 
 /* Hover mode is a plain fixed overlay (no Radix layer): never takes the
-   pointer, so leaving the row is the only way it lives or dies. */
+   pointer. It closes on leave, Esc, any click, list scroll, blur (B-941,
+   useSessionPeek) — closing on scroll is why it never needs re-placing. */
 .sb-peek--hover {
   position: fixed;
   pointer-events: none;

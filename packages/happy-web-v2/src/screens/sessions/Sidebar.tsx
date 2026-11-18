@@ -2084,7 +2084,7 @@ function SidebarRow({
   // B-588 read-only preview (chat sessions only): fine-pointer hover, the
   // row menu's 「预览」, or Alt+Enter on the focused row.
   const rowRef = useRef<HTMLDivElement | null>(null);
-  const peek = useSessionPeek();
+  const peek = useSessionPeek(rowRef);
   const peekable = row.kind === 'session' && !!row.session;
   useFeatureTipAnchor('session-peek', rowRef, !!peekTipAnchor && peekable, { dismissOnClick: false });
   useEffect(() => {

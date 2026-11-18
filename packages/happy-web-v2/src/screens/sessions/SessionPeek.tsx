@@ -2,9 +2,10 @@
  * B-588 — read-only session preview anchored to a sidebar row.
  *
  * Opening (design-language §6): fine-pointer hover after PEEK_HOVER_DELAY_MS
- * (closes on leave), the row menu's 「预览」 (all devices — the only way on
- * touch), or Alt+Enter on the focused row. No actions inside; Esc / outside
- * click closes. Never steals focus.
+ * (closes on leave, Esc, any click, list scroll, window blur — B-941), the
+ * row menu's 「预览」 (all devices — the only way on touch), or Alt+Enter on
+ * the focused row. No actions inside; Esc / outside click closes. Never
+ * steals focus.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -13,14 +14,20 @@ import { useTranslation } from '@/i18n/useTranslation';
 import type { Session } from '@/sync/storageTypes';
 import { sessionBash } from '@/sync/ops';
 import { useSessionPreview } from '@/screens/board/useBoardItems';
-import { PEEK_HOVER_DELAY_MS, PEEK_HOVER_MEDIA, cachedBranch, lookupBranch, peekFacts, placeHoverPeek } from './sessionPeekModel';
+import { PEEK_HOVER_DELAY_MS, PEEK_HOVER_MEDIA, cachedBranch, dismissesHoverPeek, lookupBranch, peekFacts, placeHoverPeek, type HoverPeekEvent } from './sessionPeekModel';
 import './sessionPeek.css';
 
 export type PeekOpenReason = 'hover' | 'explicit';
 type OpenReason = PeekOpenReason;
 
-/** Hover/explicit open state for one row. */
-export function useSessionPeek() {
+/**
+ * Hover/explicit open state for one row. `rowRef` is the row element: the
+ * hover preview watches the document while it is up (B-941) and closes once
+ * the pointer is elsewhere, the list under it scrolls, the window loses
+ * focus or the page hides, or on any Escape / pointerdown — so one missed
+ * pointerleave can no longer leave it stuck.
+ */
+export function useSessionPeek(rowRef?: React.RefObject<HTMLElement | null>) {
   const [open, setOpen] = useState<OpenReason | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clear = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
@@ -37,14 +44,12 @@ export function useSessionPeek() {
       timer.current = null;
       // A menu (row "…" / right-click) or a drag in progress wins.
       if (document.querySelector('.vh-menu, .sb-list.is-dragging')) return;
+      // B-941: the pointer already went away without a pointerleave reaching us.
+      if (!pointerStillOn(rowRef?.current)) return;
       setOpen((cur) => cur ?? 'hover');
     }, PEEK_HOVER_DELAY_MS);
-  }, []);
-  const onPointerLeave = useCallback(() => {
-    clear();
-    setOpen((cur) => (cur === 'hover' ? null : cur));
-  }, []);
-  const onPointerDown = useCallback(() => {
+  }, [rowRef]);
+  const closeHover = useCallback(() => {
     clear();
     setOpen((cur) => (cur === 'hover' ? null : cur));
   }, []);
@@ -64,7 +69,53 @@ export function useSessionPeek() {
     }
   }, []);
   const close = useCallback(() => { clear(); setOpen(null); }, []);
-  return { open, close, openExplicit, rowHandlers: { onPointerEnter, onPointerLeave, onPointerDown }, onKeyDown };
+
+  const hovering = open === 'hover';
+  useEffect(() => {
+    if (!hovering) return;
+    const row = () => rowRef?.current ?? null;
+    const check = (e: HoverPeekEvent) => { if (dismissesHoverPeek(e)) closeHover(); };
+    const onMove = (e: PointerEvent) => {
+      const r = row();
+      check({ type: 'pointermove', inRow: !!r && e.target instanceof Node && r.contains(e.target) });
+    };
+    const onDown = () => check({ type: 'pointerdown' });
+    // Listen only — never preventDefault / stopPropagation (#515: the terminal and composer own Escape).
+    const onKey = (e: KeyboardEvent) => check({ type: 'keydown', key: e.key });
+    const onScroll = (e: Event) => {
+      const r = row();
+      const t = e.target;
+      check({ type: 'scroll', holdsRow: !!r && (t === document || (t instanceof Node && t.contains(r))) });
+    };
+    const onBlur = () => check({ type: 'blur' });
+    const onResize = () => check({ type: 'resize' });
+    const onVisibility = () => check({ type: 'visibilitychange', hidden: document.visibilityState === 'hidden' });
+    const capture = { capture: true, passive: true } as const;
+    document.addEventListener('pointermove', onMove, capture);
+    document.addEventListener('pointerdown', onDown, capture);
+    document.addEventListener('keydown', onKey, capture);
+    document.addEventListener('scroll', onScroll, capture);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('resize', onResize);
+    return () => {
+      document.removeEventListener('pointermove', onMove, capture);
+      document.removeEventListener('pointerdown', onDown, capture);
+      document.removeEventListener('keydown', onKey, capture);
+      document.removeEventListener('scroll', onScroll, capture);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [hovering, rowRef, closeHover]);
+
+  return { open, close, openExplicit, rowHandlers: { onPointerEnter, onPointerLeave: closeHover, onPointerDown: closeHover }, onKeyDown };
+}
+
+/** `:hover` is the browser's own answer; an engine that cannot evaluate it keeps the old behavior (open). */
+function pointerStillOn(el: HTMLElement | null | undefined): boolean {
+  if (!el) return true;
+  try { return el.matches(':hover'); } catch { return true; }
 }
 
 /** DOM id of a row's preview, for the row button's aria-describedby. */
@@ -77,8 +128,9 @@ export function peekDomId(sessionId: string): string {
  *  - hover: a plain fixed, pointer-transparent overlay — NO Radix
  *    DismissableLayer. That layer listens for Escape on the document in the
  *    capture phase and preventDefault()s it, which swallowed Esc in the
- *    terminal / composer while the pointer merely rested on a row. Leaving
- *    the row closes it, so it needs no dismiss handling at all.
+ *    terminal / composer while the pointer merely rested on a row. Its
+ *    dismissal lives in useSessionPeek (B-941): leave, Esc, any pointerdown,
+ *    list scroll, blur / hidden — all listen-only.
  *  - explicit (menu / Alt+Enter): Radix Popover — Esc and outside click close.
  */
 export function SessionPeek({
