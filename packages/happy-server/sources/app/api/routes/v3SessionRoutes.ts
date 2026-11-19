@@ -1,5 +1,6 @@
 import { countPeerMessage } from '@/app/monitoring/projectMetrics';
-import { buildNewMessageUpdate, eventRouter } from "@/app/events/eventRouter";
+import { buildNewMessageUpdate, buildSessionOversizeSkippedUpdate, eventRouter } from "@/app/events/eventRouter";
+import { allocateUserSeq } from "@/storage/seq";
 import { noteSessionMessage } from '@/app/automations/attentionLifecycle';
 import { configuredResourceLimit, isAccountResourceLimitError } from "@/app/api/resourceLimits";
 import { utf8StringSchema } from "@/app/api/resourceSchemas";
@@ -70,6 +71,32 @@ export function partitionOversizeMessages<T extends { content: string }>(message
         (Buffer.byteLength(message.content, 'utf8') > SESSION_MESSAGE_CONTENT_MAX_BYTES ? oversize : fits).push(message);
     }
     return { fits, oversize };
+}
+
+/**
+ * B-942: count what was skipped on the session row and tell the owner's clients,
+ * so the Web can say "N records from this session were too large to sync". The
+ * server cannot write a visible message itself (content is end-to-end encrypted).
+ * A lost answer that makes the wrapper resend the same batch counts it twice —
+ * an over-count of a warning, never a missing one.
+ */
+async function noteOversizeSkipped(userId: string, sessionId: string, bytes: number[]): Promise<void> {
+    warn({ module: 'session-messages', sessionId }, `B-942: skipped ${bytes.length} message(s) over the ${SESSION_MESSAGE_CONTENT_MAX_BYTES}-byte per-message limit from a session wrapper (${bytes.join(', ')} bytes)`);
+    try {
+        const row = await db.session.update({
+            where: { id: sessionId },
+            data: { oversizeSkipped: { increment: bytes.length } },
+            select: { oversizeSkipped: true },
+        });
+        const updateSeq = await allocateUserSeq(userId);
+        eventRouter.emitUpdate({
+            userId,
+            payload: buildSessionOversizeSkippedUpdate(sessionId, updateSeq, randomKeyNaked(12), row.oversizeSkipped),
+            recipientFilter: { type: 'user-scoped-only' },
+        });
+    } catch (error) {
+        warn({ module: 'session-messages', sessionId, error }, 'B-942: could not record skipped oversize messages');
+    }
 }
 
 const sendMessagesBodySchema = z.object({
@@ -202,7 +229,7 @@ export function v3SessionRoutes(app: Fastify) {
 
         const uniqueMessages = Array.from(firstMessageByLocalId.values());
         if (oversize.length > 0) {
-            warn({ module: 'session-messages', sessionId, skipped: oversize.length, bytes: oversize.map((message) => Buffer.byteLength(message.content, 'utf8')) }, 'B-942: skipped session messages over the per-message limit from a wrapper');
+            await noteOversizeSkipped(userId, sessionId, oversize.map((message) => Buffer.byteLength(message.content, 'utf8')));
         }
         if (uniqueMessages.length === 0) {
             return reply.send({ messages: [] });

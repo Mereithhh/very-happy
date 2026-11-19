@@ -8,6 +8,7 @@ type SessionRecord = {
     id: string;
     accountId: string;
     seq: number;
+    oversizeSkipped: number;
 };
 
 type MessageRecord = {
@@ -56,7 +57,8 @@ const {
         state.sessions.push({
             id: input.id,
             accountId: input.accountId,
-            seq: input.seq ?? 0
+            seq: input.seq ?? 0,
+            oversizeSkipped: 0
         });
         if (!state.accountSeqById.has(input.accountId)) {
             state.accountSeqById.set(input.accountId, 0);
@@ -122,6 +124,7 @@ const {
         }
         const increment = args?.data?.seq?.increment ?? 0;
         session.seq += increment;
+        session.oversizeSkipped += args?.data?.oversizeSkipped?.increment ?? 0;
         return selectFields(session as unknown as Record<string, unknown>, args?.select);
     });
 
@@ -317,6 +320,9 @@ vi.mock("@/app/events/eventRouter", () => ({
     })),
     buildSessionActivityEphemeral: vi.fn(() => ({})),
     buildUpdateSessionUpdate: vi.fn(() => ({})),
+    buildSessionOversizeSkippedUpdate: vi.fn((sessionId: string, updateSeq: number, updateId: string, oversizeSkipped: number) => ({
+        id: updateId, seq: updateSeq, body: { t: "update-session", id: sessionId, oversizeSkipped }, createdAt: Date.now(),
+    })),
 }));
 
 vi.mock("@/app/monitoring/metrics2", () => ({
@@ -651,6 +657,31 @@ describe("v3SessionRoutes", () => {
             expect(response.json().messages.map((m: any) => m.localId)).toEqual(["before", "after"]);
             expect(state.messages.map((m) => m.localId)).toEqual(["before", "after"]);
             expect(state.messages.map((m) => m.seq)).toEqual([1, 2]);
+            // Counted on the session and pushed to the owner's clients ("1 record too large to sync").
+            expect(state.sessions[0].oversizeSkipped).toBe(1);
+            expect(emitUpdateMock).toHaveBeenCalledWith(expect.objectContaining({
+                payload: expect.objectContaining({ body: { t: "update-session", id: "session-1", oversizeSkipped: 1 } }),
+                recipientFilter: { type: "user-scoped-only" },
+            }));
+        });
+
+        it("a 0.2.178 outbox (50 per POST, every error retried forever) moves on past an oversize record", async () => {
+            seedSession({ id: "session-1", accountId: "owner-user" });
+            app = await createApp();
+            // That CLI's flushOutbox: the 50 oldest per POST, removed only on success, retried on any error.
+            const outbox = Array.from({ length: 60 }, (_, i) => ({ localId: `o${i}`, content: i === 3 ? big(1_500_000, "diff") : `enc-${i}` }));
+            const statuses: number[] = [];
+            for (let attempt = 0; outbox.length > 0 && attempt < 10; attempt += 1) {
+                const batch = outbox.slice(0, 50);
+                const response = await post({ messages: batch }, "cli-coding-session/0.2.178");
+                statuses.push(response.statusCode);
+                if (response.statusCode === 200) outbox.splice(0, batch.length);
+            }
+            expect(statuses).toEqual([200, 200]);
+            expect(outbox).toHaveLength(0);
+            expect(state.messages).toHaveLength(59);
+            expect(state.messages.some((m) => m.localId === "o3")).toBe(false);
+            expect(state.sessions[0].oversizeSkipped).toBe(1);
         });
 
         it("from a wrapper: a batch of only oversize messages answers an empty success", async () => {
@@ -660,6 +691,7 @@ describe("v3SessionRoutes", () => {
             expect(response.statusCode).toBe(200);
             expect(response.json()).toEqual({ messages: [] });
             expect(state.messages).toHaveLength(0);
+            expect(state.sessions[0].oversizeSkipped).toBe(1);
         });
 
         it("from any other client an oversize message is still refused (the Web shows it as failed)", async () => {
@@ -669,6 +701,7 @@ describe("v3SessionRoutes", () => {
             expect(response.statusCode).toBe(413);
             expect(response.json()).toEqual({ error: "message_too_large" });
             expect(state.messages).toHaveLength(0);
+            expect(state.sessions[0].oversizeSkipped).toBe(0);
         });
 
         it("a body over the route limit is still a 413", async () => {

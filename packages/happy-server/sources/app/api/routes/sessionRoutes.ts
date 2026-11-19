@@ -34,18 +34,19 @@ const sessionProjection = {
     active: true,
     lastActiveAt: true,
     archivedAt: true,
+    oversizeSkipped: true,
 } as const;
 
 type SessionProjectionRow = {
     id: string; seq: number; createdAt: Date; updatedAt: Date; metadata: string; metadataVersion: number;
     agentState: string | null; agentStateVersion: number; dataEncryptionKey: Uint8Array | Buffer | null;
-    active: boolean; lastActiveAt: Date; archivedAt: Date | null; accountId: string;
+    active: boolean; lastActiveAt: Date; archivedAt: Date | null; oversizeSkipped: number; accountId: string;
 };
 
 function projectSession(v: {
     id: string; seq: number; createdAt: Date; updatedAt: Date; metadata: string; metadataVersion: number;
     agentState: string | null; agentStateVersion: number; dataEncryptionKey: Uint8Array | Buffer | null;
-    active: boolean; lastActiveAt: Date; archivedAt: Date | null;
+    active: boolean; lastActiveAt: Date; archivedAt: Date | null; oversizeSkipped?: number;
 }) {
     return {
         id: v.id,
@@ -55,6 +56,8 @@ function projectSession(v: {
         active: v.active,
         activeAt: v.lastActiveAt.getTime(),
         archivedAt: v.archivedAt ? v.archivedAt.getTime() : null,
+        // B-942: present only when the server skipped something (old clients ignore it).
+        ...(v.oversizeSkipped ? { oversizeSkipped: v.oversizeSkipped } : {}),
         metadata: v.metadata,
         metadataVersion: v.metadataVersion,
         agentState: v.agentState,

@@ -1089,6 +1089,8 @@ export const zhHans: TranslationStructure = {
             queueMore: '排队消息选项',
             queueEditingPlaceholder: '编辑消息',
             stoppedByYou: '已由你停止',
+            oversizeSkipped: ({ count }: { count: number }) => `这个会话有 ${count} 条记录太大（超过服务器每条 1 MB 的上限），没有同步过来，这里看不到；之后的内容都已正常显示。`,
+            oversizeSkippedDismiss: '隐藏',
             // B-577/B-578/B-579 阅读辅助
             annotations: {
                 annotate: '批注',

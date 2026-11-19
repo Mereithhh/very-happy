@@ -267,6 +267,10 @@ model Session {
     // write budget, and how many did. Null = never declared; closed = quota lowered to used.
     backfillQuota     Int?
     backfillUsed      Int              @default(0)
+    // B-942 - plaintext: messages from this session's wrapper the server skipped for
+    // being over the per-message limit (an old wrapper's outbox would otherwise
+    // retry them forever). The Web says how many records are missing.
+    oversizeSkipped   Int              @default(0)
     seq               Int              @default(0)
     active            Boolean          @default(true)
     archivedAt        DateTime?

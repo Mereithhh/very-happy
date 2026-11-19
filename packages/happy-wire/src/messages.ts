@@ -63,6 +63,10 @@ export const UpdateSessionBodySchema = z.object({
    *  Present only on the archive / unarchive transitions; absent elsewhere.
    *  Old clients strip it (default z.object) and fall back to `active`. */
   archivedAt: z.number().nullable().optional(),
+  /** B-942: how many messages from this session's wrapper the server skipped
+   *  for being over the per-message limit (running total). Present only on that
+   *  update; old clients strip it (default z.object). */
+  oversizeSkipped: z.number().int().nonnegative().optional(),
 });
 export type UpdateSessionBody = z.infer<typeof UpdateSessionBodySchema>;
 

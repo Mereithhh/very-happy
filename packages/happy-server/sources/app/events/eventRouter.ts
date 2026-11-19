@@ -515,6 +515,21 @@ export function buildSessionArchivedAtUpdate(sessionId: string, updateSeq: numbe
     };
 }
 
+/** B-942: the running count of oversize messages the server skipped for this session
+ *  (v3SessionRoutes). Same shape as the archivedAt update: old web handlers ignore it. */
+export function buildSessionOversizeSkippedUpdate(sessionId: string, updateSeq: number, updateId: string, oversizeSkipped: number): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'update-session',
+            id: sessionId,
+            oversizeSkipped,
+        },
+        createdAt: Date.now()
+    };
+}
+
 export function buildDeleteSessionUpdate(sessionId: string, updateSeq: number, updateId: string): UpdatePayload {
     return {
         id: updateId,

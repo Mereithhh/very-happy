@@ -880,6 +880,9 @@ export const en = {
             queueMore: 'Queued message options',
             queueEditingPlaceholder: 'Edit message',
             stoppedByYou: 'Stopped by you',
+            // B-942: the server skipped records from this session's process that were over its per-message limit.
+            oversizeSkipped: ({ count }: { count: number }) => `${count} ${count === 1 ? 'record' : 'records'} from this session ${count === 1 ? 'was' : 'were'} too large to sync (over the server's 1 MB limit per record) and ${count === 1 ? 'is' : 'are'} missing here. Everything after ${count === 1 ? 'it' : 'them'} is shown.`,
+            oversizeSkippedDismiss: 'Hide',
             // B-577/B-578/B-579 reading aids
             annotations: {
                 annotate: 'Comment',
