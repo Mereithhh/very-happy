@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-20-replies-no-longer-stuck-behind-a-record',
+    cliVersion: '0.2.219',
+    date: '2026-11-20',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov20a.title',
+    summaryKey: 'changelog.releases.nov20a.summary',
+    itemKeys: ['changelog.releases.nov20a.record', 'changelog.releases.nov20a.killed'],
+  },
+  {
     id: '2026-11-20-terminal-machine-not-connected',
     date: '2026-11-20',
     buildVersion: __APP_VERSION__,

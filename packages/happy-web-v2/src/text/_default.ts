@@ -3430,6 +3430,12 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov20a: {
+                title: 'A session no longer goes quiet after one record it could not save',
+                summary: 'When a session produced one record too large for the server (for example a Codex edit next to a multi-megabyte line), everything it wrote after that record was held back — so later questions looked unanswered while the session kept working. Now the rest goes out, and a line in the chat says a record was not saved.',
+                record: 'The line tells you how large the record was and why it is missing. Edits and diffs that Codex shows are cut to a readable size instead. This also unblocks sessions still on an older CLI, from the server side.',
+                killed: 'When the process behind a session is killed or crashes mid-turn, that turn now ends as failed with the reason, and the session shows as offline with its Restore button at once — it no longer looks alive for ten minutes while no process reads your messages. A Claude session that crashed during a command no longer leaves `sessions read --wait` waiting forever.',
+            },
             nov20b: {
                 title: 'A terminal whose machine is not connected now says so, instead of staying black',
                 summary: 'When the machine a terminal runs on was not connected, opening the terminal showed only a black screen — most of all for a terminal someone shared with you. Now the terminal says the machine is not connected and names it.',
