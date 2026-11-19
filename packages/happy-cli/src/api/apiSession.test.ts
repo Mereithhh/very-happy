@@ -49,7 +49,8 @@ vi.mock('@/configuration', () => ({
 vi.mock('@/ui/logger', () => ({
     logger: {
         debug: vi.fn(),
-        debugLargeJson: vi.fn()
+        debugLargeJson: vi.fn(),
+        warn: vi.fn()
     }
 }));
 
@@ -1727,6 +1728,103 @@ describe('ApiSessionClient v3 messages API migration', () => {
             }));
         });
     });
+    describe('B-942: a message the server will never take does not hold back the session', () => {
+        const rejection = (status: number, error?: string) => Object.assign(new Error(`HTTP ${status}`), { response: { status, data: error ? { error } : {} } });
+        const posted = (call: number) => mockAxiosPost.mock.calls[call][1].messages as Array<{ content: string; localId: string }>;
+        const decoded = (item: { content: string }) => decrypt(session.encryptionKey, session.encryptionVariant, decodeBase64(item.content)) as any;
+        const accept = () => mockAxiosPost.mockImplementation(async (_url: string, body: any) => ({
+            data: { messages: body.messages.map((m: any, i: number) => ({ id: `m-${m.localId}`, seq: 100 + i, localId: m.localId, createdAt: 1, updatedAt: 1 })) },
+        }));
+        /** Queue several messages before the first flush plans its batch. */
+        const queue = (client: ApiSessionClient, types: string[]) => {
+            for (const type of types) (client as any).enqueueMessage({ role: 'agent', content: { type: 'codex', data: { type } } }, false);
+            (client as any).sendSync.invalidate();
+        };
+
+        it('a single message refused with 413 is replaced by a visible notice, and what follows it goes out', async () => {
+            const client = new ApiSessionClient('fake-token', session);
+            mockAxiosPost.mockRejectedValueOnce(rejection(413));
+            accept();
+            client.sendCodexMessage({ type: 'huge-diff' });
+            await waitForCheck(() => expect((client as any).pendingOutbox).toHaveLength(0));
+            client.sendCodexMessage({ type: 'reply' });
+            await waitForCheck(() => expect((client as any).pendingOutbox).toHaveLength(0));
+            expect(mockAxiosPost).toHaveBeenCalledTimes(3);
+            const notice = decoded(posted(1)[0]);
+            expect(notice.content.data).toMatchObject({ type: 'message', kind: 'outbox-rejected' });
+            expect(notice.content.data.message).toContain('HTTP 413');
+            expect(decoded(posted(2)[0]).content.data.type).toBe('reply');
+        });
+
+        it('a refused batch is split until the one message the server refuses is found (the 0.2.178 stall)', async () => {
+            const client = new ApiSessionClient('fake-token', session);
+            const accepted: string[] = [];
+            // The server refuses any request that carries "bad".
+            mockAxiosPost.mockImplementation(async (_url: string, body: any) => {
+                const types = body.messages.map((m: any) => decoded(m).content.data.kind ?? decoded(m).content.data.type);
+                if (types.includes('bad')) throw rejection(413);
+                accepted.push(...types);
+                return { data: { messages: body.messages.map((m: any, i: number) => ({ id: m.localId, seq: 10 + i, localId: m.localId, createdAt: 1, updatedAt: 1 })) } };
+            });
+            queue(client, ['bad', 'a', 'b', 'c']);
+            await waitForCheck(() => expect((client as any).pendingOutbox).toHaveLength(0));
+            expect(accepted).toEqual(['outbox-rejected', 'a', 'b', 'c']);
+            expect(mockAxiosPost.mock.calls[0][1].messages).toHaveLength(4);
+            // 4 → 2 → 1 refused, then the notice and the rest one by one: bounded, not forever.
+            expect(mockAxiosPost.mock.calls.map((call) => call[1].messages.length)).toEqual([4, 2, 1, 1, 1, 1, 1]);
+            // The cap lasts until the outbox drains.
+            expect((client as any).outboxCountCap).toBeNull();
+        });
+
+        it('a single message refused with 400 is replaced too', async () => {
+            const client = new ApiSessionClient('fake-token', session);
+            mockAxiosPost.mockRejectedValueOnce(rejection(400));
+            accept();
+            client.sendCodexMessage({ type: 'invalid' });
+            await waitForCheck(() => expect((client as any).pendingOutbox).toHaveLength(0));
+            expect(decoded(posted(1)[0]).content.data.message).toContain('HTTP 400');
+        });
+
+        it('a message over the request limit is replaced by a notice, not dropped without a word', async () => {
+            const client = new ApiSessionClient('fake-token', session);
+            accept();
+            client.sendCodexMessage({ type: 'diff', unified_diff: 'x'.repeat(1024 * 1024) });
+            await waitForCheck(() => expect((client as any).pendingOutbox).toHaveLength(0));
+            expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+            const notice = decoded(posted(0)[0]);
+            expect(notice.content.data.kind).toBe('outbox-rejected');
+            expect(notice.content.data.message).toMatch(/^A 1\.\d MB record .* larger than the server accepts/);
+        });
+
+        it('a refused notice is dropped — nothing loops', async () => {
+            const client = new ApiSessionClient('fake-token', session);
+            mockAxiosPost.mockRejectedValueOnce(rejection(413)).mockRejectedValueOnce(rejection(413));
+            accept();
+            client.sendCodexMessage({ type: 'huge' });
+            await waitForCheck(() => expect((client as any).pendingOutbox).toHaveLength(0));
+            expect(mockAxiosPost).toHaveBeenCalledTimes(2);
+            client.sendCodexMessage({ type: 'next' });
+            await waitForCheck(() => expect(mockAxiosPost).toHaveBeenCalledTimes(3));
+            expect(decoded(posted(2)[0]).content.data.type).toBe('next');
+        });
+
+        it.each([
+            ['a 5xx', rejection(503)],
+            ['a rate limit', rejection(429, 'message_rate_quota_exceeded')],
+            ['the account storage quota (also a 413)', rejection(413, 'message_bytes_quota_exceeded')],
+            ['no answer at all', new Error('socket hang up')],
+        ])('%s is retried with the same message, never replaced', async (_label, error) => {
+            const client = new ApiSessionClient('fake-token', session);
+            mockAxiosPost.mockRejectedValueOnce(error);
+            accept();
+            client.sendCodexMessage({ type: 'keep-me' });
+            await waitForCheck(() => expect((client as any).pendingOutbox).toHaveLength(0));
+            expect(mockAxiosPost).toHaveBeenCalledTimes(2);
+            expect(posted(1)[0]).toEqual(posted(0)[0]);
+            expect(decoded(posted(1)[0]).content.data.type).toBe('keep-me');
+        });
+    });
+
 });
 
 describe('B-332 queue-cancel tombstones from the CLI', () => {
