@@ -131,7 +131,7 @@ export function SharedProjectScreen() {
                             : page.terminals.map((term) => {
                                 const link = projectTerminalLink(term, Date.now());
                                 return (
-                                    <Link key={term.shareId} className="pj-row" data-terminal-via={link.via} to={`/shared/terminal/${encodeURIComponent(link.shareId)}?title=${encodeURIComponent(term.title ?? '')}`}>
+                                    <Link key={term.shareId} className="pj-row" data-terminal-via={link.via} to={`/shared/terminal/${encodeURIComponent(link.shareId)}?title=${encodeURIComponent(term.title ?? '')}${term.machineName ? `&machine=${encodeURIComponent(term.machineName)}` : ''}`}>
                                         <SquareTerminal size={14} aria-hidden />{term.title || t('share.terminal.untitled')}
                                         {term.cwd && <span className="pj-muted">· {term.cwd}</span>}
                                         <span className="pj-muted pj-row-role">{link.pending ? t('share.project.terminalPending') : link.role === 'operator' ? t('share.roleOperator') : t('share.roleViewer')}</span>

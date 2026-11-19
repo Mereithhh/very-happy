@@ -40,6 +40,9 @@ import {
 import { TerminalShareRpcError, revokeEndsAccess, viewOnlyScale, type IncomingTerminalShare } from '@/sync/terminalShareTypes';
 import { apiSocket } from '@/sync/apiSocket';
 import { acceptLive, applyOpen, b64ToBytes, initialStreamState, isOpenResult, strToB64 } from '@/screens/session/operatorTerminalModel';
+import { TerminalNoticeView } from './TerminalConnectionNotice';
+import { isMachineUnreachable, offlineRetryDelayMs, sharedPaneNotice } from './sharedTerminalConnection';
+import './terminal.css';
 import './terminalShare.css';
 
 const IS_COARSE_POINTER = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches === true;
@@ -79,7 +82,7 @@ export function SharedTerminalScreen() {
     const project = projectGrantId ? projects.find((p) => p.id === projectGrantId && p.status === 'active') ?? null : null;
     const loaded = projectGrantId ? projectLoaded : terminalLoaded;
     const share: IncomingTerminalShare | null = projectGrantId
-        ? (project ? { id: grantId, role: 'viewer', status: 'active', granteeKey: project.granteeKey, title: search.get('title'), machineId: '', createdAt: project.createdAt, expiresAt: project.expiresAt ?? 0, owner: project.owner } : null)
+        ? (project ? { id: grantId, role: 'viewer', status: 'active', granteeKey: project.granteeKey, title: search.get('title'), machineId: '', machineName: search.get('machine'), createdAt: project.createdAt, expiresAt: project.expiresAt ?? 0, owner: project.owner } : null)
         : incoming.find((g) => g.id === grantId) ?? null;
     useEffect(() => onProjectShareChanged((id) => { if (id === projectGrantId && useProjectShares.getState().ended[id]) setEnded('revoked'); }), [projectGrantId]);
     const [ended, setEnded] = useState<'revoked' | null>(null);
@@ -138,6 +141,10 @@ function SharedTerminalPane({ share }: { share: IncomingTerminalShare }) {
     const mountRef = useRef<HTMLDivElement | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [connecting, setConnecting] = useState(true);
+    // B-943: the owner's machine is not reachable (attach said so, or the server told us it dropped).
+    const [offline, setOffline] = useState(false);
+    const [painted, setPainted] = useState(false);
+    const retryNowRef = useRef<(() => void) | null>(null);
     const [generation, setGeneration] = useState(0);
     const resync = useCallback(() => { setError(null); setGeneration((g) => g + 1); }, []);
 
@@ -148,6 +155,10 @@ function SharedTerminalPane({ share }: { share: IncomingTerminalShare }) {
         let disposed = false;
         let state = initialStreamState();
         let geometry: { cols: number; rows: number } | null = null;
+        // Does the server still hold this pane's subscription? A failed fresh open is released there.
+        let subscribed = false;
+        let retryAttempt = 0;
+        let retryTimer: ReturnType<typeof setTimeout> | null = null;
         let chain: Promise<void> = Promise.resolve();
         const enqueue = (work: () => Promise<void>) => { chain = chain.then(work).catch(() => {}); };
         const renderer: TerminalRenderer = createTerminalRenderer('xterm', {
@@ -204,12 +215,21 @@ function SharedTerminalPane({ share }: { share: IncomingTerminalShare }) {
 
         const input = viewOnly ? null : renderer.onData((d) => { void sendShareTerminalInput(grantId, strToB64(d)); });
 
-        const attach = async (fresh: boolean) => {
+        const clearRetry = () => { if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; } };
+        // While the machine is away keep trying: the server answers the moment the daemon is back.
+        const scheduleRetry = () => {
+            if (disposed || retryTimer) return;
+            retryTimer = setTimeout(() => { retryTimer = null; enqueue(() => attach(false, subscribed)); }, offlineRetryDelayMs(retryAttempt++));
+        };
+        const attach = async (fresh: boolean, resub = false) => {
             try {
                 const base = viewOnly ? {} : { cols: renderer.cols, rows: renderer.rows };
                 const params = !fresh && state.lastSeq >= 0 ? { ...base, fromSeq: state.lastSeq } : base;
-                const res = await terminalShareCall<unknown>(grantId, 'attach', fresh ? { ...params, resub: true } : params);
+                const res = await terminalShareCall<unknown>(grantId, 'attach', fresh || resub ? { ...params, resub: true } : params);
                 if (disposed || !isOpenResult(res)) return;
+                subscribed = true;
+                retryAttempt = 0;
+                clearRetry();
                 const g = (res as { geometry?: { cols?: unknown; rows?: unknown } }).geometry;
                 if (viewOnly && g && typeof g.cols === 'number' && typeof g.rows === 'number') geometry = { cols: g.cols, rows: g.rows };
                 applyGeometry();
@@ -222,12 +242,29 @@ function SharedTerminalPane({ share }: { share: IncomingTerminalShare }) {
                     renderer.write(b64ToBytes(plain));
                 }
                 setConnecting(false);
+                setOffline(false);
+                setPainted(true);
                 setError(null);
                 if (!viewOnly) renderer.focusInput();
             } catch (e) {
-                if (!disposed) { setConnecting(false); setError(terminalShareErrorCopy(t, codeOf(e), share.owner.displayName)); }
+                // The server releases a failed non-resub open's subscription.
+                if (!fresh && !resub) subscribed = false;
+                if (disposed) return;
+                const code = codeOf(e);
+                setConnecting(false);
+                if (isMachineUnreachable(code)) { setOffline(true); setError(null); scheduleRetry(); return; }
+                setError(terminalShareErrorCopy(t, code, share.owner.displayName));
             }
         };
+        retryNowRef.current = () => { clearRetry(); retryAttempt = 0; enqueue(() => attach(false, subscribed)); };
+        // B-943: the owner's machine dropped while we watch / came back. A restarted daemon has
+        // no subscribers, so coming back means re-subscribing — nobody should have to refresh.
+        const offMachine = onTerminalShareEvent('machine', (e) => {
+            if (e.grantId !== grantId) return;
+            if (!e.online) { setOffline(true); scheduleRetry(); return; }
+            clearRetry(); retryAttempt = 0;
+            enqueue(() => attach(false, subscribed));
+        });
         enqueue(() => attach(false));
         // The server released this pane's subscription when the socket dropped: subscribe
         // again and catch up on what was missed (replay from lastSeq, else a snapshot).
@@ -250,14 +287,19 @@ function SharedTerminalPane({ share }: { share: IncomingTerminalShare }) {
 
         return () => {
             disposed = true;
+            clearRetry();
+            retryNowRef.current = null;
             resizeObserver.disconnect();
-            offOutput(); offRevoked(); offExit(); offGeometry(); offReconnected(); offRecovered();
+            offOutput(); offRevoked(); offExit(); offGeometry(); offReconnected(); offRecovered(); offMachine();
             input?.dispose();
             sendShareTerminalClose(grantId);
             renderer.dispose();
         };
     }, [grantId, viewOnly, generation, share.owner.displayName, t]);
 
+    const owner = share.owner.displayName;
+    const notice = sharedPaneNotice({ connecting, offline });
+    const machine = share.machineName ? t('share.terminal.machineOfOwner', { owner, machine: share.machineName }) : t('share.terminal.machineOfOwnerUnnamed', { owner });
     return (
         <>
             {error && (
@@ -266,7 +308,15 @@ function SharedTerminalPane({ share }: { share: IncomingTerminalShare }) {
                     <Button type="button" variant="ghost" size="sm" leftIcon={<RefreshCw size={13} />} onClick={resync}>{t('share.terminal.resync')}</Button>
                 </p>
             )}
-            <div className="sts-body" ref={boxRef} aria-busy={connecting} data-view-only={viewOnly ? 'true' : undefined}>
+            <div className="sts-body" ref={boxRef} aria-busy={connecting} data-view-only={viewOnly ? 'true' : undefined} data-machine-offline={offline ? 'true' : undefined}>
+                {notice && <TerminalNoticeView
+                    waiting={notice === 'connecting'}
+                    compact={notice === 'offline' && painted}
+                    title={notice === 'offline' ? t('share.terminal.machineOffline') : t('share.terminal.connectingTo', { owner })}
+                    machine={machine}
+                    detail={notice === 'offline' ? t('share.terminal.machineOfflineHint', { owner }) : t('share.terminal.connectingHint')}
+                    actions={<button type="button" onClick={() => retryNowRef.current?.()}>{t('share.terminal.retryNow')}</button>}
+                />}
                 <div className={`sts-term${viewOnly ? ' sts-term--fixed' : ''}`} ref={mountRef} />
             </div>
         </>

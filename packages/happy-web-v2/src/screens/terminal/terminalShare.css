@@ -12,7 +12,8 @@
 .sts-banner > svg { flex: none; }
 .sts-banner--operator { color: var(--term-chrome-fg); box-shadow: inset 3px 0 0 var(--danger); }
 .sts-banner--operator > svg { color: var(--danger); }
-.sts-error { margin: 0; padding: 6px var(--sp-3); background: var(--warn-dim); color: var(--text); font-size: var(--fs-12); }
+/* B-943: on the always-dark pane --text is dark in the light theme — the line was unreadable. */
+.sts-error { margin: 0; padding: 6px var(--sp-3); background: var(--warn-dim); color: var(--term-chrome-fg); font-size: var(--fs-12); }
 .sts-body { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 /* View only: the pane keeps the OWNER's columns and is scaled down to fit; scroll sideways never needed. */
 .sts-term { position: absolute; inset: 0; padding: var(--sp-1); }

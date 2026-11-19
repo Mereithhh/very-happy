@@ -5,7 +5,7 @@
  *  - owner:   grants per terminal, who is watching right now (activity).
  *  - grantee: invitations and active shares; the per-grant stream key.
  *  - stream:  `share-terminal-rpc` (ack) and `share-terminal-input|resize|close`
- *             up, `share-terminal-output|exit|revoked|geometry` down — every
+ *             up, `share-terminal-output|exit|revoked|geometry|machine` down — every
  *             `data` sealed with the grant's own stream key (boxed to my
  *             content key by the server), never the owner's machine key.
  *
@@ -36,6 +36,7 @@ import {
 import {
     ShareTerminalExitSchema,
     ShareTerminalGeometrySchema,
+    ShareTerminalMachineSchema,
     ShareTerminalOutputSchema,
     ShareTerminalRevokedSchema,
     TerminalShareActivitySchema,
@@ -218,8 +219,9 @@ type Output = { grantId: string; seq?: number; data: string };
 type Exit = { grantId: string; exitCode?: number; reason?: string };
 type Revoked = { grantId: string; reason?: string };
 type Geometry = { grantId: string; cols: number; rows: number };
-type Listeners = { output: Set<(e: Output) => void>; exit: Set<(e: Exit) => void>; revoked: Set<(e: Revoked) => void>; geometry: Set<(e: Geometry) => void> };
-const listeners: Listeners = { output: new Set(), exit: new Set(), revoked: new Set(), geometry: new Set() };
+type MachinePresence = { grantId: string; online: boolean };
+type Listeners = { output: Set<(e: Output) => void>; exit: Set<(e: Exit) => void>; revoked: Set<(e: Revoked) => void>; geometry: Set<(e: Geometry) => void>; machine: Set<(e: MachinePresence) => void> };
+const listeners: Listeners = { output: new Set(), exit: new Set(), revoked: new Set(), geometry: new Set(), machine: new Set() };
 let installed = false;
 
 export function installTerminalShareTransport(): void {
@@ -243,6 +245,10 @@ export function installTerminalShareTransport(): void {
     apiSocket.onMessage('share-terminal-geometry', (data) => {
         const p = ShareTerminalGeometrySchema.safeParse(data);
         if (p.success) for (const fn of listeners.geometry) fn(p.data);
+    });
+    apiSocket.onMessage('share-terminal-machine', (data) => {
+        const p = ShareTerminalMachineSchema.safeParse(data);
+        if (p.success) for (const fn of listeners.machine) fn(p.data);
     });
     apiSocket.onMessage('terminal-share-updated', (data) => {
         if (!TerminalShareUpdatedSchema.safeParse(data).success) return;

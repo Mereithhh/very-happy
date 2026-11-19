@@ -2189,6 +2189,14 @@ export const en = {
             bannerViewer: ({ owner, expiry }: { owner: string; expiry: string }) => `View only · ${owner}'s terminal · expires ${expiry}`,
             bannerOperator: ({ owner, expiry }: { owner: string; expiry: string }) => `You can type in ${owner}'s terminal · expires ${expiry} · activity is logged`,
             resync: 'Resync',
+            // B-943: the owner's machine is not connected — say which one, and that the pane comes back by itself.
+            machineOffline: "This machine isn't connected",
+            machineOfOwner: ({ owner, machine }: { owner: string; machine: string }) => `${owner}'s ${machine}`,
+            machineOfOwnerUnnamed: ({ owner }: { owner: string }) => `${owner}'s machine`,
+            machineOfflineHint: ({ owner }: { owner: string }) => `The terminal is still on that machine. When it reconnects, this pane comes back by itself — no refresh needed. If it stays offline, ask ${owner} to check the machine.`,
+            connectingTo: ({ owner }: { owner: string }) => `Connecting to ${owner}'s machine…`,
+            connectingHint: 'Waiting for the machine to answer.',
+            retryNow: 'Retry now',
             connecting: 'Connecting…',
             ended: ({ owner }: { owner: string }) => `This terminal is not running on ${owner}'s machine right now.`,
             revoked: 'Your access to this terminal ended.',
@@ -3421,6 +3429,12 @@ export const en = {
                 summary: 'When an agent tries to preview a file that does not exist (or a folder), it is told so instead of being told the preview went out, so it stops saying "preview opened" for nothing.',
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
+            },
+            nov20b: {
+                title: 'A terminal whose machine is not connected now says so, instead of staying black',
+                summary: 'When the machine a terminal runs on was not connected, opening the terminal showed only a black screen — most of all for a terminal someone shared with you. Now the terminal says the machine is not connected and names it.',
+                shared: 'A terminal someone shared with you shows whose machine it is (for example "Alex\'s mac-studio"), first while it connects and then if that machine is not connected — including when it drops while you are watching.',
+                recover: 'When the machine comes back, the terminal reconnects by itself — no refresh, no retry click. This works for your own terminals too.',
             },
             nov19a: {
                 title: 'The session preview in the sidebar now closes when you want it to',
@@ -5565,11 +5579,11 @@ export const en = {
     },
 
     terminal: {
-        connectionOffline: "Machine is offline",
+        connectionOffline: "This machine isn't connected",
         connectionChecking: "Checking connection…",
         connectionOpening: "Connecting to terminal…",
         connectionFailed: "Could not connect to terminal",
-        connectionOfflineHint: "Check that this machine is running and its Very Happy daemon is online. An old terminal may belong to a different machine.",
+        connectionOfflineHint: "The terminal is still on this machine. When it reconnects, this pane comes back by itself — no refresh needed. If it stays offline, check that the machine is on and its Very Happy daemon is running.",
         connectionCheckingHint: "The server connection is unavailable. The machine’s status cannot be confirmed yet. Reconnecting automatically.",
         connectionOpeningHint: "Waiting for the machine to respond.",
         connectionFailedHint: "The connection did not complete. Check the machine, then retry connecting to this existing terminal.",

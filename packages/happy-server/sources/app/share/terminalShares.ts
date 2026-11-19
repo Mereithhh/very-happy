@@ -72,6 +72,8 @@ export type IncomingTerminalShare = {
     alive: boolean | null;
     viewOnlySupported: boolean | null;
     machineId: string;
+    /** B-943: the owner machine's name (display name, else host); null when unreadable. */
+    machineName: string | null;
     createdAt: number;
     expiresAt: number;
     owner: Person;
@@ -262,6 +264,7 @@ export async function listIncomingTerminalShares(granteeId: string): Promise<Inc
             alive: live ? live.alive : null,
             viewOnlySupported: live ? live.viewOnlySupported : null,
             machineId: grant.machineId,
+            machineName: live?.machineName ?? null,
             createdAt: grant.createdAt.getTime(),
             expiresAt: grant.expiresAt.getTime(),
             owner: await person(grant.owner),

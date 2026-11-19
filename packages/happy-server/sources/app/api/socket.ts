@@ -2,7 +2,7 @@ import { onShutdown } from "@/utils/shutdown";
 import { Fastify } from "./types";
 import { buildMachineActivityEphemeral, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { operatorHandler, retryPendingOperatorKills, startOperatorBroker, stopOperatorBroker } from "@/app/session/operatorBroker";
-import { startTerminalShareBroker, stopTerminalShareBroker, terminalShareHandler } from "@/app/share/terminalShareBroker";
+import { noteTerminalShareMachinePresence, startTerminalShareBroker, stopTerminalShareBroker, terminalShareHandler } from "@/app/share/terminalShareBroker";
 import { installSessionShareFanout } from '@/app/session/sessionShares';
 import { Server } from "socket.io";
 import { Redis, type RedisOptions } from "ioredis";
@@ -457,6 +457,8 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
                 payload: machineActivity,
                 recipientFilter: { type: 'user-scoped-only' }
             });
+            // B-943: people watching a terminal shared from this machine resume by themselves.
+            noteTerminalShareMachinePresence(userId, machineId!, true);
         }
 
         // Track app focus state for push notification routing.
@@ -513,6 +515,8 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
                             payload: machineActivity,
                             recipientFilter: { type: 'user-scoped-only' }
                         });
+                        // B-943: and people watching a terminal shared from it are told, not left on a frozen pane.
+                        noteTerminalShareMachinePresence(userId, connection.machineId, false);
                     } catch (error) {
                         // During a coordination outage, fail toward a briefly
                         // stale online badge instead of flashing every daemon

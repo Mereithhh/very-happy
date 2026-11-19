@@ -2,9 +2,10 @@ import { beforeAll, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { installBrowserTestGlobals } from '@/testing/browserTestGlobals';
 let Notice: typeof import('./TerminalConnectionNotice').TerminalConnectionNotice;
+let View: typeof import('./TerminalConnectionNotice').TerminalNoticeView;
 beforeAll(async () => {
     installBrowserTestGlobals();
-    Notice = (await import('./TerminalConnectionNotice')).TerminalConnectionNotice;
+    ({ TerminalConnectionNotice: Notice, TerminalNoticeView: View } = await import('./TerminalConnectionNotice'));
 });
 const props = { machineName: 'dsw-test', compact: false, canRetry: true, onRetry: () => {}, onMachine: () => {} };
 it('renders an accessible loading indicator and target identity', () => {
@@ -28,4 +29,13 @@ it('does not offer a retry for an uncertain fresh creation', () => {
 });
 it('removes the notice after connecting', () => {
     expect(renderToStaticMarkup(<Notice {...props} state={null} />)).toBe('');
+});
+it('B-943: the shared-terminal notice names the machine and offers its action only when not waiting', () => {
+    const offline = renderToStaticMarkup(<View waiting={false} compact={false} title="This machine isn't connected" machine="Alex's mac-studio" detail="comes back by itself" actions={<button type="button">Retry now</button>} />);
+    expect(offline).toContain('role="status"');
+    expect(offline).toContain('mac-studio');
+    expect(offline.match(/<button/g)).toHaveLength(1);
+    const waiting = renderToStaticMarkup(<View waiting compact={false} title="Connecting" machine="Alex's mac-studio" detail="waiting" actions={<button type="button">Retry now</button>} />);
+    expect(waiting).toContain('term-connection-loading');
+    expect(waiting).not.toContain('<button');
 });
