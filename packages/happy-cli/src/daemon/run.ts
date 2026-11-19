@@ -1750,12 +1750,23 @@ export async function startDaemon(): Promise<void> {
       if (session?.happySessionId && !daemonHibernation.pendingExit(session.happySessionId)) {
         const sessionId = session.happySessionId;
         const persisted = readPersistedSessions()[sessionId];
-        if (persisted) {
-          void closeDanglingTurn(sessionId, persisted, danglingTurnVerdict(exit, stopRequested)).then(
-            (turn) => { if (turn) logger.debug(`[DAEMON RUN] Closed turn ${turn} of ${sessionId}: its process (PID ${pid}) exited mid-turn`); },
-            (error) => logger.debug(`[DAEMON RUN] Could not close the open turn of ${sessionId} after PID ${pid} exited`, error),
-          );
-        }
+        // An exit the wrapper did not get to clean up after (killed, crashed) leaves the server row
+        // `active` for its 10-minute presence timeout: `send` and the Web deliver to a session no
+        // process reads. The wrapper's own exit path deactivates; this is that step for it.
+        // Not when this session is being brought back (auto-restart) or already runs again.
+        const abnormal = !stopRequested && (exit?.signal != null || (typeof exit?.code === 'number' && exit.code !== 0));
+        const runsAgain = autoRestartExits.has(sessionId)
+          || [...pidToTrackedSession.entries()].some(([otherPid, other]) => otherPid !== pid && other.happySessionId === sessionId);
+        void (async () => {
+          if (persisted) {
+            const turn = await closeDanglingTurn(sessionId, persisted, danglingTurnVerdict(exit, stopRequested));
+            if (turn) logger.debug(`[DAEMON RUN] Closed turn ${turn} of ${sessionId}: its process (PID ${pid}) exited mid-turn`);
+          }
+          if (abnormal && !runsAgain) {
+            const deactivated = await api.deactivateSession(sessionId);
+            logger.debug(`[DAEMON RUN] Session ${sessionId} marked offline after PID ${pid} exited abnormally: ${deactivated}`);
+          }
+        })().catch((error) => logger.debug(`[DAEMON RUN] Could not settle ${sessionId} after PID ${pid} exited`, error));
       }
       // B-925: an abnormal exit is a wake event (sources.ts decides); before hibernation consumes its mark.
       if (session?.happySessionId && exit) {
