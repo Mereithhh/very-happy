@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mapClaudeLogMessageToSessionEnvelopes, type ClaudeSessionProtocolState } from '@/claude/utils/sessionProtocolMapper';
-import { capUtf8, TOOL_RESULT_MAX_BYTES, toolResultContentText, toolResultPayload } from './toolResultPayload';
+import { capArgStrings, capUtf8, TOOL_RESULT_MAX_BYTES, toolResultContentText, toolResultPayload } from './toolResultPayload';
 
 /** tool_use → tool_result through the real mapper; returns the tool-call-end event. */
 function endFor(name: string, input: Record<string, unknown>, result: { content: unknown; is_error?: boolean }) {
@@ -121,5 +121,20 @@ describe('toolResultContentText / toolResultPayload', () => {
         expect(out.truncated).toBe(true);
         expect(Buffer.byteLength(out.text, 'utf8')).toBe(Math.floor(TOOL_RESULT_MAX_BYTES / 3) * 3);
         expect([...out.text].every((ch) => ch === '汉' || ch === '字')).toBe(true);
+    });
+});
+
+describe('B-942 capArgStrings', () => {
+    it('cuts every long string inside nested arguments on a code-point boundary and says how much is left out', () => {
+        const long = '中'.repeat(100);
+        const capped = capArgStrings({ a: { b: [long, 'short'] }, n: 3 }, 30);
+        expect(capped.a.b[0]).toBe(`${'中'.repeat(10)}\n… [1 KB more not shown]`);
+        expect(capped.a.b[1]).toBe('short');
+        expect(capped.n).toBe(3);
+    });
+
+    it('returns the very same object when nothing is over the cap', () => {
+        const args = { a: ['x', { y: 'z' }] };
+        expect(capArgStrings(args)).toBe(args);
     });
 });

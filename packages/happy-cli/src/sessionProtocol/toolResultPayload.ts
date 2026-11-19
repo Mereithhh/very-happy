@@ -92,3 +92,41 @@ export function textResultPayload(raw: string, isError: boolean, maxBytes = TOOL
         ...(isError ? { isError: true } : {}),
     };
 }
+
+/**
+ * B-942: tool *arguments* were never capped. A Codex patch next to a 1.5 MB line
+ * carries that line as diff context (`CodexPatch.changes`, the turn's `CodexDiff`),
+ * and a record over the server's request limit never reaches the session — a
+ * 0.2.178 wrapper retried one for 7 hours with everything after it held back.
+ * Every string inside the arguments is cut to `maxBytes` (on a code-point
+ * boundary) with a note of how much was left out; the card still shows.
+ */
+export const TOOL_ARG_STRING_MAX_BYTES = 128 * 1024;
+
+export function capArgStrings<T>(value: T, maxBytes = TOOL_ARG_STRING_MAX_BYTES, depth = 0): T {
+    if (typeof value === 'string') {
+        const capped = capUtf8(value, maxBytes);
+        if (!capped.truncated) return value;
+        const omitted = Buffer.byteLength(value, 'utf8') - Buffer.byteLength(capped.text, 'utf8');
+        return `${capped.text}\n… [${formatSize(omitted)} more not shown]` as T;
+    }
+    if (!value || typeof value !== 'object' || depth >= 8) return value;
+    if (Array.isArray(value)) {
+        let changed = false;
+        const next = value.map((item) => {
+            const capped = capArgStrings(item, maxBytes, depth + 1);
+            if (capped !== item) changed = true;
+            return capped;
+        });
+        return (changed ? next : value) as T;
+    }
+    let next: Record<string, unknown> | null = null;
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+        const capped = capArgStrings(item, maxBytes, depth + 1);
+        if (capped !== item) {
+            next ??= { ...(value as Record<string, unknown>) };
+            next[key] = capped;
+        }
+    }
+    return (next ?? value) as T;
+}

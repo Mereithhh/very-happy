@@ -4,7 +4,7 @@ import type { ReasoningOutput } from './reasoningProcessor';
 import type { DiffToolCall, DiffToolResult } from './diffProcessor';
 import { createEnvelope, type CreateEnvelopeOptions, type SessionEnvelope } from '@slopus/happy-wire';
 import type { Thread, ThreadItem, ThreadTurn } from '../codexAppServerTypes';
-import { textResultPayload, toolResultContentText } from '@/sessionProtocol/toolResultPayload';
+import { capArgStrings, textResultPayload, toolResultContentText } from '@/sessionProtocol/toolResultPayload';
 
 export type CodexTurnState = {
     currentTurnId: string | null;
@@ -420,7 +420,7 @@ export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>):
                         item,
                         'CodexPatch',
                         title,
-                        { changes: item.changes, status: item.status },
+                        { changes: capArgStrings(item.changes), status: item.status },
                         null,
                     );
                     break;
@@ -712,7 +712,8 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
                 description: patchDescription(changes),
                 args: {
                     auto_approved: autoApproved,
-                    changes,
+                    // B-942: a patch's diff context can be a multi-MB line.
+                    changes: capArgStrings(changes),
                 },
             }, opts)
         );
@@ -777,9 +778,10 @@ export function mapCodexProcessorMessageToSessionEnvelopes(
             name: toolLikeMessage.name || 'unknown',
             title,
             description: title,
-            args: (toolLikeMessage.input && typeof toolLikeMessage.input === 'object'
+            // B-942: CodexDiff carries the whole turn's unified diff.
+            args: capArgStrings((toolLikeMessage.input && typeof toolLikeMessage.input === 'object'
                 ? toolLikeMessage.input
-                : {}) as Record<string, unknown>,
+                : {}) as Record<string, unknown>),
         }, opts)];
     }
 

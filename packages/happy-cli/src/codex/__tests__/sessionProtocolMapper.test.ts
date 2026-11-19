@@ -421,3 +421,40 @@ it('delivers completed collaboration receivers after an incremental start with n
     const history = mapCodexThreadToSessionEnvelopes({ turns: [{ id: 'turn-1', items: [completed] }] } as any);
     expect(history.find(e => e.ev.t === 'tool-call-start')?.id).toBe('spawn-1:start');
 });
+
+describe('B-942: Codex tool arguments stay under the server request limit', () => {
+    const hugeLine = 'x'.repeat(1_500_000);
+    const size = (value: unknown) => Buffer.byteLength(JSON.stringify(value), 'utf8');
+
+    it('a patch whose diff context is a 1.5 MB line keeps its card, with the line cut', () => {
+        const result = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'patch_apply_begin',
+            call_id: 'patch-1',
+            changes: { '/repo/big.txt': { kind: { type: 'update' }, diff: `@@ -1,2 +1,2 @@\n-alpha\n+beta\n ${hugeLine}\n` } },
+        }, { currentTurnId: 'turn-1' });
+        const start = result.envelopes.find((e) => e.ev.t === 'tool-call-start')!;
+        expect(start.ev).toMatchObject({ t: 'tool-call-start', name: 'CodexPatch', call: 'patch-1' });
+        const diff = ((start.ev as any).args.changes['/repo/big.txt'].diff) as string;
+        expect(diff.startsWith('@@ -1,2 +1,2 @@\n-alpha\n+beta\n')).toBe(true);
+        expect(diff).toMatch(/\n… \[1\.\d MB more not shown\]$/);
+        expect(size(start)).toBeLessThan(200 * 1024);
+    });
+
+    it('the turn diff (CodexDiff) is cut the same way', () => {
+        const [start] = mapCodexProcessorMessageToSessionEnvelopes({
+            type: 'tool-call',
+            callId: 'diff-1',
+            name: 'CodexDiff',
+            input: { unified_diff: `diff --git a/big.txt b/big.txt\n ${hugeLine}\n` },
+            id: 'd1',
+        }, { currentTurnId: 'turn-1' });
+        expect((start.ev as any).args.unified_diff.length).toBeLessThan(140 * 1024);
+        expect(size(start)).toBeLessThan(200 * 1024);
+    });
+
+    it('ordinary arguments pass through untouched', () => {
+        const input = { unified_diff: 'diff --git a/x b/x\n-a\n+b\n' };
+        const [start] = mapCodexProcessorMessageToSessionEnvelopes({ type: 'tool-call', callId: 'diff-2', name: 'CodexDiff', input, id: 'd2' }, { currentTurnId: 'turn-1' });
+        expect((start.ev as any).args).toEqual({ unified_diff: 'diff --git a/x b/x\n-a\n+b\n' });
+    });
+});
