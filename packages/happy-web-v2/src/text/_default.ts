@@ -3433,6 +3433,12 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov20a: {
+                title: 'A session no longer goes quiet after one record it could not save',
+                summary: 'When a session produced one record too large for the server (for example a Codex edit next to a multi-megabyte line), everything it wrote after that record was held back — later questions looked unanswered while the session kept working. Now the rest goes out, and you are told what is missing.',
+                record: 'In the chat, a line says how large the record was and why it was not saved. Edits and diffs that Codex shows are cut to a readable size, so they rarely get that large at all.',
+                older: 'Sessions still on an older CLI are unblocked by the server: it keeps everything else and the session shows a strip saying how many records were too large to sync.',
+            },
             nov20b: {
                 title: 'A terminal whose machine is not connected now says so, instead of staying black',
                 summary: 'When the machine a terminal runs on was not connected, opening the terminal showed only a black screen — most of all for a terminal someone shared with you. Now the terminal says the machine is not connected and names it.',

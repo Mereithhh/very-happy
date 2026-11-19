@@ -39,6 +39,7 @@ state. Never commit production values.
 | `MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE` | Shared database-backed message ingress rate | `600` |
 | `MAX_MESSAGES_PER_ACCOUNT` | Stored message count per account | `100000` |
 | `MAX_MESSAGE_BYTES_PER_ACCOUNT` | Stored encrypted message bytes per account | `536870912` |
+| `HTTP_SESSION_MESSAGES_BODY_LIMIT_BYTES` | Request body limit of `POST /v3/sessions/:id/messages` only (B-942). Above the server-wide 1 MiB so an older wrapper's fixed 50-message batch is still read; a message over the 1 MiB per-message limit is skipped for a session wrapper (the rest of its batch is stored, so its outbox moves on) and refused with 413 `message_too_large` for any other client. `0` = no limit | `16777216` |
 | `MAX_ATTACHMENT_BYTES_PER_ACCOUNT` | Reserved attachment storage per account | `104857600` |
 | `MAX_UPLOADED_FILES_PER_ACCOUNT` | Uploaded-file rows per account, including attachment reservations and avatars | `2000` |
 | `ATTACHMENT_RESERVATION_TTL_MINUTES` | Reclaim uncompleted attachment reservations and their objects after this age; `0` disables cleanup | `60` |
