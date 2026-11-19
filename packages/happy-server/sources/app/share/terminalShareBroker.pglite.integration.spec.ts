@@ -402,6 +402,45 @@ describe('B-878 terminal share broker (pglite)', () => {
         await app.close();
     });
 
+    it('B-943: grantees learn the owner machine\'s name, and an open pane is told when that machine drops / returns', async () => {
+        await db.machine.update({ where: { id: machineId }, data: { metadata: sealMachine({ host: 'owner-host', displayName: ' build-box\u0007 ' }) } });
+        const grant = await share(viewerId, 'viewer');
+        const key = await streamKeyOf(grant.id, viewerSecret);
+        expect((await store.listIncomingTerminalShares(viewerId)).find((g) => g.id === grant.id)).toMatchObject({ machineName: 'build-box' });
+        // Not attached yet: nobody is told anything.
+        await broker.__refreshTerminalShareIndexForTests();
+        emitted.length = 0;
+        expect(broker.noteTerminalShareMachinePresence(ownerId, machineId, false)).toBe(0);
+        expect(await rpc(viewerId, grant.id, 'attach', {}, key)).toMatchObject({ ok: true });
+        await broker.__refreshTerminalShareIndexForTests();
+        emitted.length = 0;
+        // Another owner's / another machine's presence never reaches this pane.
+        expect(broker.noteTerminalShareMachinePresence(strangerId, machineId, false)).toBe(0);
+        expect(broker.noteTerminalShareMachinePresence(ownerId, 'some-other-machine', false)).toBe(0);
+        expect(emitted).toEqual([]);
+        expect(broker.noteTerminalShareMachinePresence(ownerId, machineId, false)).toBe(1);
+        expect(broker.noteTerminalShareMachinePresence(ownerId, machineId, true)).toBe(1);
+        expect(emitted).toEqual([
+            { room: room(viewerId), event: 'share-terminal-machine', payload: { grantId: grant.id, online: false } },
+            { room: room(viewerId), event: 'share-terminal-machine', payload: { grantId: grant.id, online: true } },
+        ]);
+        await store.revokeTerminalGrant(ownerId, grant.id);
+        await broker.__refreshTerminalShareIndexForTests();
+        emitted.length = 0;
+        expect(broker.noteTerminalShareMachinePresence(ownerId, machineId, false)).toBe(0);
+        await db.machine.update({ where: { id: machineId }, data: { metadata: 'x' } });
+    });
+
+    it('B-943: machineNameOf prefers the display name, falls back to host, strips control characters and bounds the length', () => {
+        expect(broker.machineNameOf({ displayName: 'Mac Studio', host: 'mac.local' })).toBe('Mac Studio');
+        expect(broker.machineNameOf({ displayName: '  ', host: 'mac.local' })).toBe('mac.local');
+        expect(broker.machineNameOf({ host: 'a\u001b[31mb' })).toBe('a[31mb');
+        expect(broker.machineNameOf({ host: 'x'.repeat(100) })).toHaveLength(64);
+        expect(broker.machineNameOf(null)).toBeNull();
+        expect(broker.machineNameOf('x')).toBeNull();
+        expect(broker.machineNameOf({ host: 42 })).toBeNull();
+    });
+
     it('no terminal bytes, keystrokes or titles in any log line or business audit', () => {
         const text = JSON.stringify(logged) + JSON.stringify(audited);
         expect(text).not.toContain(SECRET_MARK);

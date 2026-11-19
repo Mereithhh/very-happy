@@ -64,6 +64,8 @@ export const SharedProjectPageSchema = z.object({
         title: z.string().nullable().optional(),
         cwd: z.string().nullable().optional(),
         viewOnlySupported: z.boolean().optional(),
+        // B-943: the owner machine's name, for "this machine isn't connected"; old servers omit it.
+        machineName: z.string().nullable().optional().catch(null),
         // B-899: my own live direct grant on this terminal (effective = max(direct, project)); old servers omit it.
         direct: z.object({
             grantId: z.string(),

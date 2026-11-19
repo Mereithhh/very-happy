@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { IncomingTerminalShareSchema, ShareTerminalGeometrySchema, defaultTerminalShareExpiry, directlyGranted, failedRefs, planProjectOperate, readTerminalShareAck, revokeEndsAccess, serialPerKey, viewOnlyScale } from './terminalShareTypes';
+import { IncomingTerminalShareSchema, ShareTerminalGeometrySchema, ShareTerminalMachineSchema, defaultTerminalShareExpiry, directlyGranted, failedRefs, planProjectOperate, readTerminalShareAck, revokeEndsAccess, serialPerKey, viewOnlyScale } from './terminalShareTypes';
 import { terminalShareEventLabelKey } from '@/screens/terminal/terminalShareEventLabels';
 
 describe('B-878 terminal share client helpers', () => {
@@ -94,3 +94,18 @@ describe('B-900 planProjectOperate', () => {
         ], sent)).toEqual([sent[1], sent[2]]);
     });
 });
+
+describe('B-943 machine name + presence on the wire', () => {
+    const base = { id: 'g', role: 'viewer', status: 'active', granteeKey: 'k', machineId: 'm', createdAt: 1, expiresAt: 2, owner: { id: 'o', displayName: 'O' } };
+    it('machineName is read when present; an old server omitting it, or a garbage value, never breaks the list', () => {
+        expect(IncomingTerminalShareSchema.parse({ ...base, machineName: 'mac-studio' }).machineName).toBe('mac-studio');
+        expect(IncomingTerminalShareSchema.parse(base).machineName).toBeUndefined();
+        expect(IncomingTerminalShareSchema.parse({ ...base, machineName: 42 }).machineName).toBeNull();
+    });
+    it('presence event: grant id + boolean only', () => {
+        expect(ShareTerminalMachineSchema.safeParse({ grantId: 'g', online: false })).toMatchObject({ success: true, data: { grantId: 'g', online: false } });
+        expect(ShareTerminalMachineSchema.safeParse({ grantId: 'g', online: 'yes' }).success).toBe(false);
+        expect(ShareTerminalMachineSchema.safeParse({ online: true }).success).toBe(false);
+    });
+});
+

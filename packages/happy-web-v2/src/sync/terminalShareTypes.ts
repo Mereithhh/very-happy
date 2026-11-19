@@ -42,6 +42,8 @@ export const IncomingTerminalShareSchema = z.object({
     alive: z.boolean().nullable().optional(),
     viewOnlySupported: z.boolean().nullable().optional(),
     machineId: z.string(),
+    /** B-943: the owner machine's name (display name, else host); old servers omit it. */
+    machineName: z.string().nullable().optional().catch(null),
     createdAt: z.number(),
     expiresAt: z.number(),
     owner: PersonSchema,
@@ -62,6 +64,8 @@ export const ShareTerminalOutputSchema = z.object({ grantId: z.string(), seq: z.
 export const ShareTerminalExitSchema = z.object({ grantId: z.string(), exitCode: z.number().optional(), reason: z.string().optional() });
 export const ShareTerminalRevokedSchema = z.object({ grantId: z.string(), reason: z.string().optional() });
 export const ShareTerminalGeometrySchema = z.object({ grantId: z.string(), cols: z.number().int().min(2).max(10_000), rows: z.number().int().min(2).max(10_000) });
+/** B-943: the owner's machine dropped (after the server's reconnect grace) or came back. */
+export const ShareTerminalMachineSchema = z.object({ grantId: z.string(), online: z.boolean() });
 // ---- socket events (both sides)
 export const TerminalShareUpdatedSchema = z.object({ grantId: z.string() });
 // ---- socket events (owner)

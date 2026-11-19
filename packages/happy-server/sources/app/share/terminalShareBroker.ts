@@ -177,7 +177,7 @@ async function resolveProjectTerminal(granteeId: string, projectGrantId: string,
  * operator grant operates there too; the `p:` id itself stays view only whatever direct grant exists.
  */
 export type ProjectTerminalDirect = { grantId: string; role: TerminalShareRole; status: 'pending' | 'active'; expiresAt: number };
-export type ProjectTerminalView = { shareId: string; machineId: string; terminalId: string; title: string | null; cwd: string | null; viewOnlySupported: boolean; direct?: ProjectTerminalDirect };
+export type ProjectTerminalView = { shareId: string; machineId: string; terminalId: string; title: string | null; cwd: string | null; viewOnlySupported: boolean; direct?: ProjectTerminalDirect; /** B-943: the owner machine's name, for "this machine isn't connected". */ machineName?: string | null };
 
 /** This grantee's live direct grants from the project owner, by `${machineId}:${terminalId}` (the unique key, one per grantee). */
 async function directGrantsByTerminal(granteeId: string, ownerId: string): Promise<Map<string, ProjectTerminalDirect>> {
@@ -207,11 +207,13 @@ export async function listProjectTerminals(granteeId: string, projectGrantId: st
         const state = await readDaemonState(probe, machineKey);
         const ids = webTerminalIds(state);
         if (!ids) continue;
+        let machineName: string | null | undefined;
         for (const terminalId of ids) {
             const info = webTerminalInfo(state, terminalId);
             if (!info || info.projectId !== row.projectId) continue;
             const own = direct.get(`${machine.id}:${terminalId}`);
-            out.push({ shareId: projectTerminalShareId(row.id, machine.id, terminalId), machineId: machine.id, terminalId, title: info.title, cwd: cwdBasename(info.cwd), viewOnlySupported: viewOnlyCapable(state), ...(own ? { direct: own } : {}) });
+            if (machineName === undefined) machineName = await readMachineName(probe, machineKey);
+            out.push({ shareId: projectTerminalShareId(row.id, machine.id, terminalId), machineId: machine.id, terminalId, title: info.title, cwd: cwdBasename(info.cwd), viewOnlySupported: viewOnlyCapable(state), machineName, ...(own ? { direct: own } : {}) });
         }
     }
     return out;
@@ -275,6 +277,24 @@ function open(value: unknown, key: Uint8Array): unknown | null {
 async function readDaemonState(grant: VerifiedTerminalShare, machineKey: Uint8Array): Promise<unknown | null> {
     const machine = await db.machine.findFirst({ where: { id: grant.machineId, accountId: grant.ownerId }, select: { daemonState: true } });
     return machine?.daemonState ? open(machine.daemonState, machineKey) : null;
+}
+
+const MAX_MACHINE_NAME = 64;
+/** B-943: what the owner calls the machine (display name, else host) — so a grantee can be told WHICH machine isn't connected. */
+export function machineNameOf(metadata: unknown): string | null {
+    if (!metadata || typeof metadata !== 'object') return null;
+    const { displayName, host } = metadata as { displayName?: unknown; host?: unknown };
+    for (const value of [displayName, host]) {
+        if (typeof value !== 'string') continue;
+        const name = value.replace(/[\u0000-\u001f\u007f]/g, '').trim();
+        if (name) return name.length > MAX_MACHINE_NAME ? `${name.slice(0, MAX_MACHINE_NAME - 1)}…` : name;
+    }
+    return null;
+}
+
+async function readMachineName(grant: VerifiedTerminalShare, machineKey: Uint8Array): Promise<string | null> {
+    const machine = await db.machine.findFirst({ where: { id: grant.machineId, accountId: grant.ownerId }, select: { metadata: true } });
+    return machine?.metadata ? machineNameOf(open(machine.metadata, machineKey)) : null;
 }
 
 // ---------------------------------------------------------------- attachment index
@@ -676,6 +696,26 @@ const GONE_GRACE_MS = 10_000;
 // ---------------------------------------------------------------- socket wiring
 
 /** Grantee side: user-scoped sockets only (central server, never the relay). */
+/**
+ * B-943: the owner's daemon for `machineId` connected (online) or is confirmed gone (offline, after
+ * the server's reconnect grace). Every grantee with an open pane on that machine is told, so a
+ * shared terminal never sits silently frozen: offline → "this machine isn't connected", online →
+ * the pane re-subscribes by itself (a restarted daemon has no subscribers). Grant id + flag only.
+ */
+export function noteTerminalShareMachinePresence(ownerId: string, machineId: string, online: boolean): number {
+    const told = new Set<string>();
+    for (const entries of attachIndex.values()) {
+        for (const entry of entries) {
+            if (entry.ownerId !== ownerId || entry.machineId !== machineId) continue;
+            const key = `${entry.granteeId}:${entry.grantId}`;
+            if (told.has(key)) continue;
+            told.add(key);
+            emitToAccount(entry.granteeId, 'share-terminal-machine', { grantId: entry.grantId, online });
+        }
+    }
+    return told.size;
+}
+
 export function terminalShareHandler(userId: string, socket: Socket, connection: { connectionType: string }, limits: Limits): void {
     if (connection.connectionType !== 'user-scoped') return;
     // Subscriptions this socket holds: a closed tab or dropped socket never sends
@@ -820,13 +860,13 @@ export async function __refreshTerminalShareIndexForTests(): Promise<void> {
 // ---------------------------------------------------------------- views
 
 /** For the grantee's list: live title / cwd / online, read with the verified grant. */
-export async function liveTerminalView(grant: VerifiedTerminalShare): Promise<{ title: string | null; cwd: string | null; alive: boolean | null; viewOnlySupported: boolean } | null> {
+export async function liveTerminalView(grant: VerifiedTerminalShare): Promise<{ title: string | null; cwd: string | null; alive: boolean | null; viewOnlySupported: boolean; machineName: string | null } | null> {
     const machineKey = await openTerminalShareMachineKey(grant);
     if (!machineKey) return null;
     const state = await readDaemonState(grant, machineKey);
     const ids = webTerminalIds(state);
     const info = webTerminalInfo(state, grant.terminalId);
-    return { title: info?.title ?? null, cwd: info?.cwd ?? null, alive: ids ? ids.has(grant.terminalId) : null, viewOnlySupported: viewOnlyCapable(state) };
+    return { title: info?.title ?? null, cwd: info?.cwd ?? null, alive: ids ? ids.has(grant.terminalId) : null, viewOnlySupported: viewOnlyCapable(state), machineName: await readMachineName(grant, machineKey) };
 }
 
 export async function listTerminalShareEvents(grantId: string, limit: number) {

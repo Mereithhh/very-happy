@@ -2,7 +2,7 @@ import { ToolHistory } from '../session/ToolHistory';
 import { startConnectionStage, connectionFailureOutcome } from '@/sync/connectionDiagnostics';
 import { TerminalConnectionNotice } from './TerminalConnectionNotice';
 import { TerminalDirectShellNotice } from './TerminalDirectShellNotice';
-import { terminalConnectionNotice } from './termConnectionState';
+import { machineReturnAction, terminalConnectionNotice } from './termConnectionState';
 import { machineLabel } from '@/utils/machineUtils';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { flushSync } from 'react-dom';
@@ -394,6 +394,8 @@ export function WebTerminalScreen() {
   // "refit width" button (P1 multi-device fix). force=true re-sends even when
   // the pane already matches, so the button always does something visible.
   const refitWidthRef = useRef<((force?: boolean) => void) | null>(null);
+  // B-943: bridge the effect-local catch-up out to the "machine came back" effect.
+  const machineCatchUpRef = useRef<(() => void) | null>(null);
   const { width: filesWidth, onHandleMouseDown: onFilesHandleDown } = useFilesPanelWidth({
     onDragStart: () => { filesDragHoldRef.current = true; },
     onDragEnd: () => {
@@ -439,6 +441,15 @@ export function WebTerminalScreen() {
   const surfaceReady = readySurfaceKey === surfaceKey;
   const [failedSurfaceKey, setFailedSurfaceKey] = useState<string | null>(null);
   const openFailed = failedSurfaceKey === surfaceKey;
+  // B-943: when the machine comes back, the pane recovers by itself — no refresh, no retry click.
+  const machineActive = machine?.active;
+  const lastMachineActiveRef = useRef(machineActive);
+  useEffect(() => {
+    const action = machineReturnAction({ wasActive: lastMachineActiveRef.current, active: machineActive, openFailed });
+    lastMachineActiveRef.current = machineActive;
+    if (action === 'remount') setStreamRemount((generation) => generation + 1);
+    else if (action === 'catch-up') machineCatchUpRef.current?.();
+  }, [machineActive]); // eslint-disable-line react-hooks/exhaustive-deps -- fires on the presence edge only
   const connectionNotice = terminalConnectionNotice({
     controlConnected: controlStatus === 'connected',
     regionalConnected: relayStatus.state === 'connected',
@@ -1846,6 +1857,9 @@ export function WebTerminalScreen() {
     // short-background zombie link usually ends in exactly that — without this
     // the terminal had no catch-up trigger at all after such a resume.
     const offRecovered = apiSocket.onRecovered(() => catchUp({ coalesce: true }));
+    // B-943: the machine came back. Its restarted daemon has no subscribers and its seq
+    // numbering may have restarted, so ask for a full snapshot rather than a replay.
+    machineCatchUpRef.current = () => catchUp({ forceSnapshot: true });
     // Regional relay edges: output rides the relay while it is connected, so a
     // relay rebuild (resume probe) or fallback to control is a resync point.
     // Only the two real transport edges — `connecting` etc. are chip-only.
@@ -2443,6 +2457,7 @@ export function WebTerminalScreen() {
       sendInputRef.current = null;
       scheduleFitRef.current = null;
       refitWidthRef.current = null;
+      machineCatchUpRef.current = null;
       pasteTextRef.current = null;
       dataDisp.dispose();
       keyDisp.dispose();

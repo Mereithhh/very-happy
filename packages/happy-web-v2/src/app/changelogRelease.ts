@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-20-terminal-machine-not-connected',
+    date: '2026-11-20',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov20b.title',
+    summaryKey: 'changelog.releases.nov20b.summary',
+    itemKeys: ['changelog.releases.nov20b.shared', 'changelog.releases.nov20b.recover'],
+  },
+  {
     id: '2026-11-19-sidebar-preview-closes',
     date: '2026-11-19',
     buildVersion: __APP_VERSION__,
