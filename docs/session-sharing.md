@@ -164,6 +164,13 @@ on your machine; with an older one they see “The CLI on their machine needs an
 update”. Settings → Shared lists every terminal you shared, with a revoke
 button.
 
+If your machine is not connected, the shared terminal says so instead of
+staying black: “This machine isn't connected”, with your name and the
+machine's name (its display name, else its host name — the other account can
+see it), also when it drops while they watch. When the machine reconnects the
+terminal resumes by itself; nobody has to refresh. Your own terminals behave
+the same way.
+
 Terminal traffic goes through the server only (never the regional relay). The
 server opens your machine key to re-encrypt the stream with a key that belongs
 to this one share; the other account never receives your machine key.
