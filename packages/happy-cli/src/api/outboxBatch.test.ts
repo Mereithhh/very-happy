@@ -38,3 +38,24 @@ describe('B-880 planOutboxBatch', () => {
         expect(planOutboxBatch([item(10), item(10, true)])).toEqual({ kind: 'send', count: 1, backfill: false })
     })
 })
+
+describe('B-942 classifyOutboxRejection', () => {
+    it('only a refusal of the request itself is permanent; the rest are retried as before', async () => {
+        const { classifyOutboxRejection } = await import('./outboxBatch')
+        expect(classifyOutboxRejection(413, 4)).toBe('split')
+        expect(classifyOutboxRejection(413, 1)).toBe('replace')
+        expect(classifyOutboxRejection(400, 1)).toBe('replace')
+        expect(classifyOutboxRejection(422, 3)).toBe('split')
+        for (const status of [undefined, 401, 403, 404, 408, 409, 429, 500, 502, 503]) {
+            expect(classifyOutboxRejection(status, 1)).toBe('retry')
+        }
+        // The account's storage quota is a 413 too, but no message is to blame.
+        expect(classifyOutboxRejection(413, 1, 'message_bytes_quota_exceeded')).toBe('retry')
+    })
+
+    it('the notice says how large the record was and why it is missing', async () => {
+        const { outboxRejectedNotice } = await import('./outboxBatch')
+        expect(outboxRejectedNotice(1_500_000, 'oversize')).toBe('A 1.4 MB record from this session was not saved: it is larger than the server accepts. The output after it continues below.')
+        expect(outboxRejectedNotice(300 * 1024, 413)).toBe('A 300 KB record from this session was not saved: the server refused it (HTTP 413). The output after it continues below.')
+    })
+})

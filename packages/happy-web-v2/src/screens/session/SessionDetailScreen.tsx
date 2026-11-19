@@ -53,6 +53,7 @@ import { machineLabel } from '@/utils/machineUtils';
 import { useProjects } from '@/sync/projects';
 import { AutomationAttentionBanner } from './AutomationAttentionBanner';
 import { WorktreeSetupBanner } from './WorktreeSetupBanner';
+import { OversizeSkippedBanner } from './OversizeSkippedBanner';
 import { canOfferRestore } from '@/app/sessionRestore';
 import { useHibernationAutoWake } from '@/app/useHibernationAutoWake';
 import { isMirrorSession } from '@/assistant/assistantSession';
@@ -453,6 +454,8 @@ export function SessionDetailScreen() {
                 {session && !mirror && !sharedWithMe && <AccountHistoryRejectedBanner key={`account-history:${id}`} sessionId={id} machine={bannerMachine} />}
                 {/* B-585: this session's worktree setup is waiting for approval / running / failed */}
                 {session && !mirror && !sharedWithMe && <WorktreeSetupBanner key={`worktree-setup:${id}`} sessionId={id} />}
+                {/* B-942: records from this session the server skipped for being too large */}
+                {session && !sharedWithMe && <OversizeSkippedBanner key={`oversize-skipped:${id}`} sessionId={id} />}
                 <div className="sd-body">
                     {/* B-752: calm ASCII field behind the transcript (fixed, not scrolled). */}
                     <ChatBackdrop sessionId={id} />

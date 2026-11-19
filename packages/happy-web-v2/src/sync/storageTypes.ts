@@ -297,6 +297,9 @@ export interface Session {
      *  deliberately archived session from one that merely went offline —
      *  both are `active === false`. */
     archivedAt?: number | null,
+    /** B-942: records from this session's process the server skipped for being over its
+     *  per-message limit (running total; absent = none, or a server too old to report it). */
+    oversizeSkipped?: number,
     metadata: Metadata | null,
     metadataVersion: number,
     agentState: AgentState | null,

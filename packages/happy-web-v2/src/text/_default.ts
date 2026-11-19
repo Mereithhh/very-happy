@@ -880,6 +880,9 @@ export const en = {
             queueMore: 'Queued message options',
             queueEditingPlaceholder: 'Edit message',
             stoppedByYou: 'Stopped by you',
+            // B-942: the server skipped records from this session's process that were over its per-message limit.
+            oversizeSkipped: ({ count }: { count: number }) => `${count} ${count === 1 ? 'record' : 'records'} from this session ${count === 1 ? 'was' : 'were'} too large to sync (over the server's 1 MB limit per record) and ${count === 1 ? 'is' : 'are'} missing here. Everything after ${count === 1 ? 'it' : 'them'} is shown.`,
+            oversizeSkippedDismiss: 'Hide',
             // B-577/B-578/B-579 reading aids
             annotations: {
                 annotate: 'Comment',
@@ -3429,6 +3432,12 @@ export const en = {
                 summary: 'When an agent tries to preview a file that does not exist (or a folder), it is told so instead of being told the preview went out, so it stops saying "preview opened" for nothing.',
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
+            },
+            nov20a: {
+                title: 'A session no longer goes quiet after one record it could not save',
+                summary: 'When a session produced one record too large for the server (for example a Codex edit next to a multi-megabyte line), everything it wrote after that record was held back — later questions looked unanswered while the session kept working. Now the rest goes out, and you are told what is missing.',
+                record: 'In the chat, a line says how large the record was and why it was not saved. Edits and diffs that Codex shows are cut to a readable size, so they rarely get that large at all.',
+                older: 'Sessions still on an older CLI are unblocked by the server: it keeps everything else and the session shows a strip saying how many records were too large to sync.',
             },
             nov20b: {
                 title: 'A terminal whose machine is not connected now says so, instead of staying black',

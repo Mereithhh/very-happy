@@ -1967,6 +1967,8 @@ class Sync {
             active: boolean;
             activeAt: number;
             archivedAt?: number | null;
+            /** B-942: absent = none skipped (or an older server). */
+            oversizeSkipped?: number;
             createdAt: number;
             updatedAt: number;
             lastMessage: ApiMessage | null;
@@ -3826,6 +3828,8 @@ class Sync {
                     // B-265: the archive / unarchive transition rides a
                     // metadata-less update-session; absent means "no change".
                     ...(updateData.body.archivedAt !== undefined ? { archivedAt: updateData.body.archivedAt } : {}),
+                    // B-942: the server skipped an oversize record from this session.
+                    ...(updateData.body.oversizeSkipped !== undefined ? { oversizeSkipped: updateData.body.oversizeSkipped } : {}),
                     updatedAt: updateData.createdAt,
                     seq: updateData.seq
                 }]);

@@ -41,7 +41,7 @@ import { PromptQueueDrain, type PromptQueueDispatchOutcome } from '@/utils/promp
 import type { PromptQueueDispatchResponse } from '@slopus/happy-wire';
 import type { BackgroundTaskInfo } from '@/claude/backgroundTasks';
 import { notifyDaemonBackgroundTasks, notifyDaemonTurnEvent } from '@/daemon/controlClient';
-import { planOutboxBatch, type OutboxItem } from './outboxBatch';
+import { OUTBOX_BATCH_LIMITS, classifyOutboxRejection, outboxItemBytes, outboxRejectedNotice, planOutboxBatch, type OutboxItem } from './outboxBatch';
 import { advanceInboundCursor } from './inboundCursor';
 
 const guardOptions = { log: (message: string) => logger.debug(message) };
@@ -96,6 +96,12 @@ type V3PostSessionMessagesResponse = {
         updatedAt: number;
     }>;
 };
+
+/** B-942: the HTTP status of a failed axios request (undefined: no answer at all). */
+function httpStatusOf(error: unknown): number | undefined {
+    const status = (error as { response?: { status?: unknown } } | null)?.response?.status;
+    return typeof status === 'number' ? status : undefined;
+}
 
 export class ApiSessionClient extends EventEmitter {
     /**
@@ -173,6 +179,8 @@ export class ApiSessionClient extends EventEmitter {
     };
     private lastSeq = 0;
     private pendingOutbox: OutboxItem[] = [];
+    /** B-942: after the server refused a whole batch, at most this many per POST until the outbox drains. */
+    private outboxCountCap: number | null = null;
     /** B-880: set while a transcript replay enqueues (see `replayHistory`). */
     private replayingHistory = false;
     /** B-880 PR-2: the server-side backfill quota — declared before the first replay batch, closed after the last. */
@@ -855,27 +863,41 @@ export class ApiSessionClient extends EventEmitter {
         // client-side. The client re-sorts by seq anyway, so newest-first bought
         // nothing but the bug.)
         // B-880: batches are bounded by bytes as well as count (outboxBatch.ts).
-        for (let plan = planOutboxBatch(this.pendingOutbox); plan; plan = planOutboxBatch(this.pendingOutbox)) {
+        for (let plan = this.planOutbox(); plan; plan = this.planOutbox()) {
             if (plan.kind === 'oversize') {
                 // The server rejects it on every retry; holding it would block every message behind it.
-                const [dropped] = this.pendingOutbox.splice(0, 1);
-                logger.debug(`[API] Dropped an outbound message of ${plan.bytes} bytes (over the server's request limit), localId ${dropped.localId}`);
+                this.replaceRejectedOutboxHead(plan.bytes, 'oversize');
                 continue;
             }
             const batch = this.pendingOutbox.slice(0, plan.count);
             if (plan.backfill && this.backfillDeclaration === 'pending') await this.declareBackfill(this.pendingBackfillCount());
 
-            const response = await axios.post<V3PostSessionMessagesResponse>(
-                `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-                {
-                    messages: batch.map(({ content, localId }) => ({ content, localId }))
-                },
-                {
-                    // B-880: marks a replayed transcript; the server honours it only for a declared backfill (spec PR-2).
-                    headers: plan.backfill ? { ...this.authHeaders(), 'X-Happy-Message-Origin': 'backfill' } : this.authHeaders(),
-                    timeout: 60000
+            let response;
+            try {
+                response = await axios.post<V3PostSessionMessagesResponse>(
+                    `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+                    {
+                        messages: batch.map(({ content, localId }) => ({ content, localId }))
+                    },
+                    {
+                        // B-880: marks a replayed transcript; the server honours it only for a declared backfill (spec PR-2).
+                        headers: plan.backfill ? { ...this.authHeaders(), 'X-Happy-Message-Origin': 'backfill' } : this.authHeaders(),
+                        timeout: 60000
+                    }
+                );
+            } catch (error) {
+                // B-942: a batch the server will never take must not hold back everything after it.
+                const status = httpStatusOf(error);
+                const action = classifyOutboxRejection(status, batch.length, (error as { response?: { data?: { error?: unknown } } }).response?.data?.error);
+                if (action === 'retry') throw error;
+                if (action === 'split') {
+                    this.outboxCountCap = Math.max(1, Math.floor(batch.length / 2));
+                    logger.warn(`[API] Server refused a batch of ${batch.length} messages (HTTP ${status}); retrying ${this.outboxCountCap} at a time`);
+                    continue;
                 }
-            );
+                this.replaceRejectedOutboxHead(outboxItemBytes(batch[0]), status!);
+                continue;
+            }
 
             const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
             this.noteHandledSeqs(messages.map((message) => message.seq));
@@ -883,6 +905,41 @@ export class ApiSessionClient extends EventEmitter {
             this.pendingOutbox.splice(0, batch.length);
             if (plan.backfill && this.backfillDeclaration === 'declared' && this.pendingBackfillCount() === 0) await this.closeBackfill();
         }
+        this.outboxCountCap = null;
+    }
+
+    private planOutbox() {
+        const cap = this.outboxCountCap;
+        return planOutboxBatch(this.pendingOutbox, cap === null ? OUTBOX_BATCH_LIMITS : { ...OUTBOX_BATCH_LIMITS, maxCount: Math.min(cap, OUTBOX_BATCH_LIMITS.maxCount) });
+    }
+
+    /**
+     * B-942: the head of the outbox is a message the server will never take
+     * (too large, or refused on its own). It used to be retried forever (0.2.178:
+     * 7 hours of 413s while the session answered prompts nobody saw), and after
+     * B-880 the oversize case was dropped without a word. Now a short notice takes
+     * its place, so the rest goes out and the reader can tell something is missing.
+     * A refused notice is dropped: nothing smaller could take its place.
+     */
+    private replaceRejectedOutboxHead(bytes: number, status: number | 'oversize') {
+        const [rejected] = this.pendingOutbox.splice(0, 1);
+        if (!rejected) return;
+        logger.warn(`[API] Server will not take an outbound message of ${bytes} bytes (${status === 'oversize' ? 'over the request limit' : `HTTP ${status}`}), localId ${rejected.localId}${rejected.notice ? '; it was already a notice, dropped' : '; replaced with a notice'}`);
+        if (rejected.notice) return;
+        const notice = {
+            role: 'agent',
+            content: {
+                id: randomUUID(),
+                type: 'event',
+                data: { type: 'message', message: outboxRejectedNotice(bytes, status), kind: 'outbox-rejected' },
+            },
+        };
+        this.pendingOutbox.unshift({
+            content: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, notice)),
+            localId: randomUUID(),
+            notice: true,
+            ...(rejected.backfill ? { backfill: true } : {}),
+        });
     }
 
     /**

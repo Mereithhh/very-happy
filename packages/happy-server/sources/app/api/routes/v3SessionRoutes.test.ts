@@ -8,6 +8,7 @@ type SessionRecord = {
     id: string;
     accountId: string;
     seq: number;
+    oversizeSkipped: number;
 };
 
 type MessageRecord = {
@@ -56,7 +57,8 @@ const {
         state.sessions.push({
             id: input.id,
             accountId: input.accountId,
-            seq: input.seq ?? 0
+            seq: input.seq ?? 0,
+            oversizeSkipped: 0
         });
         if (!state.accountSeqById.has(input.accountId)) {
             state.accountSeqById.set(input.accountId, 0);
@@ -122,6 +124,7 @@ const {
         }
         const increment = args?.data?.seq?.increment ?? 0;
         session.seq += increment;
+        session.oversizeSkipped += args?.data?.oversizeSkipped?.increment ?? 0;
         return selectFields(session as unknown as Record<string, unknown>, args?.select);
     });
 
@@ -317,6 +320,9 @@ vi.mock("@/app/events/eventRouter", () => ({
     })),
     buildSessionActivityEphemeral: vi.fn(() => ({})),
     buildUpdateSessionUpdate: vi.fn(() => ({})),
+    buildSessionOversizeSkippedUpdate: vi.fn((sessionId: string, updateSeq: number, updateId: string, oversizeSkipped: number) => ({
+        id: updateId, seq: updateSeq, body: { t: "update-session", id: sessionId, oversizeSkipped }, createdAt: Date.now(),
+    })),
 }));
 
 vi.mock("@/app/monitoring/metrics2", () => ({
@@ -328,7 +334,7 @@ vi.mock("@/app/monitoring/metrics2", () => ({
 vi.mock("@/app/presence/sessionCache", () => ({
     activityCache: { isSessionValid: vi.fn(async () => true), queueSessionUpdate: vi.fn() },
 }));
-vi.mock("@/utils/log", () => ({ log: vi.fn() }));
+vi.mock("@/utils/log", () => ({ log: vi.fn(), warn: vi.fn() }));
 const noteSessionMessageMock = vi.hoisted(() => vi.fn(async () => []));
 vi.mock("@/app/automations/attentionLifecycle", () => ({ noteSessionMessage: noteSessionMessageMock }));
 
@@ -618,6 +624,94 @@ describe("v3SessionRoutes", () => {
         expect(body.messages.map((message: any) => message.seq)).toEqual([1, 2]);
         expect(state.messages).toHaveLength(2);
         expect(emitUpdateMock).toHaveBeenCalledTimes(1);
+    });
+
+    describe("B-942: a batch over the old 1 MiB body limit", () => {
+        const big = (bytes: number, tag: string) => tag + "x".repeat(bytes - tag.length);
+        const post = (payload: unknown, client?: string) => app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-1/messages",
+            headers: { "x-user-id": "owner-user", ...(client ? { "x-happy-client": client } : {}) },
+            payload: payload as any,
+        });
+
+        it("is taken whole when every message fits (the old CLI's 50-per-request batch)", async () => {
+            seedSession({ id: "session-1", accountId: "owner-user" });
+            app = await createApp();
+            const messages = Array.from({ length: 3 }, (_, i) => ({ localId: `l${i}`, content: big(600 * 1024, `m${i}`) }));
+            const response = await post({ messages }, "cli-coding-session/0.2.178");
+            expect(response.statusCode).toBe(200);
+            expect(response.json().messages.map((m: any) => m.localId)).toEqual(["l0", "l1", "l2"]);
+            expect(state.messages).toHaveLength(3);
+        });
+
+        it("from a wrapper: the message over the per-message limit is skipped and the rest stored, so its queue moves on", async () => {
+            seedSession({ id: "session-1", accountId: "owner-user" });
+            app = await createApp();
+            const response = await post({ messages: [
+                { localId: "before", content: "enc-before" },
+                { localId: "huge", content: big(1024 * 1024 + 1, "huge") },
+                { localId: "after", content: "enc-after" },
+            ] }, "cli-coding-session/0.2.178");
+            expect(response.statusCode).toBe(200);
+            expect(response.json().messages.map((m: any) => m.localId)).toEqual(["before", "after"]);
+            expect(state.messages.map((m) => m.localId)).toEqual(["before", "after"]);
+            expect(state.messages.map((m) => m.seq)).toEqual([1, 2]);
+            // Counted on the session and pushed to the owner's clients ("1 record too large to sync").
+            expect(state.sessions[0].oversizeSkipped).toBe(1);
+            expect(emitUpdateMock).toHaveBeenCalledWith(expect.objectContaining({
+                payload: expect.objectContaining({ body: { t: "update-session", id: "session-1", oversizeSkipped: 1 } }),
+                recipientFilter: { type: "user-scoped-only" },
+            }));
+        });
+
+        it("a 0.2.178 outbox (50 per POST, every error retried forever) moves on past an oversize record", async () => {
+            seedSession({ id: "session-1", accountId: "owner-user" });
+            app = await createApp();
+            // That CLI's flushOutbox: the 50 oldest per POST, removed only on success, retried on any error.
+            const outbox = Array.from({ length: 60 }, (_, i) => ({ localId: `o${i}`, content: i === 3 ? big(1_500_000, "diff") : `enc-${i}` }));
+            const statuses: number[] = [];
+            for (let attempt = 0; outbox.length > 0 && attempt < 10; attempt += 1) {
+                const batch = outbox.slice(0, 50);
+                const response = await post({ messages: batch }, "cli-coding-session/0.2.178");
+                statuses.push(response.statusCode);
+                if (response.statusCode === 200) outbox.splice(0, batch.length);
+            }
+            expect(statuses).toEqual([200, 200]);
+            expect(outbox).toHaveLength(0);
+            expect(state.messages).toHaveLength(59);
+            expect(state.messages.some((m) => m.localId === "o3")).toBe(false);
+            expect(state.sessions[0].oversizeSkipped).toBe(1);
+        });
+
+        it("from a wrapper: a batch of only oversize messages answers an empty success", async () => {
+            seedSession({ id: "session-1", accountId: "owner-user" });
+            app = await createApp();
+            const response = await post({ messages: [{ localId: "huge", content: big(2 * 1024 * 1024, "huge") }] }, "cli-coding-session/0.2.218");
+            expect(response.statusCode).toBe(200);
+            expect(response.json()).toEqual({ messages: [] });
+            expect(state.messages).toHaveLength(0);
+            expect(state.sessions[0].oversizeSkipped).toBe(1);
+        });
+
+        it("from any other client an oversize message is still refused (the Web shows it as failed)", async () => {
+            seedSession({ id: "session-1", accountId: "owner-user" });
+            app = await createApp();
+            const response = await post({ messages: [{ localId: "huge", content: big(1024 * 1024 + 1, "huge") }, { localId: "ok", content: "enc" }] });
+            expect(response.statusCode).toBe(413);
+            expect(response.json()).toEqual({ error: "message_too_large" });
+            expect(state.messages).toHaveLength(0);
+            expect(state.sessions[0].oversizeSkipped).toBe(0);
+        });
+
+        it("a body over the route limit is still a 413", async () => {
+            seedSession({ id: "session-1", accountId: "owner-user" });
+            app = await createApp();
+            const messages = Array.from({ length: 17 }, (_, i) => ({ localId: `l${i}`, content: big(1024 * 1024, `m${i}`) }));
+            const response = await post({ messages }, "cli-coding-session/0.2.178");
+            expect(response.statusCode).toBe(413);
+            expect(state.messages).toHaveLength(0);
+        });
     });
 
     it("enforces send validation limits and auth/session ownership", async () => {
