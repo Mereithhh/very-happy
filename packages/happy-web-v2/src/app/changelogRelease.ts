@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-20-dead-session-process-ends-its-turn',
+    cliVersion: '0.2.220',
+    date: '2026-11-20',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov20c.title',
+    summaryKey: 'changelog.releases.nov20c.summary',
+    itemKeys: ['changelog.releases.nov20c.offline', 'changelog.releases.nov20c.claude'],
+  },
+  {
     id: '2026-11-20-replies-no-longer-stuck-behind-a-record',
     cliVersion: '0.2.219',
     date: '2026-11-20',

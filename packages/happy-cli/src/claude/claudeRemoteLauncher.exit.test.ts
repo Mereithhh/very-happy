@@ -188,3 +188,50 @@ describe('B-939d runClaude wiring (source assertions; mutation-checked, see PR)'
         expect(wait).toBeLessThan(afterLoop.indexOf('session.sendSessionDeath();'));
     });
 });
+
+/**
+ * B-942 (R67b QA P3-1): Claude Code killed mid-turn while a tool call is open.
+ * The launcher closed the turn as failed, and only afterwards (in `finally`)
+ * sent the open tool call its "interrupted" result. Mapped after the turn-end,
+ * that result opened a turn nothing closed: the next prompt was answered inside
+ * it, its turn-end had no turn-start after the prompt, and `sessions read`
+ * reported `ended: false` for good. Drives the real launcher and the real mapper.
+ */
+describe('B-942: a crash with a tool call open closes the turn after the tool call', () => {
+    beforeEach(() => {
+        projectsClient.current = fakeProjectsClient();
+        remote.calls = 0;
+        remote.impl = null;
+    });
+    afterEach(() => { vi.clearAllMocks(); });
+
+    async function crashWithOpenToolCall() {
+        const { closeClaudeTurnWithStatus, mapClaudeLogMessageToSessionEnvelopes } = await import('./utils/sessionProtocolMapper');
+        const { client, handlers, known } = fakeApiClient();
+        const state = { currentTurnId: null } as any;
+        const events: string[] = [];
+        const record = (r: { envelopes: Array<{ ev: { t: string } }> }) => { for (const e of r.envelopes) events.push(e.ev.t); };
+        known.sendClaudeSessionMessage = vi.fn((body: any) => record(mapClaudeLogMessageToSessionEnvelopes(body, state)));
+        known.closeClaudeSessionTurn = vi.fn((status: any, meta?: any) => {
+            const r = closeClaudeTurnWithStatus(state, status, meta);
+            record(r);
+            return r.envelopes.some((e) => e.ev.t === 'turn-end');
+        });
+        const session = makeSession(client);
+        remote.impl = async (opts) => {
+            if (remote.calls > 1) { void handlers.get('switch')?.(); return; }
+            opts.onMessage({ type: 'assistant', uuid: 'a1', session_id: 's', parent_tool_use_id: null, message: { role: 'assistant', id: 'm1', content: [{ type: 'tool_use', id: 'tu1', name: 'Bash', input: { command: 'bash scripts/check.sh' } }] } });
+            await new Promise((r) => setTimeout(r, 20));
+            throw new Error('Claude Code process terminated by signal SIGKILL');
+        };
+        await claudeRemoteLauncher(session);
+        session.cleanup();
+        return { events, known };
+    }
+
+    it('crash: the interrupted tool result goes out before the failed turn-end, and no turn is left open', async () => {
+        const { events, known } = await crashWithOpenToolCall();
+        expect(known.closeClaudeSessionTurn).toHaveBeenCalledWith('failed', expect.objectContaining({ error: expect.any(String) }));
+        expect(events).toEqual(['turn-start', 'tool-call-start', 'tool-call-end', 'turn-end']);
+    });
+});
