@@ -188,9 +188,14 @@ const ACCOUNT_ACTION_EVENT_KINDS: ReadonlySet<string> = new Set(['agent-profile-
  * fallback before the real answer; the explicit-1M refusal before Claude
  * Code's API-error reply) — never folded into the activity.
  */
+/** B-950: the CLI's 「这条记录没保存」placeholder (B-942) — the only trace of a
+ *  record the server refused, so it never folds into the activity either. */
+const OUTBOX_REJECTED_EVENT_KIND = 'outbox-rejected';
+const PINNED_NOTICE_KINDS: ReadonlySet<string> = new Set([LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_INTERRUPTED_EVENT_KIND, LONG_CONTEXT_REFUSED_EVENT_KIND, OUTBOX_REJECTED_EVENT_KIND]);
+
 function isPinnedNotice(message: Message): boolean {
     return message.kind === 'agent-event' && message.event.type === 'message'
-        && (message.event.kind === LONG_CONTEXT_FALLBACK_EVENT_KIND || message.event.kind === LONG_CONTEXT_INTERRUPTED_EVENT_KIND || message.event.kind === LONG_CONTEXT_REFUSED_EVENT_KIND);
+        && message.event.kind !== undefined && PINNED_NOTICE_KINDS.has(message.event.kind);
 }
 
 function isTurnFailure(message: Message): boolean {

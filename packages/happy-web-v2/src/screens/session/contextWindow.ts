@@ -37,8 +37,11 @@ export function contextWindowFor(model: string | null | undefined): number | nul
     // bare id is what the web default and the `opus` alias run.
     if (/^claude-opus-5-5(?![0-9])/.test(id)) return LONG_CONTEXT_WINDOW;
     // B-908: Fable 5.x and Sonnet 5.x plain ids run at 1M on current Claude Code
-    // (get_context_usage 2026-11-11). Only a guess for wrappers that report no window.
-    if (/^claude-(fable|sonnet)-5(?:-\d{1,2})?(?![0-9])/.test(id)) return LONG_CONTEXT_WINDOW;
+    // (get_context_usage 2026-11-11). B-950: so does Haiku 5.5 — CC 2.1.330
+    // reports rawMaxTokens 1_000_000 for claude-haiku-5-5 in a clean HOME with no
+    // ANTHROPIC_* overrides (2026-11-21); Haiku 4.5 stays 200k. Only a guess for
+    // wrappers that report no window.
+    if (/^claude-(fable|sonnet|haiku)-5(?:-\d{1,2})?(?![0-9])/.test(id)) return LONG_CONTEXT_WINDOW;
     // A non-Claude model ID does not imply a 200k window. Pi uses runtime capacity.
     return /^(claude[-_:]|(?:opus|sonnet|haiku)[-_:])/.test(id) ? DEFAULT_CONTEXT_WINDOW : null;
 }

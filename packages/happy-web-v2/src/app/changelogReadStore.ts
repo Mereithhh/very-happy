@@ -110,6 +110,20 @@ export function useChangelogVisit(): ChangelogVisit {
   return useSyncExternalStore(subscribeVisit, changelogVisit, changelogVisit);
 }
 
+/**
+ * B-950: the notes surfaced on their own (opened, or left the 「有 N 条更新说明」
+ * toast) once in this page load. The notice is mounted under both route gates,
+ * so going list → session → list remounts it; without this every remount left
+ * another toast (two on screen at once on phones).
+ */
+let autoShown = false;
+export function changelogAutoShownThisVisit(): boolean {
+  return autoShown;
+}
+export function noteChangelogAutoShown(): void {
+  autoShown = true;
+}
+
 // --- "open the notes now" requests (the sidebar entry) -----------------------
 
 const openListeners = new Set<() => void>();
@@ -138,6 +152,7 @@ export function resetChangelogReadStoreForTest(): void {
   state = null;
   openPending = false;
   visit = NO_VISIT;
+  autoShown = false;
   for (const l of listeners) l();
   for (const l of visitListeners) l();
 }

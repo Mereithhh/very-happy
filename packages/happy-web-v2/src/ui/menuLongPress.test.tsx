@@ -10,7 +10,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Pencil } from 'lucide-react';
-import { ActionContextMenu, RELEASE_CLICK_MS, createLongPressReleaseGuard } from './Menu';
+import { ActionContextMenu, ActionDropdownMenu, MENU_SHEET_MQ, RELEASE_CLICK_MS, createLongPressReleaseGuard } from './Menu';
 
 describe('createLongPressReleaseGuard', () => {
   it('a press that opened the menu reports a long-press release, once', () => {
@@ -115,5 +115,52 @@ describe('ActionContextMenu long press (wiring)', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('B-950: ⋯ dropdown as a bottom sheet, clicked with a mouse', () => {
+  const stubMedia = (sheet: boolean) => vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
+    matches: sheet && (query === MENU_SHEET_MQ || query === '(pointer: coarse)'), media: query, onchange: null,
+    addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+  }) as MediaQueryList);
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  const mount = async (onShare: () => void) => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => root!.render(
+      <ActionDropdownMenu items={[{ key: 'share', label: 'Share…', icon: Pencil, onSelect: onShare }]} sheetTitle="Row">
+        <button type="button" className="more">more</button>
+      </ActionDropdownMenu>,
+    ));
+    const mouse = (type: string, target: EventTarget) => target.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0 }), { pointerType: 'mouse', pointerId: 1 }));
+    const more = document.querySelector('.more')!;
+    await act(async () => { mouse('pointerdown', more); });
+    const item = () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((el) => el.textContent?.includes('Share'))!;
+    return { mouse, item };
+  };
+
+  it('the mouseup over the sheet that just covered ⋯ does not select 「分享…」; a click afterwards does', async () => {
+    stubMedia(true);
+    const onShare = vi.fn();
+    const { mouse, item } = await mount(onShare);
+    expect(item()).toBeTruthy();
+    expect(document.querySelector('.vh-menu--sheet')).toBeTruthy();
+    // Radix MenuItem turns a pointerup it saw no pointerdown for into click().
+    await act(async () => { mouse('pointerup', item()); });
+    expect(onShare).not.toHaveBeenCalled();
+    expect(item()).toBeTruthy();
+    await act(async () => { item().click(); });
+    expect(onShare).toHaveBeenCalledTimes(1);
+  });
+
+  it('an anchored dropdown (not a sheet) keeps mouse press-drag-release', async () => {
+    stubMedia(false);
+    const onShare = vi.fn();
+    const { mouse, item } = await mount(onShare);
+    expect(document.querySelector('.vh-menu--sheet')).toBeNull();
+    await act(async () => { mouse('pointerup', item()); });
+    expect(onShare).toHaveBeenCalledTimes(1);
   });
 });

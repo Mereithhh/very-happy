@@ -139,4 +139,9 @@ describe('B-908: id fallback (no reported window) counts Fable 5.x / Sonnet 5.x 
         expect(contextWindowFor('claude-sonnet-4-6')).toBe(200_000);
         expect(contextWindowFor('claude-sonnet-50')).toBe(200_000);
     });
+    it('B-950: Haiku 5.5 runs at 1M (CC 2.1.330, clean HOME); Haiku 4.5 stays 200k', () => {
+        expect(contextWindowFor('claude-haiku-5-5')).toBe(1_000_000);
+        expect(contextWindowFor('claude-haiku-4-5-20251001')).toBe(200_000);
+        expect(contextWindowFor('claude-haiku-50')).toBe(200_000);
+    });
 });

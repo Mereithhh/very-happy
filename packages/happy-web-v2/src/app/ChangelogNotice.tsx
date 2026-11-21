@@ -11,7 +11,7 @@ import {
   changelogCliTarget,
 } from './changelogRelease';
 import { changelogAutoAction, changelogPages, pageReleaseIds, pendingChangelogReleases, type ChangelogPage } from './changelogPager';
-import { acknowledgeAllChangelog, changelogReadState, markChangelogReleasesRead, noteChangelogClosed, noteChangelogOpened, onChangelogOpenRequest } from './changelogReadStore';
+import { acknowledgeAllChangelog, changelogAutoShownThisVisit, changelogReadState, markChangelogReleasesRead, noteChangelogAutoShown, noteChangelogClosed, noteChangelogOpened, onChangelogOpenRequest } from './changelogReadStore';
 import { enteredByDeepLink } from './entryKind';
 import { userHasInteracted } from './afterFirstScreen';
 import './changelogNotice.css';
@@ -59,7 +59,7 @@ export function ChangelogNotice() {
   // typing or tapping, the notes do not grab focus mid-sentence. B-842: they
   // leave a toast instead (once, after any dialog above `notice` is gone), so
   // this visit still shows that something is unread; the sidebar entry stays.
-  const [auto] = useState(() => changelogAutoAction({
+  const [auto] = useState(() => changelogAutoShownThisVisit() ? 'none' : changelogAutoAction({
     pending: pendingChangelogReleases(changelogReadState()).length,
     deepLink: enteredByDeepLink(),
     interacted: userHasInteracted(),
@@ -67,13 +67,14 @@ export function ChangelogNotice() {
   const heldAbove = useOverlayHeldAbove(OVERLAY_PRIORITY.notice);
   const hinted = useRef(false);
   useEffect(() => {
-    if (auto === 'open') start();
+    if (auto === 'open') { noteChangelogAutoShown(); start(); }
   }, [auto, start]);
   useEffect(() => {
     if (auto !== 'hint' || hinted.current || heldAbove || open) return;
     const count = pendingChangelogReleases(changelogReadState()).length;
     if (count === 0) return;
     hinted.current = true;
+    noteChangelogAutoShown();
     toast.show(t('changelog.hint', { count }), 'info', {
       button: { label: t('changelog.hintOpen'), onClick: start },
       durationMs: CHANGELOG_HINT_MS,

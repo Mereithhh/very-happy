@@ -307,6 +307,9 @@ const LocationTrailHarness = import.meta.env.DEV
 const DeviceShellHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/DeviceShellHarness').then((m) => ({ default: m.DeviceShellHarness })))
   : null;
+const B950Harness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/B950Harness').then((m) => ({ default: m.B950Harness })))
+  : null;
 const TerminalKeyboardHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/TerminalKeyboardHarness').then((m) => ({ default: m.TerminalKeyboardHarness })))
   : null;
@@ -414,6 +417,7 @@ export const appRoutes: RouteObject[] = [{ errorElement: <RouteError />, childre
           ],
         }]
       : []),
+    ...(B950Harness ? [{ path: '/dev/b950', element: <Lazy><B950Harness /></Lazy> }] : []),
     ...(TerminalKeyboardHarness
       ? [{ path: '/dev/terminal-keyboard', element: <Lazy><TerminalKeyboardHarness /></Lazy> }]
       : []),

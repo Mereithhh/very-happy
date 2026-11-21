@@ -251,6 +251,29 @@ describe('B-842 every unread release has a way in', () => {
     }
   });
 
+  it('B-950: list → session → list (the notice remounts under the other route gate) leaves one toast, not one per page', () => {
+    minorOnly();
+    entry.setEnteredByDeepLinkForTest(true);
+    mount();
+    expect(toasts).toHaveLength(1);
+    const navigate = () => { act(() => root.unmount()); host.remove(); mount(); };
+    navigate();
+    navigate();
+    expect(toasts).toHaveLength(1);
+    expect(card()).toBeNull();
+    // The sidebar entry still opens the notes after the remounts.
+    act(() => button('changelog.notesEntryShort')!.click());
+    expect(title()).toBe('changelog.releases.small.title');
+  });
+
+  it('B-950: the pager that opened on its own does not open again when the notice remounts in the same visit', () => {
+    mount();
+    expect(card()).not.toBeNull();
+    act(() => root.unmount()); host.remove(); mount();
+    expect(card()).toBeNull();
+    expect(toasts).toHaveLength(0);
+  });
+
   it('an ordinary load opens the pager and leaves no toast', () => {
     mount();
     expect(card()).not.toBeNull();
