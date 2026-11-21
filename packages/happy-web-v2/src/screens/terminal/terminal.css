@@ -800,7 +800,7 @@
 @media (pointer: coarse) {
   /* Phones: at most two rows — title · machine above, the 44px actions below. */
   .term-connection-notice.is-compact:not(.is-folded) .term-connection-content { flex-wrap: wrap; row-gap: 2px; }
-  .term-connection-notice.is-compact .term-connection-copy { flex-basis: calc(100% - 60px); }
+  .term-connection-notice.is-compact .term-connection-copy { flex: 1 1 0; min-width: 0; }
   .term-connection-notice.is-compact .term-connection-actions { order: 3; flex-basis: 100%; padding-left: 24px; }
   .term-connection-notice.is-compact .term-connection-fold { order: 2; }
   .term-connection-notice.is-compact .term-connection-actions button,
