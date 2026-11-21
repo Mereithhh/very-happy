@@ -111,6 +111,7 @@ import {
   useCollapsedGroups,
   type GroupStatusSummary,
 } from './sidebarCollapsedGroups';
+import { getListScroll, rememberListScroll, rememberOpenedRow, restoredScrollTop } from './listScrollMemory';
 import { SidebarRateLimit } from '@/screens/machine/rateLimits/SidebarRateLimit';
 import { archiveAndDeleteWorktree, canArchiveAndDeleteWorktree } from '@/app/worktreeArchive';
 import { worktreeCopy } from './worktreeCopy';
@@ -444,6 +445,29 @@ export function Sidebar() {
     const sr = scroller.getBoundingClientRect();
     return { scroller, ...listScrollBand({ scrollerTop: sr.top, scrollerHeight: scroller.clientHeight, stickyBottom: stickyRef.current?.getBoundingClientRect().bottom ?? null }) };
   };
+  // ----- B-946: the phone list's place (the sidebar unmounts while a session is open) -----
+  // Save whenever it scrolls (cheap, rAF-collapsed); put it back on the next mount,
+  // once the rows are laid out. Desktop keeps the list mounted, so it is left alone.
+  const listRestored = useRef(false);
+  const scrollSaveRaf = useRef(0);
+  useEffect(() => {
+    if (isDesktop) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      if (scrollSaveRaf.current) return;
+      scrollSaveRaf.current = requestAnimationFrame(() => {
+        scrollSaveRaf.current = 0;
+        rememberListScroll({ top: el.scrollTop, rowKey: getListScroll()?.rowKey ?? null });
+      });
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (scrollSaveRaf.current) cancelAnimationFrame(scrollSaveRaf.current);
+      scrollSaveRaf.current = 0;
+    };
+  }, [isDesktop]);
   const [heldKeys, setHeldKeys] = useState<string[] | null>(null);
   const heldRef = useRef<string[] | null>(null);
   /** Row keys as currently RENDERED — the snapshot taken when the hold arms. */
@@ -1147,6 +1171,33 @@ export function Sidebar() {
   const revealHandled = useRef(0);
   const revealManual = useRef(false);
   const dataReady = storage((st) => st.isDataReady);
+  useEffect(() => {
+    if (isDesktop || listRestored.current) return;
+    if (!dataReady) return;
+    const el = scrollRef.current;
+    const mem = getListScroll();
+    if (!el || !mem) {
+      listRestored.current = true;
+      return;
+    }
+    const raf = requestAnimationFrame(() => {
+      listRestored.current = true;
+      const rowEl = mem.rowKey
+        ? el.querySelector<HTMLElement>(`[data-dragkey="${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(mem.rowKey) : mem.rowKey}"]`)
+        : null;
+      let contentRowTop: number | null = null;
+      let rowHeight = 0;
+      if (rowEl) {
+        const sr = el.getBoundingClientRect();
+        const er = rowEl.getBoundingClientRect();
+        contentRowTop = er.top - sr.top + el.scrollTop;
+        rowHeight = er.height;
+      }
+      el.scrollTop = restoredScrollTop({ top: mem.top, containerHeight: el.clientHeight, contentRowTop, rowHeight });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isDesktop, dataReady]);
+
   // Read by the route effect below: this render's groups and current-row test (the new route's).
   const revealRouteRef = useRef({ sections, isCurrentRow });
   revealRouteRef.current = { sections, isCurrentRow };
@@ -2133,7 +2184,8 @@ function SidebarRow({
   const slotLabel = [turnFailure ? t('sidebar.rowTurnFailed', { summary: turnFailure.summary }) : status ? statusLabel : '', progressLabel].filter(Boolean).join(' · ');
   const slotClass = turnFailure ? 'failed' : status;
 
-  const open = () => navigate(row.href);
+  // B-946: remember THIS row as the one the list comes back to (see listScrollMemory).
+  const open = () => { rememberOpenedRow(row.key); navigate(row.href); };
 
   // recoverability: an inactive session (archived OR merely offline) is
   // restorable; if its machine is offline the action shows but disabled.
