@@ -53,6 +53,21 @@ export type AcpPromptOutcome = { stopReason?: string };
 /** B-633: `session/load` replays the whole conversation before it answers — longer than a new session. */
 const LOAD_SESSION_TIMEOUT_MS = 60_000;
 
+/**
+ * B-952: how an agent can reopen an earlier session. `load` (`session/load`,
+ * pi-acp) replays the conversation as updates; `resume` (`session/resume`,
+ * ACP unstable — DeepSeek Harness) restores the agent's context without
+ * replaying anything. `load` wins when both are advertised.
+ */
+export function pickSessionReopenMethod(agentCapabilities: unknown): 'load' | 'resume' | null {
+  if (!agentCapabilities || typeof agentCapabilities !== 'object') return null;
+  const caps = agentCapabilities as { loadSession?: unknown; sessionCapabilities?: { resume?: unknown } | null };
+  if (caps.loadSession === true) return 'load';
+  const resume = caps.sessionCapabilities?.resume;
+  if (resume !== undefined && resume !== null && resume !== false) return 'resume';
+  return null;
+}
+
 /** B-633: session updates that carry conversation content (what a `session/load` replays). */
 export function isReplayedConversationUpdate(updateType: string | undefined): boolean {
   return updateType === 'user_message_chunk'
@@ -918,17 +933,21 @@ export class AcpBackend implements AgentBackend {
       let resumed: StartSessionResult['resumed'];
       let loadFailure: string | undefined;
       if (options.loadSessionId) {
-        if (initializeResponse.agentCapabilities?.loadSession !== true) {
+        const reopenMethod = pickSessionReopenMethod(initializeResponse.agentCapabilities);
+        if (!reopenMethod) {
           resumed = 'fresh';
           loadFailure = `${this.transport.agentName} cannot reopen sessions`;
         } else {
           const loadRequest: LoadSessionRequest = { ...newSessionRequest, sessionId: options.loadSessionId };
           let timeoutHandle: NodeJS.Timeout | null = null;
-          this.replayingHistory = true;
+          // `session/resume` replays nothing; only `session/load` streams the old turns back.
+          this.replayingHistory = reopenMethod === 'load';
           try {
             const loaded = await Promise.race([
               startupFailurePromise,
-              this.connection!.loadSession(loadRequest),
+              reopenMethod === 'load'
+                ? this.connection!.loadSession(loadRequest)
+                : this.connection!.unstable_resumeSession(loadRequest),
               new Promise<never>((_, reject) => {
                 timeoutHandle = setTimeout(() => reject(new Error(`Load session timeout after ${LOAD_SESSION_TIMEOUT_MS}ms`)), LOAD_SESSION_TIMEOUT_MS);
               }),

@@ -16,6 +16,7 @@ import type { Machine } from '@/sync/storageTypes';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import {
     ACCOUNT_AGENTS,
+    SESSION_ACCOUNT_AGENTS,
     accountDisplayStatus,
     accountKindTag,
     accountNeedsRelogin,
@@ -31,7 +32,7 @@ import { accountDetailText, accountErrorText, accountKindText, accountStatusText
 import { AddAccountDialog } from './AddAccountDialog';
 import './accounts.css';
 
-const AGENT_TITLES: Record<string, string> = { claude: 'Claude', codex: 'Codex' };
+const AGENT_TITLES: Record<string, string> = { claude: 'Claude', codex: 'Codex', dsh: 'DeepSeek Harness' };
 const MACHINE_LOGIN = '__machine__';
 
 /** The fresher of the daemon's published state and our last RPC answer. */
@@ -132,8 +133,9 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
     });
 
     return <>
-        {ACCOUNT_AGENTS.map((agent) => {
-            if (!machineHasAgentAccounts(state, agent)) return upgradeGroup(agent);
+        {SESSION_ACCOUNT_AGENTS.map((agent) => {
+            // B-952: DeepSeek Harness accounts appear only on a daemon that has them (no upgrade nag).
+            if (!machineHasAgentAccounts(state, agent)) return agent === 'dsh' ? null : upgradeGroup(agent);
             const accounts = accountsForAgent(state, agent);
             const defaultId = state.defaults[agent] ?? null;
             const defaultOptions = [
@@ -150,7 +152,7 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
                         options={defaultOptions} />
                 } />
                 <Item title={<span className="acc-title">{t('accounts.machineLogin')}{!defaultId && <span className="acc-tag">{t('accounts.defaultBadge')}</span>}</span>}
-                    subtitle={agent === 'codex' ? t('accounts.machineLoginSubtitleCodex') : t('accounts.machineLoginSubtitle')} />
+                    subtitle={agent === 'codex' ? t('accounts.machineLoginSubtitleCodex') : agent === 'dsh' ? t('accounts.machineLoginSubtitleDsh') : t('accounts.machineLoginSubtitle')} />
                 {accounts.map((account) => <AccountRow key={account.id} account={withLegacyTest(account, legacyTests[account.id])} isDefault={defaultId === account.id} now={now}
                     online={online} busy={busy} onTest={test} onRename={rename} onRemove={remove}
                     onSetDefault={(a) => void setDefault(agent, a.id)} onRelogin={(a) => setRelogin({ accountId: a.id, label: a.label, kind: a.kind, agent })} />)}

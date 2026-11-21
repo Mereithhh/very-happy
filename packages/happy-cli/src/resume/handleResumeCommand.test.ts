@@ -92,6 +92,13 @@ describe('buildResumeLaunch', () => {
         });
     });
 
+    it('B-952: builds a dsh resume command from the recorded dsh session id (fresh or never-run: none)', () => {
+        const session = { id: 'session-dsh', active: false, metadata: { path: '/tmp/repo', flavor: 'dsh', dshSessionId: 'd-1', host: 'h', homeDir: '/h', happyHomeDir: '/h/.happy', happyLibDir: '/l', happyToolsDir: '/t' } } as any;
+        expect(buildResumeLaunch(session, { startedBy: 'daemon' })).toEqual({ cwd: '/tmp/repo', args: ['dsh', '--started-by', 'daemon', '--resume', 'd-1'] });
+        expect(buildResumeLaunch(session, { startedBy: 'daemon', freshConversation: true }).args).toEqual(['dsh', '--started-by', 'daemon']);
+        expect(buildResumeLaunch({ ...session, metadata: { ...session.metadata, dshSessionId: undefined } }, { startedBy: 'daemon' }).args).toEqual(['dsh', '--started-by', 'daemon']);
+    });
+
     it('B-633: builds a pi resume command from the recorded pi session id (fresh: none)', () => {
         const session = {
             id: 'session-pi',

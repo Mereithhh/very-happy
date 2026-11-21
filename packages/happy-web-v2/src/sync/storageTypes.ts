@@ -377,6 +377,8 @@ export const MachineMetadataSchema = z.object({
         gemini: z.boolean(),
         openclaw: z.boolean(),
         pi: z.boolean().optional(), // absent on daemons that predate the pi runner
+        dsh: z.boolean().optional(), // B-952: absent on daemons that predate the dsh runner
+        dshNode: z.string().nullable().optional(), // B-952: `node --version` on the daemon's PATH, only when dsh is installed
         detectedAt: z.number(),
     }).optional(),
     resumeSupport: z.object({

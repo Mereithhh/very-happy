@@ -33,7 +33,16 @@ export const ACCOUNT_AGENTS = ['claude', 'codex'] as const;
 export const AGENT_ACCOUNT_KINDS: Record<string, readonly string[]> = {
     claude: ['claude-subscription', 'claude-api'],
     codex: ['codex-chatgpt', 'codex-provider'],
+    // B-952: a DeepSeek API key for DeepSeek Harness sessions.
+    dsh: ['dsh-api'],
 };
+
+/**
+ * B-952: agents whose sessions start on a machine account (machine page and
+ * the spawn picker). DeepSeek Harness is listed only on daemons that can add
+ * `dsh-api`; project / team / automation accounts stay Claude and Codex.
+ */
+export const SESSION_ACCOUNT_AGENTS = [...ACCOUNT_AGENTS, 'dsh'] as const;
 
 /** B-850b `codexProviders`: the machine's ~/.codex/config.toml providers (no secrets). */
 export type CodexProviderOption = { id: string; name?: string; baseUrl?: string; envKey?: string };
@@ -158,7 +167,7 @@ export function sessionSupportsAgentProfiles(metadata: { capabilities?: readonly
 }
 
 export function agentHasAccounts(agent: string | null | undefined): boolean {
-    return (ACCOUNT_AGENTS as readonly string[]).includes(agent ?? 'claude');
+    return (SESSION_ACCOUNT_AGENTS as readonly string[]).includes(agent ?? 'claude');
 }
 
 // ---- presentation (pure) ----

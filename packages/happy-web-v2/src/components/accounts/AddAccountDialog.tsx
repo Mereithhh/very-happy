@@ -49,7 +49,7 @@ import '@/screens/session/sessionOptionsDialog.css';
 import '@/components/modelConfig/modelConfigEditor.css';
 import './accounts.css';
 
-type Kind = 'claude-subscription' | 'claude-api' | 'codex-chatgpt' | 'codex-provider';
+type Kind = 'claude-subscription' | 'claude-api' | 'codex-chatgpt' | 'codex-provider' | 'dsh-api';
 type KeySource = AgentProfileKeyInput['source'];
 const CUSTOM_PROVIDER = '__custom__';
 
@@ -175,7 +175,9 @@ export function AddAccountDialog({ open, onOpenChange, machineId, machineName, a
         : null;
     const apiReady = kind === 'codex-provider'
         ? !!providerFields && !!keyInput()
-        : !!label.trim() && isValidBaseUrl(baseUrl) && !!keyInput();
+        : kind === 'dsh-api'
+            ? !!label.trim() && !!keyInput()
+            : !!label.trim() && isValidBaseUrl(baseUrl) && !!keyInput();
 
     async function addApi() {
         const key = keyInput();
@@ -183,7 +185,10 @@ export function AddAccountDialog({ open, onOpenChange, machineId, machineName, a
         setBusy(true); setError(null);
         const result = await agentProfileAdd(machineId, kind === 'codex-provider' && providerFields
             ? { agent: 'codex', kind: 'codex-provider', ...providerFields, key }
-            : { agent: 'claude', kind: 'claude-api', label: label.trim(), baseUrl: baseUrl.trim(), models: parseModelList(models), key });
+            : kind === 'dsh-api'
+                // B-952: a DeepSeek key only — dsh's own config picks the endpoint and models.
+                ? { agent: 'dsh', kind: 'dsh-api', label: label.trim(), key }
+                : { agent: 'claude', kind: 'claude-api', label: label.trim(), baseUrl: baseUrl.trim(), models: parseModelList(models), key });
         setBusy(false);
         if (!result.ok) { setError(accountErrorText(result, t)); return; }
         setKeyValue('');
@@ -198,12 +203,15 @@ export function AddAccountDialog({ open, onOpenChange, machineId, machineName, a
         'claude-api': [t('accounts.typeApi'), t('accounts.typeApiHint')],
         'codex-chatgpt': [t('accounts.typeCodexChatgpt'), t('accounts.typeCodexChatgptHint')],
         'codex-provider': [t('accounts.typeCodexProvider'), t('accounts.typeCodexProviderHint')],
+        'dsh-api': [t('accounts.typeDshApi'), t('accounts.typeDshApiHint')],
     };
     const kindOptions = offered.map((k) => ({ value: k, label: kindText[k][0] }));
     const kindHint = kindText[kind][1];
     const loginEnded = login && isLoginTerminal(login.state);
     const signIn = kind === 'claude-subscription' || kind === 'codex-chatgpt';
-    const api = kind === 'claude-api' || kind === 'codex-provider';
+    const api = kind === 'claude-api' || kind === 'codex-provider' || kind === 'dsh-api';
+    // B-952: a DeepSeek account is just its key.
+    const keyOnly = kind === 'dsh-api';
     // Codex names a new ChatGPT account after its email: the name is optional there.
     const labelRequired = kind !== 'codex-chatgpt';
     const deviceCode = login?.flow === 'device-code';
@@ -216,7 +224,7 @@ export function AddAccountDialog({ open, onOpenChange, machineId, machineName, a
                 <div className="vh-dialog-head so-head">
                     <div>
                         <Dialog.Title ref={titleRef} tabIndex={-1} className="vh-dialog-title so-title">{relogin ? t('accounts.relogin') : t('accounts.addTitle')}</Dialog.Title>
-                        <p id="acc-add-desc" className="so-description">{agent === 'codex' ? t('accounts.addDescriptionCodex', { machine: machineName }) : t('accounts.addDescription', { machine: machineName })}</p>
+                        <p id="acc-add-desc" className="so-description">{agent === 'codex' || agent === 'dsh' ? t('accounts.addDescriptionCodex', { machine: machineName }) : t('accounts.addDescription', { machine: machineName })}</p>
                     </div>
                     <Dialog.Close className="vh-dialog-close so-close" aria-label={t('common.close')}><X size={18} /></Dialog.Close>
                 </div>
@@ -300,7 +308,8 @@ export function AddAccountDialog({ open, onOpenChange, machineId, machineName, a
                                 ]} />
                             {chosenProvider && <span className="mce-hint">{t('accounts.providerHint', { machine: machineName })}</span>}
                         </div>}
-                        <label className="so-field">
+                        {keyOnly && <span className="mce-hint" data-testid="account-dsh-hint">{t('accounts.typeDshApiHint')}</span>}
+                        {!keyOnly && <label className="so-field">
                             <span className="so-field-label">{t('accounts.baseUrlLabel')}</span>
                             <input className="mce-input mono" value={baseUrl} spellCheck={false} autoCapitalize="off" autoCorrect="off" inputMode="url"
                                 placeholder={kind === 'codex-provider' ? chosenProvider?.baseUrl ?? 'https://api.openai.com/v1' : 'https://api.anthropic.com'}
@@ -308,19 +317,19 @@ export function AddAccountDialog({ open, onOpenChange, machineId, machineName, a
                             {baseUrl.trim() && !isValidBaseUrl(baseUrl)
                                 ? <span className="mce-hint mce-hint--warn">{t('accounts.baseUrlInvalid')}</span>
                                 : chosenProvider && kind === 'codex-provider' && <span className="mce-hint">{t('accounts.baseUrlOverrideHint')}</span>}
-                        </label>
+                        </label>}
                         {kind === 'codex-provider' && !chosenProvider && <div className="so-field">
                             <span className="so-field-label" id="acc-wire-api">{t('accounts.wireApiLabel')}</span>
                             <Segmented labelledBy="acc-wire-api" className="acc-kinds" value={wireApi} onChange={setWireApi}
                                 options={[{ value: 'responses', label: 'responses' }, { value: 'chat', label: 'chat' }]} />
                             <span className="mce-hint">{t('accounts.wireApiHint')}</span>
                         </div>}
-                        <label className="so-field">
+                        {!keyOnly && <label className="so-field">
                             <span className="so-field-label">{t('accounts.modelsLabel')}</span>
                             <textarea className="mce-input mce-textarea mono" rows={3} value={models} spellCheck={false} placeholder={kind === 'codex-provider' ? 'gpt-5.6-sol\ngpt-5.4-mini' : 'claude-sonnet-5-5\nkimi-k3'}
                                 onChange={(e) => setModels(e.target.value)} data-testid="account-models" />
                             <span className="mce-hint">{t('accounts.modelsHint')}</span>
-                        </label>
+                        </label>}
                         <fieldset className="so-field mce-key">
                             <legend className="so-field-label">{t('accounts.keyLabel')}</legend>
                             <Segmented label={t('accounts.keyLabel')} className="mce-keymodes" value={keySource} onChange={setKeySource}
@@ -331,7 +340,7 @@ export function AddAccountDialog({ open, onOpenChange, machineId, machineName, a
                                 <span className="mce-hint">{t('accounts.keyFileHint', { machine: machineName })}</span>
                             </>}
                             {keySource === 'env' && <>
-                                <input className="mce-input mono" value={keyEnv} placeholder={kind === 'codex-provider' ? t('accounts.codexKeyEnvPlaceholder') : t('accounts.keyEnvPlaceholder')} spellCheck={false} autoCapitalize="off" autoCorrect="off"
+                                <input className="mce-input mono" value={keyEnv} placeholder={kind === 'codex-provider' ? t('accounts.codexKeyEnvPlaceholder') : kind === 'dsh-api' ? 'DEEPSEEK_API_KEY' : t('accounts.keyEnvPlaceholder')} spellCheck={false} autoCapitalize="off" autoCorrect="off"
                                     aria-label={t('accounts.keyEnv')} onChange={(e) => setKeyEnv(e.target.value)} data-testid="account-key-env" />
                                 <span className="mce-hint">{keyEnv.trim() && !isValidEnvName(keyEnv) ? t('accounts.keyEnvInvalid') : t('accounts.keyEnvHint', { machine: machineName })}</span>
                             </>}

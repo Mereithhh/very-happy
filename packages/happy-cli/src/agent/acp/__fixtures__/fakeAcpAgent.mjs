@@ -8,6 +8,8 @@
 //   oversized        answers the prompt with a response line longer than the backend's cap
 //   loadable         advertises loadSession; `session/load` of 'known-session' replays the earlier
 //                    conversation (user + agent chunks, a tool call) then answers; any other id errors (B-633)
+//   resumable        advertises only sessionCapabilities.resume (DeepSeek Harness, B-952); `session/resume`
+//                    of 'known-session' answers without replaying anything; any other id errors
 //   dialog-select    asks a pi extension select (pi-ui-*, choice-N) and echoes the outcome (B-632)
 //   dialog-confirm   asks a pi extension confirm (yes/no) and echoes the outcome (B-632)
 import { createInterface } from 'node:readline';
@@ -22,12 +24,21 @@ rl.on('line', (line) => {
     let msg;
     try { msg = JSON.parse(line); } catch { return; }
     if (msg.method === 'initialize') {
-        out({ id: msg.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: scenario === 'loadable', promptCapabilities: { image: false } } } });
+        out({ id: msg.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: scenario === 'loadable', promptCapabilities: { image: false }, ...(scenario === 'resumable' ? { sessionCapabilities: { resume: {}, close: {}, list: {} } } : {}) } } });
         return;
     }
     if (msg.method === 'session/new') {
         out({ id: msg.id, result: { sessionId: 'fake-session' } });
         if (scenario === 'exit-zero-idle') setTimeout(() => process.exit(0), 20);
+        return;
+    }
+    if (msg.method === 'session/resume') {
+        const sessionId = msg.params.sessionId;
+        if (sessionId !== 'known-session') {
+            out({ id: msg.id, error: { code: -32602, message: `Unknown sessionId: ${sessionId}` } });
+            return;
+        }
+        out({ id: msg.id, result: { configOptions: [] } });
         return;
     }
     if (msg.method === 'session/load') {

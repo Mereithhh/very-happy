@@ -6,8 +6,9 @@ import { SPAWN_AGENTS, isSpawnAgent } from './spawnAgents'
 const runSource = readFileSync(join(__dirname, '..', 'daemon', 'run.ts'), 'utf8')
 
 describe('SPAWN_AGENTS', () => {
-    it('includes pi alongside the four older backends', () => {
-        expect([...SPAWN_AGENTS]).toEqual(['claude', 'codex', 'gemini', 'openclaw', 'pi'])
+    it('includes pi and dsh alongside the four older backends', () => {
+        expect([...SPAWN_AGENTS]).toEqual(['claude', 'codex', 'gemini', 'openclaw', 'pi', 'dsh'])
+        expect(isSpawnAgent('dsh')).toBe(true)
         expect(isSpawnAgent('pi')).toBe(true)
         expect(isSpawnAgent('gpt')).toBe(false)
         expect(isSpawnAgent(undefined)).toBe(false)

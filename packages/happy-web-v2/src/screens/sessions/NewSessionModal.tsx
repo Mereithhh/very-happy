@@ -169,7 +169,7 @@ export function NewSessionModal({
   const agentsToSetUp = agentsNeedingSetup(selectedMachine?.metadata);
   // Derived, not stored: switching machines or the agent becoming available hides the row.
   const shownSetupAgent = setupAgent && agentsToSetUp.includes(setupAgent) ? setupAgent : null;
-  const shownSetupInstruction = shownSetupAgent ? agentSetupInstruction(shownSetupAgent) : null;
+  const shownSetupInstruction = shownSetupAgent ? agentSetupInstruction(shownSetupAgent, selectedMachine?.metadata) : null;
   const outdatedAgents = useMemo(() => new Set(
     (readAgentVersions(selectedMachine?.daemonState)?.agents ?? []).filter((v) => v.status === 'update-available').map((v) => v.id),
   ), [selectedMachine?.daemonState]);
@@ -455,6 +455,13 @@ export function NewSessionModal({
                 </Link>
               </div>
             )}
+            {/* B-952: what DeepSeek Harness does differently, said before the session starts. */}
+            {agent === 'dsh' && (
+              <div className="ns-agent-help" data-testid="ns-dsh-help">
+                {t('newSessionModal.dshHelp')}{' '}
+                <Link to={accountSettingsHref(machineId)} onClick={() => onClose()}>{t('newSessionModal.dshKeyLink')}</Link>
+              </div>
+            )}
             {agentsToSetUp.length > 0 && (shownSetupAgent ? (
               <div className="ns-agent-setup" id="ns-agent-setup">
                 {shownSetupInstruction?.kind === 'command' ? (
@@ -466,10 +473,16 @@ export function NewSessionModal({
                     <div className="ns-agent-help">
                       {shownSetupAgent === 'pi'
                         ? t('newSessionModal.piInstallHelp')
-                        : t('newSessionModal.agentInstallHelp', { agent: shownSetupAgent })}
+                        : shownSetupAgent === 'dsh'
+                          ? t('newSessionModal.dshInstallHelp')
+                          : t('newSessionModal.agentInstallHelp', { agent: shownSetupAgent })}
                     </div>
                     <Command value={shownSetupInstruction.command} />
                   </>
+                ) : shownSetupInstruction?.kind === 'node-upgrade' ? (
+                  <div className="ns-agent-help" data-testid="ns-dsh-node">
+                    {t('newSessionModal.dshNodeHelp', { node: shownSetupInstruction.nodeVersion ?? t('newSessionModal.dshNodeMissing'), minimum: shownSetupInstruction.minimum })}
+                  </div>
                 ) : (
                   <div className="ns-agent-help">{t('newSessionModal.openClawSetupHelp')}</div>
                 )}

@@ -15,6 +15,8 @@ export const KNOWN_ACP_AGENTS: Record<string, AcpAgentConfig> = {
   gemini: { command: 'gemini', args: ['--experimental-acp'] },
   opencode: { command: 'opencode', args: ['acp'] },
   pi: { command: PI_ACP_COMMAND, args: [] },
+  // B-952: DeepSeek Harness ships its own ACP stdio server as the `acp` profile.
+  dsh: { command: 'dsh', args: ['--profile', 'acp'] },
 };
 
 export type ResolvedAcpAgentConfig = {

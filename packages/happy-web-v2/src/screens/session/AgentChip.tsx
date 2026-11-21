@@ -1,12 +1,13 @@
 /** B-614 identity atoms — see agentIdentity.ts for the rules. */
 import type { ReactNode } from 'react';
-import { AlertTriangle, ArrowRight, Asterisk, Bot, Check, CodeXml, Pi, Square, TerminalSquare, UsersRound, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Asterisk, Bot, Check, CodeXml, Fish, Pi, Square, TerminalSquare, UsersRound, type LucideIcon } from 'lucide-react';
 import { Spinner, StatusDot } from '@/ui';
 import type { AgentKind, AgentStatus } from './agentIdentity';
 import './agentIdentity.css';
 
 const GLYPH: Record<AgentKind, LucideIcon> = {
-    claude: Asterisk, codex: CodeXml, pi: Pi, terminal: TerminalSquare, subagent: Bot, team: UsersRound, unknown: Bot,
+    // B-952: dsh — a generic fish glyph (no brand marks).
+    claude: Asterisk, codex: CodeXml, pi: Pi, dsh: Fish, terminal: TerminalSquare, subagent: Bot, team: UsersRound, unknown: Bot,
 };
 
 export function AgentGlyph({ kind, size = 14 }: { kind: AgentKind; size?: number }) {

@@ -84,13 +84,15 @@ describe('B-850c accounts wiring', () => {
         expect(account).toContain('...accountsForAgent(facts.state, facts.agent).map(');
         expect(account).toContain('if (!facts.state || !machineHasAgentAccounts(facts.state, facts.agent)) {');
         expect(account).toContain('const plan = planAccountSwitch(facts.profile, target, input.model, facts.agent);');
-        expect(src('components/accounts/MachineAccounts.tsx')).toContain('if (!machineHasAgentAccounts(state, agent)) return upgradeGroup(agent);');
+        expect(src('components/accounts/MachineAccounts.tsx')).toContain("if (!machineHasAgentAccounts(state, agent)) return agent === 'dsh' ? null : upgradeGroup(agent);");
         expect(src('components/accounts/SpawnAccountPicker.tsx')).toContain('if (!state || !machineHasAgentAccounts(state, agent)) {');
     });
 
     it('Codex add: provider / own URL through the codex-provider variant; ChatGPT login is codex-chatgpt', () => {
         const dialog = src('components/accounts/AddAccountDialog.tsx');
         expect(dialog).toContain("? { agent: 'codex', kind: 'codex-provider', ...providerFields, key }");
+        // B-952: a DeepSeek account is its key only.
+        expect(dialog).toContain("? { agent: 'dsh', kind: 'dsh-api', label: label.trim(), key }");
         expect(dialog).toContain("const which = kind === 'codex-chatgpt' ? { agent: 'codex' as const, kind: 'codex-chatgpt' as const }");
         expect(dialog).toContain("codexProviderAddFields({ label, provider: provider === CUSTOM_PROVIDER ? null : provider, baseUrl, wireApi, models })");
         // the ChatGPT name is optional (defaults to the email)

@@ -275,6 +275,7 @@ very-happy          # local Claude TUI; requires external claude
 very-happy codex    # Codex
 very-happy gemini   # Gemini through ACP (beta)
 very-happy acp opencode
+very-happy dsh      # DeepSeek Harness through its ACP server (Node.js 24.9+)
 very-happy openclaw # OpenClaw through its local gateway
 ```
 

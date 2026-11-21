@@ -27,18 +27,19 @@ export type AccountKey =
 
 export type AccountCheck = { status: string; at: number; detail?: string };
 
-export type AccountAgent = 'claude' | 'codex';
-export type AccountKind = 'claude-subscription' | 'claude-api' | 'codex-chatgpt' | 'codex-provider';
+export type AccountAgent = 'claude' | 'codex' | 'dsh';
+export type AccountKind = 'claude-subscription' | 'claude-api' | 'codex-chatgpt' | 'codex-provider' | 'dsh-api';
 const KIND_AGENT: Record<AccountKind, AccountAgent> = {
     'claude-subscription': 'claude',
     'claude-api': 'claude',
     'codex-chatgpt': 'codex',
     'codex-provider': 'codex',
+    'dsh-api': 'dsh',
 };
 
 /** Kinds whose secret is a key (file / env / stored) sent to an HTTP endpoint. */
-export function isApiKind(kind: AccountKind): kind is 'claude-api' | 'codex-provider' {
-    return kind === 'claude-api' || kind === 'codex-provider';
+export function isApiKind(kind: AccountKind): kind is 'claude-api' | 'codex-provider' | 'dsh-api' {
+    return kind === 'claude-api' || kind === 'codex-provider' || kind === 'dsh-api';
 }
 
 export type AccountRecord = {
@@ -294,6 +295,7 @@ const KIND_ID_BASE: Record<AccountKind, string> = {
     'claude-api': 'claude-api',
     'codex-chatgpt': 'chatgpt',
     'codex-provider': 'codex-api',
+    'dsh-api': 'deepseek',
 };
 
 export function newAccountId(label: string, kind: AccountKind, taken: Iterable<string>): string {

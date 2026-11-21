@@ -7,6 +7,7 @@ export function sessionAgentLabel(flavor: string | null | undefined, unknown: st
         case 'codex': return 'Codex';
         case 'pi':
         case 'pi-acp': return 'Pi';
+        case 'dsh': return 'DeepSeek Harness';
         case 'terminal-mirror': return 'Terminal';
         default: return value;
     }

@@ -63,6 +63,8 @@ const reviewFirstPermissionModes: Record<AgentKey, string> = {
     openclaw: 'default',
     // The official pi gate asks before write operations in default mode.
     pi: 'default',
+    // B-952: dsh in default mode shows every permission ask to the user.
+    dsh: 'default',
 };
 
 export function getReviewFirstPermissionMode(flavor: string | null | undefined): string {

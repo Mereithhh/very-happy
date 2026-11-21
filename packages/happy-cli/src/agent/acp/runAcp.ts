@@ -1,4 +1,7 @@
 import { VERY_HAPPY_DISCOVERY } from '@/skill/discovery';
+import { loadDshWrapperAccount, MACHINE_DSH_ACCOUNT, type DshWrapperAccount } from '@/agentProfiles/dshAccount';
+import { SPAWN_ACCOUNT_ENV } from '@/agentProfiles/store';
+import { DSH_SESSION_NOTICE, dshAutoApproves, dshFailureHint } from './dshRunner';
 import { isSessionPeerPrompt } from '@/claude/nonUserPrompt';
 import { readPiModelsJson, resolvePiContextUsage, type PiContextReport } from './piContextUsage';
 import { buildAcpPrompt, routeAcpUserText } from './acpSlashCommand';
@@ -457,7 +460,13 @@ function resolveRequestedLegacyModelCode(models: SessionModelState, requested: s
 class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPermissionHandler {
   private readonly logPrefix: string;
 
-  constructor(session: ApiSessionClient, agentName: string) {
+  /**
+   * B-952: `autoApprove` answers an agent's permission ask without the user when
+   * it returns true. dsh has no ACP mode selector and no agent-side gate (unlike
+   * pi), so the session's permission mode — `bypassPermissions` / `yolo` — is
+   * enforced here; every other mode still asks the user.
+   */
+  constructor(session: ApiSessionClient, agentName: string, private readonly autoApprove: () => boolean = () => false) {
     super(session);
     this.logPrefix = `[${agentName}]`;
   }
@@ -467,6 +476,10 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
   }
 
   async handleToolCall(toolCallId: string, toolName: string, input: unknown): Promise<PermissionResult> {
+    if (this.autoApprove()) {
+      logger.debug(`${this.logPrefix} Permission auto-approved (bypass mode) for tool: ${toolName} (${toolCallId})`);
+      return { decision: 'approved' };
+    }
     return new Promise<PermissionResult>((resolve, reject) => {
       this.pendingRequests.set(toolCallId, {
         resolve,
@@ -483,9 +496,13 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
 /** B-632: how long a steer waits for the pi extension's long poll to take it. */
 const PI_STEER_OFFER_TIMEOUT_MS = 5_000;
 
-function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'acp' {
+function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'dsh' | 'acp' {
   if (agentName === 'gemini') {
     return 'gemini';
+  }
+  // B-952: DeepSeek Harness has its own flavor (picker entry, defaults, resume id).
+  if (agentName === 'dsh') {
+    return 'dsh';
   }
   if (agentName === 'opencode') {
     return 'opencode';
@@ -636,7 +653,9 @@ export async function runAcp(opts: {
     }
   }
 
-  permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName);
+  // B-952: dsh's permission asks are answered here in bypass mode (see GenericAcpPermissionHandler).
+  permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName, () =>
+    opts.agentName === 'dsh' && dshAutoApproves(fileBackedPermissionMode ?? initialPermissionMode));
   // Drop any permission requests left in agent state from a previous CLI
   // process that died while a tool prompt was open — see the matching
   // call in claudeRemoteLauncher for the full rationale.
@@ -751,6 +770,28 @@ export async function runAcp(opts: {
   // connect to HAPPY_MCP_URL directly. `mcpServers` stays for agents that do
   // honour the ACP handoff.
   const teamsPiEnv = opts.agentName === 'pi' ? await preparePiTeamsRuntime() : {};
+  // B-952: the session's DeepSeek account (agentProfiles/dshAccount.ts). Its key
+  // reaches the dsh child only; a binding that cannot be honoured refuses every
+  // turn instead of running on the machine's own key (Owner Q3).
+  const spawnAccountId = process.env[SPAWN_ACCOUNT_ENV] || undefined;
+  delete process.env[SPAWN_ACCOUNT_ENV];
+  let dshAccount: DshWrapperAccount = MACHINE_DSH_ACCOUNT;
+  if (opts.agentName === 'dsh') {
+    try {
+      dshAccount = loadDshWrapperAccount(configuration.happyHomeDir, session.sessionId, spawnAccountId);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      dshAccount = spawnAccountId
+        ? { profile: { id: spawnAccountId, label: spawnAccountId, kind: 'dsh-api', status: 'unavailable', reason: 'error' }, childEnv: {}, unavailable: true, notices: [`Account "${spawnAccountId}" could not be loaded: ${reason}`] }
+        : MACHINE_DSH_ACCOUNT;
+    }
+    logger.debug(`[dsh] account: ${dshAccount.profile ? `${dshAccount.profile.id} ${dshAccount.profile.status}` : 'machine setup'}`);
+    const profile = dshAccount.profile;
+    session.updateMetadata((current) => ({ ...current, agentProfile: profile }));
+    for (const notice of dshAccount.notices) {
+      session.sendSessionEvent({ type: 'message', message: notice, kind: dshAccount.unavailable ? 'agent-profile-unavailable' : 'agent-profile-warning' });
+    }
+  }
   const createBackend = () => new AcpBackend({
     agentName: opts.agentName,
     cwd: process.cwd(),
@@ -758,6 +799,7 @@ export async function runAcp(opts: {
     args: opts.args,
     env: {
       ...teamsPiEnv,
+      ...dshAccount.childEnv,
       HAPPY_MCP_URL: happyServer.url,
       ...(happyServer.contextUsageUrl ? { HAPPY_CONTEXT_USAGE_URL: happyServer.contextUsageUrl } : {}),
       ...(happyServer.steerUrl ? { HAPPY_PI_STEER_URL: happyServer.steerUrl } : {}),
@@ -1192,6 +1234,12 @@ export async function runAcp(opts: {
   registerAgentAttachmentDownloads(session);
   let userMessageDelivery = Promise.resolve();
   session.onUserMessage((message) => {
+    // B-952: bound to a DeepSeek account that cannot run — not run, and said why.
+    if (dshAccount.unavailable && dshAccount.profile) {
+      if (message.localKey) session.sendQueueCancelReason([message.localKey], 'failed');
+      session.sendSessionEvent({ type: 'message', message: dshAccount.notices[0] ?? `Account "${dshAccount.profile.label}" is unavailable.`, kind: 'agent-profile-unavailable' });
+      return;
+    }
     // Claim synchronously, then preserve message order while downloads finish.
     const downloads = session.drainAttachmentsForUserMessage();
     userMessageDelivery = userMessageDelivery.then(async () => {
@@ -1347,9 +1395,15 @@ export async function runAcp(opts: {
   // next wrapper (daemon resume) or the next agent process can reopen it.
   let agentSessionId: string | null = opts.resumeAgentSessionId ?? null;
   const rememberAgentSession = (id: string | undefined) => {
-    if (!id || opts.agentName !== 'pi') return;
-    agentSessionId = id;
-    session.updateMetadata((current) => current.piSessionId === id ? current : { ...current, piSessionId: id });
+    if (!id) return;
+    if (opts.agentName === 'pi') {
+      agentSessionId = id;
+      session.updateMetadata((current) => current.piSessionId === id ? current : { ...current, piSessionId: id });
+    } else if (opts.agentName === 'dsh') {
+      // B-952: dsh reopens it with `session/resume` (no history replay; the transcript here is kept).
+      agentSessionId = id;
+      session.updateMetadata((current) => current.dshSessionId === id ? current : { ...current, dshSessionId: id });
+    }
   };
 
   const restartBackend = async () => {
@@ -1382,6 +1436,10 @@ export async function runAcp(opts: {
     rememberAgentSession(started.agentSessionId);
     backendStarted = true;
     await afterSessionStarted(opts.model);
+    // B-952: say once, in the session, what dsh does differently (never on a reconnect or resume).
+    if (opts.agentName === 'dsh' && !reconnect && !resumeId) {
+      session.sendSessionEvent({ type: 'message', message: DSH_SESSION_NOTICE });
+    }
     if (resumeId) {
       logger.debug(`[${opts.agentName}] Resume of agent session ${resumeId}: ${started.resumed ?? 'new'}${started.loadFailure ? ` (${started.loadFailure})` : ''}`);
       if (started.resumed !== 'loaded') session.sendSessionEvent({ type: 'message', message: piRestartNotice(opts.agentName, 'resume', started) });
@@ -1521,6 +1579,11 @@ export async function runAcp(opts: {
         // send). Say what the agent said; keep the session; the next message runs anew.
         const failure = describeAcpTurnFailure(opts.agentName, error);
         session.sendSessionEvent({ type: 'message', message: failure.message });
+        // B-952: a missing / rejected DeepSeek key gets the fix, not only dsh's words.
+        if (opts.agentName === 'dsh') {
+          const hint = dshFailureHint(failure.message);
+          if (hint) session.sendSessionEvent({ type: 'message', message: hint });
+        }
         // B-854: failed before the prompt reached the agent (restart, mode / model
         // switch, prompt building): 「未执行」 with put-back under the error line.
         heldInput.drop('failed');
