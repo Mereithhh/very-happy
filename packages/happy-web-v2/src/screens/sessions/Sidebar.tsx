@@ -64,6 +64,7 @@ import {
   applyReorderHold,
   SIDEBAR_RECENT_SORT_ENABLED,
 } from './sidebarRecentSort';
+import { stabilizeRowOrder, stabilizeGroupOrder, sortGroupsByRecent, type FrozenRowOrder } from './sidebarLoadOrder';
 import { groupRowsByLifecycle, completedTodaySessions } from './sidebarStatusView';
 import { attentionKeysOf, rowSignalOf, type RowSignal } from './sidebarAttention';
 import { useItemNeedsYouSessionIds, useNeedsYouSync, withItemAttention } from '@/sync/needsYou';
@@ -602,6 +603,19 @@ export function Sidebar() {
   // long stay in recent mode can't let it rot into ghosts.
   const orderSetting = useSetting('sidebarOrder');
   const pinnedSetting = useSetting('pinnedRows'); // legacy, pre-materialization only
+  // B-947: the order is fixed for one page load (sidebarLoadOrder.ts) — the
+  // snapshot is taken on the first render with rows, and again only when the
+  // user picks 「按最近活动重新排序」 (bumps `reorderEpoch`, drops the refs).
+  const rowOrderRef = useRef<FrozenRowOrder | null>(null);
+  const projectOrderRef = useRef<string[] | null>(null);
+  const folderOrderRef = useRef<string[] | null>(null);
+  const [reorderEpoch, setReorderEpoch] = useState(0);
+  const resortByRecent = useCallback(() => {
+    rowOrderRef.current = null;
+    projectOrderRef.current = null;
+    folderOrderRef.current = null;
+    setReorderEpoch((n) => n + 1);
+  }, []);
   const orderedRows = useMemo<Row[] | null>(() => {
     if (!rows) return null;
     if (view === 'status') {
@@ -624,9 +638,12 @@ export function Sidebar() {
     // recent mode: one mixed sequence by last activity, hold applied.
     if (sortMode === 'recent') return applyReorderHold(heldKeys, priorityFirst(sortRowsByRecent(rows)));
     if ((orderSetting ?? []).length > 0) return priorityFirst(sortRowsByManualOrder(rows, orderSetting!));
-    const { pinned, rest } = splitPinnedRows(rows, pinnedSetting ?? []);
+    // No hand-made order yet: the load-time activity order, frozen (B-947).
+    const frozen = stabilizeRowOrder(rowOrderRef.current, rows);
+    rowOrderRef.current = frozen.state;
+    const { pinned, rest } = splitPinnedRows(frozen.rows, pinnedSetting ?? []);
     return priorityFirst([...pinned, ...rest]);
-  }, [rows, view, statusGroups, completedRows, completedOpen, collapsedGroups, orderSetting, pinnedSetting, orderable, sortMode, heldKeys]);
+  }, [rows, view, statusGroups, completedRows, completedOpen, collapsedGroups, orderSetting, pinnedSetting, orderable, sortMode, heldKeys, reorderEpoch]);
   // ----- teams (B-480) and the project tree (B-647 → B-762) -----
   const liveTeams = useMemo(() => teams.filter((team) => !team.archivedAt), [teams]);
   // Receipt-backed team sessions that are no longer in the visible list keep a history link.
@@ -711,12 +728,18 @@ export function Sidebar() {
   const [projectHintDismissed, setProjectHintDismissed] = useLocalSettingMutable('sidebarProjectHintDismissed');
   // B-762: 按项目 is a tree — projects › teams › lead / members, sessions beside
   // the teams, then ONE 不在项目中 area (D2: no folder sub-groups unless asked).
-  const tree = useMemo(
-    () => (projectLens && orderedRows
-      ? buildSidebarTree({ rows: [...orderedRows, ...teamHistoryRows], projects: projectsSnap.projects, members: projectsSnap.members, teams: liveTeams, needsYou })
-      : null),
-    [projectLens, orderedRows, teamHistoryRows, projectsSnap.projects, projectsSnap.members, liveTeams, needsYou],
-  );
+  const tree = useMemo(() => {
+    if (!projectLens || !orderedRows) return null;
+    const built = buildSidebarTree({ rows: [...orderedRows, ...teamHistoryRows], projects: projectsSnap.projects, members: projectsSnap.members, teams: liveTeams, needsYou });
+    // B-947: project groups keep their load-time order (most recent first);
+    // a project that shows up later goes on top. Snapshot only once the
+    // project list has loaded, or every project would count as new.
+    if (projectsSnap.status !== 'ready') return built;
+    const prev = projectOrderRef.current;
+    const frozen = stabilizeGroupOrder(prev, prev ? built.projects : sortGroupsByRecent(built.projects), (g) => g.id);
+    projectOrderRef.current = frozen.state;
+    return { ...built, projects: frozen.groups };
+  }, [projectLens, orderedRows, teamHistoryRows, projectsSnap.projects, projectsSnap.members, projectsSnap.status, liveTeams, needsYou, reorderEpoch]);
   const projectSections = useMemo<SidebarSection[] | null>(() => {
     if (!tree) return null;
     const out: SidebarSection[] = [];
@@ -755,7 +778,9 @@ export function Sidebar() {
     // Opt-in (the area's ⋯): the pre-B-762 folder groups, each with 「设为项目」.
     out.push({ id: UNASSIGNED_GROUP_ID, label, count: u.sessions, rows: [], allRows: [], collapsible: false, open: true, area });
     const byFolder = groupRowsByProject(u.rows, [], [], u.teams);
-    for (const g of byFolder.unassigned) {
+    const folders = stabilizeGroupOrder(folderOrderRef.current, byFolder.unassigned, workspaceGroupId);
+    folderOrderRef.current = folders.state;
+    for (const g of folders.groups) {
       const sessionIds = g.rows.flatMap((r) => (r.kind === 'session' && r.sessionId && !r.share && !r.teamHistoryLink ? [r.sessionId] : []));
       out.push({
         ...collapsibleSection(workspaceGroupId(g), g.name ?? (t('sidebar.workspaceUnassigned') as string), nestTeams(g.rows, g.teams, 0), collapsedGroups),
@@ -769,7 +794,7 @@ export function Sidebar() {
     const tg = byFolder.teamsGroup;
     if (tg) out.push({ ...collapsibleSection('unassigned:teams', teamCopy.title, nestTeams(tg.rows, tg.teams, 0), collapsedGroups), count: tg.rows.filter((r) => !r.teamHistoryLink).length });
     return out;
-  }, [tree, nestTeams, collapsedGroups, currentSessionId, currentTeamPageId, location.pathname, unassignedByFolder, projectHintDismissed, projectsSnap.status, teamCopy.title, t]);
+  }, [tree, nestTeams, collapsedGroups, currentSessionId, currentTeamPageId, location.pathname, unassignedByFolder, projectHintDismissed, projectsSnap.status, teamCopy.title, t, reorderEpoch]);
   // ----- 按标签 / 最近: session lists (B-762, spec B-760 §5.2) -----
   // No project or team rows; each row names its owner in one chip (team for a
   // lead / member, else project). D3: a member's conversation joins the list
@@ -1608,6 +1633,8 @@ export function Sidebar() {
                 { key: 'project', disabled: !orderable, label: `${groupMode === 'project' ? '✓ ' : ''}${t('sidebar.groupProjects')}`, icon: FolderKanban, onSelect: () => selectGroupMode('project') },
                 { key: 'tag', disabled: !orderable, label: `${groupMode === 'tag' ? '✓ ' : ''}${t('sidebar.groupTags')}`, icon: Tags, onSelect: () => selectGroupMode('tag') },
                 { key: 'none', disabled: !orderable, label: `${groupMode === 'none' ? '✓ ' : ''}${t('sidebar.groupNone')}`, icon: Clock3, onSelect: () => selectGroupMode('none') },
+                // B-947: the order is fixed per page load; this is the one way to re-sort without reloading.
+                { key: 'resort-recent', disabled: !orderable, label: t('sidebar.resortByRecent'), icon: ArrowDownWideNarrow, separatorBefore: true, onSelect: resortByRecent },
                 { key: 'ordering-help', disabled: !orderable, label: lang.startsWith('zh') ? '排序说明' : 'Reordering help', icon: CircleHelp, checked: showOrderHint, onSelect: () => setShowOrderHint((shown) => !shown) },
                 { key: 'locate-current', disabled: !onRowRoute, label: lang.startsWith('zh') ? '定位当前会话' : 'Locate current session', icon: LocateFixed, separatorBefore: true, onSelect: locateCurrent },
                 { key: 'overview', label: `${issuesEnabled ? issuesCopy.sidebarRunning : t('board.title')}${attentionCount ? ` · ${attentionCount}` : ''}`, icon: LayoutGrid, separatorBefore: true, onSelect: () => navigate('/board') },
