@@ -3443,6 +3443,13 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov22a: {
+                title: 'DeepSeek Harness sessions',
+                summary: 'New chat now offers dsh — DeepSeek\'s own agent harness — next to Claude, Codex and pi. Messages, replies, tool cards, stop and resume work as in other sessions; the model and reasoning effort are picked in the session.',
+                key: 'Add a DeepSeek API key under Settings → Models & accounts (DeepSeek Harness accounts). It stays on that machine and only the dsh process receives it; a session bound to a key that does not work refuses to run instead of falling back.',
+                limits: 'What dsh does differently: replies appear one message at a time, not word by word; a resumed session keeps its transcript here, but dsh does not replay it; plan mode, slash commands and images are not available. Tools ask for permission unless the session runs in yolo mode.',
+                setup: 'The machine needs dsh (npm install -g @deepseek-ai/dsh) on Node.js 24.9 or newer, and CLI 0.2.220. New chat says which one is missing.',
+            },
             nov21d: {
                 title: 'Sonnet 5.5 and Haiku 5.5 in the Claude model picker; Claude Code 2.1.330',
                 summary: 'Claude sessions list Sonnet 5.5 (also with 1M context) and Haiku 5.5 as models of their own, so a pick stays on them whatever the sonnet / haiku aliases point to later. The bundled Claude Agent SDK is now 0.3.330 (Claude Code 2.1.330). The default model is still Opus 5.5.',

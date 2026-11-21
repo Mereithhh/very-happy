@@ -361,6 +361,11 @@ Environment variables take precedence over `$HAPPY_HOME_DIR/settings.json`.
 Agent provider credentials are separate. Native Claude TUI, Codex, Gemini,
 OpenCode, and OpenClaw paths require their local command or gateway to be
 configured for the daemon OS user. Provider credentials stay local by default.
+DeepSeek Harness (`dsh`) reads `DEEPSEEK_API_KEY`: set it in the daemon's
+environment, or add a DeepSeek account under Settings → Models & accounts — the
+key is kept 0600 under `$HAPPY_HOME_DIR/accounts/` and handed only to the dsh
+process of sessions bound to that account. dsh needs Node.js 24.9 or newer on
+the daemon's PATH.
 Running `very-happy connect codex|claude|gemini` is an explicit
 exception: it uploads that OAuth credential to, and retains it on, the configured
 trusted relay. This storage is not end-to-end encrypted and is currently used

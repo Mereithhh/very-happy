@@ -3603,6 +3603,13 @@ export const zhHans: TranslationStructure = {
                 shared: '别人分享给你的终端会写明是谁的哪台机器（比如「Alex 的 mac-studio」）：连接时显示正在连接，机器没连上时显示没连上，看的过程中掉线也一样。',
                 recover: '机器重新连上后，终端会自动恢复，不用刷新，也不用点重试。你自己的终端也一样。',
             },
+            nov22a: {
+                title: '支持 DeepSeek Harness 会话',
+                summary: '新建会话可以选 dsh（DeepSeek 官方的 agent harness），和 Claude、Codex、pi 并列。发消息、看回复、工具卡片、停止和恢复都和其他会话一样；模型和推理强度在会话里选。',
+                key: '在 设置 → 模型与账号（DeepSeek Harness accounts）添加 DeepSeek API key。key 只留在那台机器上，只交给 dsh 进程；绑定的 key 不可用时，会话会拒绝运行，不会改用别的 key。',
+                limits: 'dsh 与其他 agent 的不同：回复按条显示，不逐字流式；恢复会话时这里的记录保留，但 dsh 不回放历史；不支持计划模式、斜杠命令和图片。除非会话开了 yolo，工具调用都会请你确认。',
+                setup: '机器需要装 dsh（npm install -g @deepseek-ai/dsh），Node.js 24.9 或更新版本，以及 CLI 0.2.220。缺哪一样，新建会话里会写明。',
+            },
             nov21d: {
                 title: 'Claude 模型选择器新增 Sonnet 5.5 和 Haiku 5.5；Claude Code 升到 2.1.330',
                 summary: 'Claude 会话把 Sonnet 5.5（含 1M 上下文）和 Haiku 5.5 列为独立模型，选了就固定在这个版本，不随 sonnet / haiku 别名以后的指向变化。内置的 Claude Agent SDK 升到 0.3.330（Claude Code 2.1.330）。默认模型仍是 Opus 5.5。',

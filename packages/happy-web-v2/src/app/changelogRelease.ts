@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-22-deepseek-harness-sessions',
+    cliVersion: '0.2.220',
+    date: '2026-11-22',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov22a.title',
+    summaryKey: 'changelog.releases.nov22a.summary',
+    itemKeys: ['changelog.releases.nov22a.key', 'changelog.releases.nov22a.limits', 'changelog.releases.nov22a.setup'],
+  },
+  {
     id: '2026-11-21-sonnet-haiku-5-5-claude-code-2-1-330',
     cliVersion: '0.2.219',
     date: '2026-11-21',
