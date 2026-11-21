@@ -10,10 +10,15 @@ test('Codex 0.166 bundled catalog (2026-10-30) is covered by the table', () => {
     assert.deepEqual(findStaleness(codex, catalog), []);
 });
 
+test('Codex 0.171 app-server model/list (2026-11-21, B-949) is covered by the table', () => {
+    const catalog = list(['gpt-6.2-sol', 'gpt-6.2-astra', 'gpt-6.1-terra', 'gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5'], 'gpt-6.2-sol');
+    assert.deepEqual(findStaleness(codex, catalog), []);
+});
+
 test('a newer sol in the catalog is reported', () => {
-    const problems = findStaleness(codex, list(['gpt-6.2-sol', 'gpt-6.1-sol'], 'gpt-6.2-sol'));
+    const problems = findStaleness(codex, list(['gpt-6.3-sol', 'gpt-6.2-sol'], 'gpt-6.3-sol'));
     assert.equal(problems.length, 1);
-    assert.match(problems[0], /gpt-6\.2-sol newer than table head gpt-6\.1-sol/);
+    assert.match(problems[0], /gpt-6\.3-sol newer than table head gpt-6\.2-sol/);
     assert.equal(findStaleness(codex, list(['gpt-7-sol'], 'gpt-7-sol')).length, 1);
 });
 
