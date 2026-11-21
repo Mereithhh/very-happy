@@ -270,7 +270,11 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                 if (origins.length !== 1) throw new Error('Original worktree ownership is unknown; manual reconciliation required');
                 const resource = readReceipt(home, origins[0].id);
                 if (!resource?.directory || !resource.repository || !resource.branch) throw new Error('Original worktree receipt is missing; manual reconciliation required');
-                await removeTeamWorktree(resource);
+                // B-945: a member delegated from its lead's worktree recorded that worktree as its repository;
+                // once the lead's cleanup removed it, every member cleanup failed (`git -C <removed>`). Follow
+                // the removed team worktree back to its source checkout, as a launch does (B-706).
+                const repository = await resolveTeamRepository(home, resource.repository, id => { try { return readReceipt(home, id)?.repository; } catch { return undefined; } }).catch(() => resource.repository!);
+                await removeTeamWorktree({ ...resource, repository });
                 await complete(op, receipt);
             }
         } catch (error) {
