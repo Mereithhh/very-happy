@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiSessionClient } from './apiSession';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import type { Update } from './types';
+import { createEnvelope } from '@slopus/happy-wire';
+import { analyzeLatestTurn } from '@/sessions/turnState';
 
 const {
     mockIo,
@@ -1806,6 +1808,42 @@ describe('ApiSessionClient v3 messages API migration', () => {
             client.sendCodexMessage({ type: 'next' });
             await waitForCheck(() => expect(mockAxiosPost).toHaveBeenCalledTimes(3));
             expect(decoded(posted(2)[0]).content.data.type).toBe('next');
+        });
+
+        it('B-951: a refused turn-start comes back as a bare turn-start, so the turn still ends', async () => {
+            const client = new ApiSessionClient('fake-token', session);
+            const accepted: any[] = [];
+            // Fault injection: the server refuses the first turn-start it sees (once), takes the rest.
+            let refusedOnce = false;
+            mockAxiosPost.mockImplementation(async (_url: string, body: any) => {
+                const bodies = body.messages.map((m: any) => decoded(m));
+                if (!refusedOnce && bodies.some((b: any) => b.role === 'session' && b.content.ev.t === 'turn-start')) { refusedOnce = true; throw rejection(422); }
+                accepted.push(...bodies);
+                return { data: { messages: body.messages.map((m: any, i: number) => ({ id: m.localId, seq: 10 + i, localId: m.localId, createdAt: 1, updatedAt: 1 })) } };
+            });
+            client.sendSessionProtocolMessage(createEnvelope('agent', { t: 'turn-start' }, { turn: 'turn-1', time: 1234 }));
+            await waitForCheck(() => expect((client as any).pendingOutbox).toHaveLength(0));
+            client.sendSessionProtocolMessage(createEnvelope('agent', { t: 'turn-end', status: 'completed' }, { turn: 'turn-1' }));
+            await waitForCheck(() => expect((client as any).pendingOutbox).toHaveLength(0));
+            expect(accepted.map((b) => b.role === 'session' ? b.content.ev.t : b.content.data.kind)).toEqual(['turn-start', 'outbox-rejected', 'turn-end']);
+            expect(accepted[0].content).toMatchObject({ role: 'agent', turn: 'turn-1', time: 1234, ev: { t: 'turn-start' } });
+            // The turn reads as ended — the `sessions read --wait` view of the same log.
+            const entries = accepted.map((body, i) => ({ seq: i + 1, localId: null, body }));
+            expect(analyzeLatestTurn(entries as any).ended).toBe(true);
+        });
+
+        it('B-951: a rebuilt turn-start refused again is dropped — nothing loops', async () => {
+            const client = new ApiSessionClient('fake-token', session);
+            // The server refuses every turn-start.
+            mockAxiosPost.mockImplementation(async (_url: string, body: any) => {
+                if (body.messages.some((m: any) => decoded(m).role === 'session')) throw rejection(400);
+                return { data: { messages: body.messages.map((m: any, i: number) => ({ id: m.localId, seq: 10 + i, localId: m.localId, createdAt: 1, updatedAt: 1 })) } };
+            });
+            client.sendSessionProtocolMessage(createEnvelope('agent', { t: 'turn-start' }, { turn: 'turn-2' }));
+            await waitForCheck(() => expect((client as any).pendingOutbox).toHaveLength(0));
+            // original refused → [bare, notice] refused → split → bare refused, dropped → notice sent.
+            expect(mockAxiosPost.mock.calls.map((call) => call[1].messages.length)).toEqual([1, 2, 1, 1]);
+            expect(decoded(posted(3)[0]).content.data.kind).toBe('outbox-rejected');
         });
 
         it.each([

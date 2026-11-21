@@ -46,6 +46,25 @@ describe('team coordination invariants', () => {
         expect(() => f.act({ type: 'retry-operation', operationId: op.id, claimId })).toThrow('operation_task_not_waiting');
     });
 
+    it('B-951: a cleanup stop that failed and then completed no longer carries the old error', () => {
+        const f = fixture();
+        f.act({ type: 'delegate', goal: 'w', acceptance: ['a'], directory: '/repo' });
+        const spawn = f.state.operations[0];
+        f.act({ type: 'claim-operation', operationId: spawn.id, machineId: 'machine', teamLaunchVersion: 1 });
+        f.act({ type: 'complete-operation', operationId: spawn.id, machineId: 'machine', claimId: f.state.operations[0].claimId!, sessionId: 's1', workingDirectory: '/wt/op1' });
+        const task = f.state.tasks[0];
+        f.act({ type: 'submit', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1, result: 'ok' });
+        f.act({ type: 'accept', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1 });
+        const stopId = f.state.operations.at(-1)!.id;
+        const stop = () => f.state.operations.find(o => o.id === stopId)!;
+        f.act({ type: 'claim-operation', operationId: stopId, machineId: 'machine' });
+        f.act({ type: 'fail-operation', operationId: stopId, machineId: 'machine', claimId: stop().claimId!, error: 'worktree has uncommitted changes' });
+        expect(stop()).toMatchObject({ type: 'stop', status: 'failed', error: 'worktree has uncommitted changes' });
+        f.act({ type: 'complete-operation', operationId: stopId, machineId: 'machine', claimId: stop().claimId! });
+        expect(stop()).toMatchObject({ status: 'completed', error: null });
+        expect(f.state.tasks.find(t => t.id === task.id)!.cleanup).toBe('done');
+    });
+
     it('B-706: reactivating a bot launches from its source repository, never the removed worktree', () => {
         const f = fixture();
         f.act({ type: 'delegate', goal: 'first', acceptance: ['a'], directory: '/repo' });
