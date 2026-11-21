@@ -375,6 +375,53 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         await app.close();
     });
 
+    it('B-945: through the real routes, a lead with open delegations cannot submit; only the owner of this team may relaunch it', async () => {
+        const { default: fastify } = await import('fastify');
+        const { serializerCompiler, validatorCompiler } = await import('fastify-type-provider-zod');
+        const { teamRoutes } = await import('@/app/api/routes/teamRoutes');
+        const app = fastify(); app.setValidatorCompiler(validatorCompiler); app.setSerializerCompiler(serializerCompiler);
+        // A signed-in person unless the test says machine (owner guard, B-927a).
+        app.decorate('authenticate', async (request: any) => { request.userId = request.headers['x-test-account'] ?? accountId; if (!request.headers['x-test-machine']) request.authLoginSessionId = 'login'; }); teamRoutes(app as any);
+        try {
+            const team = await store.createTeam(accountId, { name: 'Revive', machineId, launch: { goal: 'Ship', directory: '/repo', assistant: 'claude' } });
+            const daemon = (requestId: string, action: Record<string, unknown>) => store.actOnTeam(team.id, { accountId }, { requestId, action: { machineId, ...action } as never });
+            const read = () => store.readTeam(team.id, { accountId });
+            const leadSpawn = team.operations[0];
+            const claimed = await daemon('c-lead', { type: 'claim-operation', operationId: leadSpawn.id, teamLaunchVersion: 1 });
+            const leadToken = claimed.credential!.token;
+            await daemon('k-lead', { type: 'complete-operation', operationId: leadSpawn.id, claimId: claimed.operation!.claimId!, sessionId, workingDirectory: '/wt/lead' });
+            await store.actOnTeam(team.id, { token: leadToken }, { requestId: 'd-1', action: { type: 'delegate', goal: 'one', acceptance: ['a'], botName: 'W' } });
+            const root = (await read()).tasks[0];
+            const lead = (await read()).bots[0];
+            const agent = (requestId: string, action: Record<string, unknown>) => app.inject({ method: 'POST', url: `/v1/teams/${team.id}/agent`, headers: { 'x-happy-team-token': leadToken }, payload: { requestId, action } });
+            const asOwner = (requestId: string, action: Record<string, unknown>, account?: string, machine = false) => app.inject({ method: 'POST', url: `/v1/teams/${team.id}/actions`, headers: { ...(account ? { 'x-test-account': account } : {}), ...(machine ? { 'x-test-machine': '1' } : {}) }, payload: { requestId, action } });
+            const submit = await agent('s-root', { type: 'submit', taskId: root.id, attemptId: root.currentAttemptId, goalVersion: 1, result: 'done' });
+            expect(submit.statusCode).toBe(409);
+            expect(submit.json()).toMatchObject({ error: 'owned_tasks_unfinished', openTasks: 1, queued: 1, hint: expect.stringContaining('you delegated') });
+            // The lead's own scoped credential cannot relaunch anyone.
+            const scoped = await agent('r-agent', { type: 'revive-lead', botId: lead.id });
+            expect(scoped.statusCode).toBe(403);
+            expect(scoped.json().error).toBe('owner_required');
+            // Another account cannot even see the team.
+            const other = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
+            const foreign = await asOwner('r-foreign', { type: 'revive-lead', botId: lead.id }, other);
+            expect(foreign.statusCode).toBe(404);
+            expect(foreign.json().error).toBe('team_not_found');
+            // The owner's machine token (a daemon / terminal) is not the person (owner guard, enforce by default).
+            const machineToken = await asOwner('r-machine', { type: 'revive-lead', botId: lead.id }, undefined, true);
+            expect(machineToken.statusCode).toBe(403);
+            expect(machineToken.json().error).toBe('owner_login_required');
+            // The owner is refused while the lead is online, with the count.
+            const online = await asOwner('r-online', { type: 'revive-lead', botId: lead.id });
+            expect(online.statusCode).toBe(409);
+            expect(online.json()).toEqual({ error: 'lead_online', openTasks: 1 });
+            expect((await read()).bots[0].generation).toBe(lead.generation);
+            // An old server would answer this action 400 (unknown type); the new route validates it.
+            const invalid = await asOwner('r-bad', { type: 'revive-lead' });
+            expect(invalid.statusCode).toBe(400);
+        } finally { await app.close(); }
+    });
+
     it('keeps a capacity-blocked Team from stopping other Teams schedule recovery', async () => {
         const makeScheduled = async (name: string) => {
             const team = await store.createTeam(accountId, { name, machineId });

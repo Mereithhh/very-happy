@@ -8,6 +8,8 @@ export class TeamsApiError extends Error {
   constructor(
     public status: number,
     public code: string,
+    /** B-945: the refusal's other fields (e.g. `openTasks` for `owned_tasks_unfinished`); absent from old servers. */
+    public details: Record<string, unknown> = {},
   ) {
     super(code);
   }
@@ -29,6 +31,7 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
     throw new TeamsApiError(
       response.status,
       data?.error ?? `http_${response.status}`,
+      data && typeof data === "object" ? data : {},
     );
   }
   if (!data || typeof data !== "object")

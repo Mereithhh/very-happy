@@ -18,6 +18,7 @@ import { teamTaskLane, teamTaskState, type MemberExecution, type TeamTaskState }
 import { useMemberExecution } from './useMemberExecution';
 import { TeamTaskStatePill, teamTaskStateLabel } from './TeamTaskStatePill';
 import { agentKindLabel, agentKindOf } from '@/screens/session/agentIdentity';
+import { acceptBlockedByOpenTasks, useLeadReviveCopy } from './leadRevive';
 import { useMachine } from '@/sync/storage';
 import { readMachineAgentProfiles } from '@/sync/agentProfiles';
 import { memberAccountTag } from './TeamMemberAccounts';
@@ -50,7 +51,10 @@ export function TeamWorkspace({ team, onTask, archivedSessionIds, now = Date.now
     { key: 'running', label: c.running, Icon: Clock3 },
     { key: 'submitted', label: c.submitted, Icon: Circle },
   ];
+  const revive = useLeadReviveCopy();
   const preview = (task: TeamTask, depth: number) => {
+    // B-945: a submitted task whose assignee still owns open tasks cannot be accepted yet.
+    const blocked = acceptBlockedByOpenTasks(team, task);
     const result = task.attempts.find(a => a.id === task.currentAttemptId)?.result;
     const assignee = team.bots.find(b => b.id === task.assigneeBotId);
     const state = stateOf(task);
@@ -59,6 +63,7 @@ export function TeamWorkspace({ team, onTask, archivedSessionIds, now = Date.now
       <strong className="teams-task-goal">{teamTextPreviewLines(task.goal).join('\n')}</strong><span className="teams-task-owner">{assignee && <AgentGlyph kind={agentKindOf(assignee.assistant)} />}{assignee ? memberTitle(assignee, f) : '—'}<TeamTaskStatePill state={state} /></span>
       {taskLaunchIssue(team, task) && <span className="teams-error">{f.launchFailed} · {operationError(taskLaunchIssue(team, task)?.error)}</span>}
       {result && <span className="teams-result-preview">{teamTextPreviewLines(result).join('\n')}</span>}
+      {blocked && <small className="teams-error">{revive.openTasks(blocked.total)}</small>}
       {['pending', 'failed'].includes(task.cleanup) && <small className={task.cleanup === 'failed' ? 'teams-error' : ''}>{task.cleanup === 'failed' ? c.cleanupFailed : c.cleanupPending}</small>}
     </button>;
   };

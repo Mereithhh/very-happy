@@ -12,6 +12,7 @@ import { teamCleanupBlockingLaunch, teamTaskState, type MemberExecution, type Te
 import { useMemberExecution } from "./useMemberExecution";
 import { TeamTaskStatePill } from "./TeamTaskStatePill";
 import type { TranslationKey } from "@/text";
+import { acceptBlockedByOpenTasks, useLeadReviveCopy } from "./leadRevive";
 
 /** B-728 (UI-P1-15): CJK labels take the full-width colon, every other language ": ". */
 export function labelColon(lang: string): string {
@@ -37,6 +38,9 @@ export function TeamTaskSummary({ team, task, launchIssue, execution }: { team: 
   const colon = labelColon(useTranslation().lang);
   const issue = taskLaunchIssue(team, task);
   const parent = task.parentTaskId ? team.tasks.find((p) => p.id === task.parentTaskId) : undefined;
+  // B-945: say why「接受」is off — accepting would stop an assignee that still owns open tasks.
+  const blocked = acceptBlockedByOpenTasks(team, task);
+  const revive = useLeadReviveCopy();
   return <>
     <div className="teams-row">
       <strong className="teams-multiline">{task.goal}</strong>
@@ -47,6 +51,7 @@ export function TeamTaskSummary({ team, task, launchIssue, execution }: { team: 
       {state === "cleanupBlocked" && <OperationError error={teamCleanupBlockingLaunch(team, task)?.error} />}
       {(state === "stopped" || state === "idle" || state === "waiting") && memberSession && <Link to={`/session/${encodeURIComponent(memberSession)}`}>{tr("teams.openMemberSession")} →</Link>}
     </div>}
+    {blocked && <div className="teams-task-state-hint teams-error" role="alert" data-testid="team-accept-blocked"><p><strong>{revive.openTasks(blocked.total)}</strong></p><p>{revive.counts(blocked)}</p><p>{revive.openTasksHint}</p></div>}
     {/* B-689: the screen supplies the actionable block (Retry launch); this is the read-only fallback. */}
     {issue && (launchIssue ? launchIssue(issue) : <div className="teams-error" role="alert"><strong>{first.launchFailed}</strong><OperationError error={issue.error} /><p>{issue.status === "unknown" ? first.unknownHint : first.retryHint}</p></div>)}
     {/* The parent is a reference: its first line, like the board's parent label. */}

@@ -293,6 +293,19 @@ describe('daemon team effect recovery', () => {
         expect(mocks.remove).toHaveBeenCalledWith(expect.objectContaining({ operationId: 'op1', directory: '/isolated' }));
         expect(readReceipt(home, 'stop2')?.phase).toBe('completed');
     });
+    it('B-945: a member delegated from its lead\'s removed worktree is cleaned against the source repository', async () => {
+        const origin = { ...op(), status: 'completed' as const, sessionId: 'session1' };
+        const cleanup = { ...op(), id: 'stop3', type: 'stop' as const, sessionId: 'session1' };
+        setup(cleanup); const state = team([origin, cleanup]);
+        mocks.get.mockImplementation(async (path: string) => ({ data: path.endsWith('/operations') ? { operations: [cleanup], teams: [state] } : { team: state } }));
+        const leadWorktree = join(home, 'teams', 'worktrees', 'lead-op');
+        writeReceipt(home, { operationId: 'op1', teamId: 'team1', claimId: 'claim0', phase: 'completed', sessionId: 'session1', directory: '/isolated', repository: leadWorktree, branch: 'codex/team-op1' });
+        mocks.resolve.mockImplementation(async (_home: string, repository: string, sourceOf: (id: string) => string | undefined) => repository === leadWorktree ? (sourceOf('op1') === leadWorktree ? '/repo' : 'unexpected') : repository);
+        const worker = start(); await settled(worker);
+        expect(mocks.resolve).toHaveBeenCalledWith(home, leadWorktree, expect.any(Function));
+        expect(mocks.remove).toHaveBeenCalledWith(expect.objectContaining({ directory: '/isolated', repository: '/repo', branch: 'codex/team-op1' }));
+        expect(readReceipt(home, 'stop3')?.phase).toBe('completed');
+    });
     it('preserves failed cleanup for another pass and never marks it completed', async () => {
         const spawnOperation = { ...op(), status: 'completed' as const, sessionId: 'session1' };
         const cleanup = { ...op(), id: 'stop1', type: 'stop' as const, sessionId: 'session1' };

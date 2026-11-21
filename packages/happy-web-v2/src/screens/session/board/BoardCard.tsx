@@ -13,6 +13,8 @@ import { StaleWrapperItemActions, staleWrapperItemText } from './StaleWrapperIte
 import { WrapupDetails, wrapupHeadlineText } from './WrapupCard';
 import { wrapupView } from './wrapupModel';
 import { SelectChecklist } from './SelectChecklist';
+import { useTeamNavigationSnapshot } from '@/screens/sessions/useTeamNavigation';
+import { TEAM_SUBMIT_ACCEPT, teamSubmitOpenTasks } from './teamSubmitGuard';
 
 export function boardTime(ts: number): string {
     try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { return ''; }
@@ -54,6 +56,8 @@ export const BoardCard = forwardRef<HTMLDivElement, {
     // B-915: a 收尾 / 交接 card titles itself from its payload (「可以关闭」「2 项待确认」「已交接给 X」).
     const wrapup = wrapupView(item);
     const title = wrapup ? wrapupHeadlineText(wrapup, copy.wrapup) : (accountText?.title ?? item.title);
+    // B-945: 「验收」is off while the lead still owns open tasks (accepting would stop it).
+    const leadOpen = teamSubmitOpenTasks(item, useTeamNavigationSnapshot());
     return (
         <div ref={ref} className={`brf-card${expanded ? ' is-open' : ''}${selected ? ' is-selected' : ''}${status?.tone === 'done' ? ' is-done' : ''}${wrapup?.failed ? ' is-failed' : ''}`}
             data-item-id={item.id}>
@@ -78,11 +82,12 @@ export const BoardCard = forwardRef<HTMLDivElement, {
                     {wrapup ? <WrapupDetails item={item} view={wrapup} copy={copy} />
                         : accountText ? <div className="brf-body"><Markdown text={accountText.body} /></div> : item.bodyMd && <div className="brf-body"><Markdown text={item.bodyMd} /></div>}
                     <SelectChecklist item={item} copy={copy} />
+                    {leadOpen && <p className="brf-guard" role="alert" data-testid="board-lead-open-tasks">{copy.leadOpenTasks(leadOpen.total)}</p>}
                     {item.options && item.options.length > 0 && !isIssueReviewItem(item) && (
                         <div className="brf-opts" role="group" aria-label={copy.kinds.decision}>
                             {item.options.map((o) => (
                                 <button key={o.id} type="button" className={`brf-opt${item.ownerChoice === o.id ? ' is-chosen' : ''}`}
-                                    aria-pressed={item.ownerChoice === o.id} disabled={item.state !== 'open' && item.state !== 'in_progress'}
+                                    aria-pressed={item.ownerChoice === o.id} disabled={(item.state !== 'open' && item.state !== 'in_progress') || (!!leadOpen && o.id === TEAM_SUBMIT_ACCEPT)}
                                     onClick={() => actions.onChoose(item, o.id)}>
                                     {optionMarker(o) && <b className="brf-opt-id">{optionMarker(o)}</b>}
                                     <span className="brf-opt-text">

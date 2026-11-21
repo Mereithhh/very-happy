@@ -29,6 +29,8 @@ export const TeamActionSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('reconcile-operation'), operationId: id, claimId: id, note: z.string().trim().min(1).max(4000) }),
     // B-689: owner asks the execution computer to run a failed/uncertain operation again.
     z.object({ type: z.literal('retry-operation'), operationId: id, claimId: id }),
+    /** B-945: the owner relaunches a stopped lead that still owns open tasks (「接回负责人」): same root bot, new generation, a new root task and worktree. An old server answers invalid action. */
+    z.object({ type: z.literal('revive-lead'), botId: id }),
     /** B-730: `transfer` = the owner confirmed moving a session that is bound in another live team (Web adopt); without it the server answers `session_in_other_team`. An old server strips it. */
     z.object({ type: z.literal('join'), name: id, sessionId: id, botId: id.optional(), transfer: z.literal(true).optional() }),
     z.object({ type: z.literal('delegate'), goal: text, acceptance: z.array(text).min(1).max(32), parentTaskId: id.optional(), assigneeBotId: id.optional(), botName: id.optional(), directory: z.string().min(1).max(4096).optional(), assistant: TeamAssistantSchema.optional(), model: TeamModelSchema.optional(), agentProfile: AgentProfileChoiceSchema.optional() }),

@@ -155,6 +155,15 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     itemKeys: ['changelog.releases.nov21b.list', 'changelog.releases.nov21b.desktop'],
   },
   {
+    id: '2026-11-21-bring-the-team-lead-back',
+    cliVersion: '0.2.219',
+    date: '2026-11-21',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov21a.title',
+    summaryKey: 'changelog.releases.nov21a.summary',
+    itemKeys: ['changelog.releases.nov21a.guard', 'changelog.releases.nov21a.revive', 'changelog.releases.nov21a.cleanup'],
+  },
+  {
     id: '2026-11-20-dead-session-process-ends-its-turn',
     cliVersion: '0.2.219',
     date: '2026-11-20',

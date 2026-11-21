@@ -1,4 +1,4 @@
-import { teamBotActivity, teamCleanupHoldsSession, teamCleanupIssues, teamMemberCounts, type TeamAction, type TeamCleanupIssue, type TeamState, type TeamBot, type TeamTask, type TeamOperation, type ProjectAgentProfile } from '@slopus/happy-wire';
+import { TEAM_OWNED_TASKS_UNFINISHED, teamBotActivity, teamCleanupHoldsSession, teamCleanupIssues, teamLeadReviveBlock, teamMemberCounts, teamOwnedOpenTasks, type TeamOwnedOpenTasks, type TeamAction, type TeamCleanupIssue, type TeamState, type TeamBot, type TeamTask, type TeamOperation, type ProjectAgentProfile } from '@slopus/happy-wire';
 
 export type TeamActor = { kind: 'owner' } | { kind: 'agent'; botId: string; generation: number };
 export { TeamError, requireTeam } from './errors';
@@ -152,6 +152,21 @@ export function adoptLeadAccount(input: TeamState): TeamState | null {
     return s;
 }
 
+/** B-945: what an agent reads when its submit is refused because tasks it delegated are still open. */
+export function ownedTasksUnfinishedHint(open: TeamOwnedOpenTasks): string {
+    return `${open.total} task(s) you delegated are not closed (${open.submitted} submitted, ${open.queued} queued, ${open.running} running). Accept or return the submitted ones and finish, cancel or hand off the rest before submitting: accepting this task stops you, and no one would be left to review them. 你派出的任务还有 ${open.total} 个没收尾（待验收 ${open.submitted}、排队 ${open.queued}、进行中 ${open.running}）；先验收/退回、取消或转交，再提交。`;
+}
+/** B-945: refuses closing a task whose assignee still owns open tasks — its acceptance would stop that assignee. */
+function refuseOwnedOpenTasks(s: TeamState, botId: string): void {
+    const open = teamOwnedOpenTasks(s, botId);
+    if (open.total > 0) throw new TeamError(TEAM_OWNED_TASKS_UNFINISHED, 409, { openTasks: open.total, submitted: open.submitted, queued: open.queued, running: open.running, taskIds: open.taskIds.slice(0, 20), hint: ownedTasksUnfinishedHint(open) });
+}
+/** B-945: the root task a relaunched lead works on — the open delegations it must close. */
+export function leadReviveGoal(s: TeamState, open: TeamOwnedOpenTasks, leadId: string): string {
+    const previous = [...s.tasks].reverse().find(t => t.parentTaskId === null && t.ownerBotId === null && t.assigneeBotId === leadId);
+    const original = previous ? `\nThe team's goal was: ${previous.goal.slice(0, 2000)}` : '';
+    return `Resume as the team lead. The owner relaunched you: your previous lead session was stopped while ${open.total} task(s) you delegated were still open (${open.submitted} submitted and waiting for your review, ${open.queued} queued, ${open.running} running). Run team_inspect first, then review and accept or return each submitted task, keep queued and running work moving, and cancel or hand off what is no longer needed. Submit this task once every task you own is accepted or cancelled.${original}`;
+}
 export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamAction, ctx: { now: number; id: () => string; quiet?: boolean; /** B-902: the team's project accounts on the team's machine */ projectAccounts?: readonly ProjectAgentProfile[] | null }): { team: TeamState; credentialBotId?: string; operationId?: string; taskId?: string; scheduleId?: string } {
     requireTeam(input.archivedAt === undefined || ['archive', 'claim-operation', 'complete-operation', 'fail-operation', 'reconcile-operation', 'session-event'].includes(action.type), 'team_archived');
     const s = structuredClone(input);
@@ -375,6 +390,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             requireTeam(t.currentAttemptId === action.attemptId && t.goalVersion === action.goalVersion, 'stale_attempt');
             requireTeam(t.status === 'running', 'task_not_running');
             requireTeam(!s.tasks.some(child => child.parentTaskId === t.id && !['done', 'cancelled'].includes(child.status)), 'children_unfinished');
+            refuseOwnedOpenTasks(s, t.assigneeBotId);
             const attempt = t.attempts.find(a => a.id === t.currentAttemptId)!;
             requireTeam(actor.kind === 'owner' || attempt.generation === actor.generation, 'stale_attempt');
             t.status = 'submitted'; attempt.status = 'submitted'; attempt.result = action.result;
@@ -382,6 +398,8 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         }
         case 'accept': {
             const t = getTask(action.taskId); controls(t); requireTeam(t.currentAttemptId === action.attemptId && t.goalVersion === action.goalVersion, 'stale_attempt'); requireTeam(t.status === 'submitted', 'task_not_submitted');
+            // B-945: a task submitted before this check (or by an owner) still cannot close while its assignee owns open work.
+            refuseOwnedOpenTasks(s, t.assigneeBotId);
             t.status = 'done'; t.closedAt = now; t.attempts.find(a => a.id === t.currentAttemptId)!.status = 'accepted'; cleanup(t); break;
         }
         case 'return': {
@@ -447,6 +465,24 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             // re-reads the source repository so the relaunch can succeed.
             if (op.type === 'spawn') { const bot = s.bots.find(b => b.id === op.botId); if (bot) op.directory = teamBotRepository(s, bot); }
             operationId = op.id;
+            break;
+        }
+        case 'revive-lead': {
+            // B-945: 「接回负责人」— the owner relaunches a stopped lead that still owns open tasks. Same root bot
+            // (its delegations stay its own), new generation (the old credential is stale), a new root task for
+            // the relaunch and a launch from the lead's source repository (B-706: never the removed worktree).
+            owner();
+            const bot = s.bots.find(b => b.id === action.botId); requireTeam(bot, 'bot_not_found', 404);
+            const block = teamLeadReviveBlock(s, bot);
+            const open = teamOwnedOpenTasks(s, bot.id);
+            if (block) throw new TeamError(block, 409, { openTasks: open.total });
+            refuseFailedCleanup(bot);
+            requireCapacity(s.tasks.length < TEAM_LIMITS.tasks, 'team_task_limit', s.tasks.length, TEAM_LIMITS.tasks);
+            bot.generation++;
+            const attemptId = id();
+            const task: TeamTask = { id: id(), parentTaskId: null, goal: leadReviveGoal(s, open, bot.id), acceptance: ['Every task you delegated is accepted or cancelled (team_inspect shows none open).', 'Report what you accepted, returned, cancelled or handed off.'], goalVersion: 1, ownerBotId: null, assigneeBotId: bot.id, status: 'queued', attempts: [{ id: attemptId, botId: bot.id, generation: bot.generation, goalVersion: 1, status: 'pending', result: null }], currentAttemptId: attemptId, cleanup: 'none' };
+            s.tasks.push(task); taskId = task.id; assigned(bot);
+            operationId = operation(task, bot, 'spawn').id;
             break;
         }
         case 'claim-operation': {

@@ -6,8 +6,13 @@
  * Token discipline as MirrorBanner: bg ladder + --warn; no --accent (an
  * archived session is not live).
  */
-import { useEffect, useRef, useState } from 'react';
-import { Archive, Moon, RotateCcw, Unplug } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Archive, Moon, RotateCcw, Unplug, UsersRound } from 'lucide-react';
+import { teamOwnedOpenTasks, type TeamBot, type TeamState } from '@slopus/happy-wire';
+import { useTeamNavigationSnapshot } from '@/screens/sessions/useTeamNavigation';
+import { teamSessionMembership } from '@/screens/sessions/teamNavigation';
+import { leadSessionRevivable, useLeadReviveCopy } from '@/screens/teams/leadRevive';
 import { useSession } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Spinner } from '@/ui';
@@ -21,8 +26,21 @@ export function restoreReasonKey(reason: RestoreReason | undefined): TKey {
     return `restore.reason.${reason ?? 'unknown'}` as TKey;
 }
 
+/**
+ * B-945: the team whose stopped lead this conversation was, when the owner can bring
+ * that lead back (「接回负责人」). Restoring the old conversation cannot help: its
+ * worktree was removed when the root task was accepted.
+ */
+export function revivableLeadTeam(teams: TeamState[], sessionId: string): { team: TeamState; bot: TeamBot } | null {
+    const membership = teamSessionMembership(teams).get(sessionId);
+    return membership && membership.team.archivedAt === undefined && leadSessionRevivable(membership.team, membership.bot) ? membership : null;
+}
+
 export function SessionArchivedBanner({ sessionId }: { sessionId: string }) {
     const { t } = useTranslation();
+    const reviveCopy = useLeadReviveCopy();
+    const teams = useTeamNavigationSnapshot();
+    const leadTeam = useMemo(() => revivableLeadTeam(teams, sessionId), [teams, sessionId]);
     const session = useSession(sessionId);
     const state = useRestoreState(sessionId);
     // B-852 / QA25 P2-2: an automatic update left it offline — say why.
@@ -63,13 +81,23 @@ export function SessionArchivedBanner({ sessionId }: { sessionId: string }) {
         text = session.archivedAt != null ? t('restore.archivedNotice') : isNeverRunOffline(session) ? t('restore.neverRanNotice') : t('restore.offlineNotice');
     }
     const offline = session.archivedAt == null;
+    // B-945: a stopped lead with open tasks — explain and point at the team page's「接回负责人」.
+    // The old conversation's restore stays offered until it fails for its removed directory.
+    const missingCwd = state?.phase === 'failed' && state.reason === 'missing-cwd';
+    if (leadTeam && !busy && !hibernated) text = reviveCopy.session(leadTeam.team.name, teamOwnedOpenTasks(leadTeam.team, leadTeam.bot.id).total);
 
     return (
         <div className="mrb" data-testid="session-archived-banner" data-hibernated={hibernated ? '' : undefined}>
             <div className={`mrb-note${state?.phase === 'failed' || (autoFailure && !hibernated && !busy) ? ' mrb-note--failed' : ''}`} role="status" data-auto-restart-failed={autoFailure ? '' : undefined}>
                 {hibernated ? <Moon size={13} /> : offline ? <Unplug size={13} /> : <Archive size={13} />}
                 <span className="mrb-note-text">{text}</span>
-                <button
+                {leadTeam && !busy && (
+                    <Link className="mrb-term-btn mono" to={`/teams/${encodeURIComponent(leadTeam.team.id)}`} data-testid="session-lead-revive-link">
+                        <UsersRound size={13} aria-hidden />
+                        <span>{reviveCopy.sessionLink}</span>
+                    </Link>
+                )}
+                {!(leadTeam && missingCwd) && <button
                     type="button"
                     className="mrb-term-btn mono"
                     onClick={() => void restoreSession(sessionId)}
@@ -78,7 +106,7 @@ export function SessionArchivedBanner({ sessionId }: { sessionId: string }) {
                 >
                     {busy ? <Spinner size={13} /> : <RotateCcw size={13} />}
                     <span>{state?.phase === 'failed' ? t('restore.retry') : hibernated ? t('hibernation.wake') : t('restore.restore')}</span>
-                </button>
+                </button>}
             </div>
         </div>
     );

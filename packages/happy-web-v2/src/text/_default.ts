@@ -3453,6 +3453,13 @@ export const en = {
                 record: 'In the chat, a line says how large the record was and why it was not saved. Edits and diffs that Codex shows are cut to a readable size, so they rarely get that large at all.',
                 older: 'Sessions still on an older CLI are unblocked by the server: it keeps everything else and the session shows a strip saying how many records were too large to sync.',
             },
+            nov21a: {
+                title: 'A team lead is no longer accepted away while it still has open tasks, and a stopped lead can be brought back',
+                summary: 'Accepting a team\'s goal stops its lead. If the lead still had tasks it delegated waiting for review or still running, nobody was left to handle them, and the lead\'s old conversation only said its working directory no longer existed. Now accepting waits until the lead has closed its tasks, and a team whose lead already stopped this way shows "Bring the lead back".',
+                guard: 'While the lead still has open tasks, its goal cannot be submitted or accepted: the team page, the task details and the Briefing card say "The lead still has N open tasks" and keep Accept off. Return still works.',
+                revive: 'On the team page, "The lead has stopped with N tasks still open" offers "Bring the lead back": the same lead restarts on the same computer and repository in a fresh worktree and goes on reviewing and running its tasks. The lead\'s old conversation points to it. The button says so when the computer is offline or its CLI is too old.',
+                cleanup: 'CLI 0.2.219: members created from the lead\'s worktree are cleaned up after it was removed, instead of every cleanup failing.',
+            },
             nov20c: {
                 title: 'A session whose process died now says so, instead of looking busy',
                 summary: 'When the process behind a session was killed or crashed in the middle of a reply, the reply stayed "running" for good and the session still looked online for about ten minutes: a new message showed as delivered while nothing was there to read it. Now that reply ends as failed with the reason, and the session goes offline right away.',

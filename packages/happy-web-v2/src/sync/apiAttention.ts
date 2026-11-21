@@ -20,7 +20,8 @@ import { getHappyClientId } from './apiSocket';
 export const OWNER_LOGIN_REQUIRED = 'owner_login_required';
 
 export class AttentionApiError extends Error {
-    constructor(public status: number, public code: string) {
+    /** B-945: `details` = the refusal's other fields (a team accept refused for open tasks names `openTasks`). */
+    constructor(public status: number, public code: string, public details: Record<string, unknown> = {}) {
         super(code);
         this.name = 'AttentionApiError';
     }
@@ -52,7 +53,7 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
     }
     assertNotAuthFailure(response, 'apiAttention');
     const data = await response.json().catch(() => null);
-    if (!response.ok) throw new AttentionApiError(response.status, (data as { error?: string } | null)?.error ?? `http_${response.status}`);
+    if (!response.ok) throw new AttentionApiError(response.status, (data as { error?: string } | null)?.error ?? `http_${response.status}`, data && typeof data === 'object' ? data as Record<string, unknown> : {});
     if (!data || typeof data !== 'object') throw new AttentionApiError(502, 'invalid_response');
     return data as T;
 }

@@ -43,6 +43,8 @@ import { teamTrail, trailCopy, visibleTrail } from "@/app/locationTrail";
 import { teamProjectMenu } from "@/screens/projects/projectChoice";
 import { ChangeTeamProjectModal } from "@/screens/projects/ChangeTeamProjectModal";
 import { TeamDialog } from "./TeamDialog";
+import { LeadReviveNotice } from "./LeadReviveNotice";
+import { acceptBlockedByOpenTasks, leadReviveCopyFor, ownedTasksRefusalCount } from "./leadRevive";
 import { TeamTaskMessages, TeamTaskSummary } from "./TeamTaskDetail";
 import { useWorkspaceCopy } from "./workspaceCopy";
 import { OperationError } from "./OperationError";
@@ -130,8 +132,14 @@ function TeamsContent() {
     const kind = e instanceof TeamsApiError ? teamLoadFailure(e.status, e.code) : "error";
     if (kind === "unavailable") setUnavailable(true);
     if (kind === "notFound") setNotFound(true);
+    // B-945: an accept refused for the lead's open tasks, or a refused「接回负责人」, reads as a sentence, not a code.
+    const revive = leadReviveCopyFor(lang);
+    const openTasks = e instanceof TeamsApiError ? ownedTasksRefusalCount(e) : null;
+    const reviveRefusal = e instanceof TeamsApiError ? revive.refusals[e.code] : undefined;
     setError(
-      kind === "unavailable" ? first.unavailable
+      openTasks !== null ? `${revive.openTasks(openTasks)}. ${revive.openTasksHint}`
+        : reviveRefusal ? reviveRefusal
+        : kind === "unavailable" ? first.unavailable
         : kind === "notFound" ? first.notFound
         : tr("teams.failed", {
             reason: e instanceof Error ? e.message : "network_error",
@@ -293,6 +301,7 @@ function TeamsContent() {
           </nav>
           {view === "overview" && <>
             {!dispatchReady && <p role="status">{tr("teams.machineRequired")}</p>}
+            <LeadReviveNotice team={team} machine={executionMachine} disabled={disabled} act={actApplied} />
             {team.bots.length === 0 && <div className="teams-empty"><h2>{first.setup}</h2><p>{first.setupHint}</p><button className="teams-primary" disabled={disabled} onClick={() => setStartingExisting(true)}>{first.start}</button></div>}
             {['preparing', 'failed'].includes(launchPhase) && <div className="team-launch-state" role="status"><h2>{launchPhase === 'failed' ? first.failed : first.preparing}</h2><p>{launchPhase === 'failed' ? first.failedHint : first.preparingHint}</p>{team.tasks.filter(task => team.bots.some(bot => bot.root && bot.id === task.assigneeBotId)).map(task => <button key={task.id} onClick={() => setSelectedTask(task.id)}>{first.inspect}</button>)}</div>}
             <div className="teams-work-actions">
@@ -393,7 +402,7 @@ function TeamsContent() {
                 )}
                 {t.status === "submitted" && (
                   <button
-                    disabled={disabled}
+                    disabled={disabled || !!acceptBlockedByOpenTasks(team, t)}
                     onClick={() =>
                       void act({
                         type: "accept",

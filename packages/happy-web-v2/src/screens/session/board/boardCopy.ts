@@ -17,6 +17,8 @@ export interface BoardCopy {
     choiceNotSent: string;
     /** B-921: the server wants a signed-in login before an owner choice (an old token without a login session). */
     reloginRequired: string;
+    /** B-945: a root task's「验收」refused — its lead still owns open tasks; accepting would stop the lead. */
+    leadOpenTasks: (n: number) => string;
     status: Record<StatusKey, string>;
     decided: (choice: string) => string;
     summary: (need: number, asked: number) => string;
@@ -107,6 +109,7 @@ const ZH: BoardCopy = {
     actionFailed: '汇报板操作没有成功，已刷新',
     choiceNotSent: '已记下你的选择，但没能发消息告诉负责人',
     reloginRequired: '这台设备的登录太旧，汇报板上的选择没有生效。请退出后重新登录再选（点这里去账号设置）',
+    leadOpenTasks: (n) => `负责人还有 ${n} 个任务没收尾，现在验收会停掉负责人。先让它验收、取消或转交这些任务。`,
     status: { waiting: '等你', unanswered: '未答', working: '在做', inProgress: '处理中', answered: '已答', completed: '已完成', decided: '已决定', dismissed: '已忽略' },
     decided: (choice) => `已决定 ${choice}`,
     summary: (need, asked) => `${need} 件等你 · ${asked} 件未结`,
@@ -186,6 +189,7 @@ const EN: BoardCopy = {
     actionFailed: 'That Briefing action did not go through; refreshed',
     choiceNotSent: 'Your choice is saved, but the message to the lead was not sent',
     reloginRequired: 'This device\'s sign-in is too old, so your Briefing choice was not saved. Sign out and sign in again, then choose (tap to open Account)',
+    leadOpenTasks: (n) => `The lead still has ${n} open ${n === 1 ? 'task' : 'tasks'}; accepting now would stop it. Have it accept, cancel or hand them off first.`,
     status: { waiting: 'Waiting', unanswered: 'Unanswered', working: 'Working', inProgress: 'In progress', answered: 'Answered', completed: 'Done', decided: 'Decided', dismissed: 'Dismissed' },
     decided: (choice) => `Chose ${choice}`,
     summary: (need, asked) => `${need} need you · ${asked} open`,
