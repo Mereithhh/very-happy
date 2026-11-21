@@ -18,6 +18,8 @@ const codexTier = BUNDLED_LATEST_MODELS.agents.codex!;
 
 // Codex 0.154 / 0.166 bundled `model/list` (probed 2026-10-30, empty CODEX_HOME).
 const CODEX_154 = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.2'].map((code) => ({ code }));
+// Codex 0.171.0 app-server `model/list` (probed 2026-11-21 for B-949, empty CODEX_HOME).
+const CODEX_171 = ['gpt-6.2-sol', 'gpt-6.2-astra', 'gpt-6.1-terra', 'gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5'].map((code) => ({ code }));
 const CODEX_166 = ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-6.1-terra', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5'].map((code) => ({ code }));
 // Claude SDK catalog: aliases with resolvedModel.
 const CLAUDE_CATALOG = [
@@ -125,13 +127,34 @@ describe('resolveLatestModel — claude (same tier only)', () => {
 
 });
 
+describe('resolveLatestModel — claude on SDK 0.3.330 (B-949)', () => {
+    // CC 2.1.330 catalog without machine overrides (probed 2026-11-21).
+    const CC_2_1_330 = [
+        { code: 'default', value: 'Default (recommended)', resolvedModel: 'claude-opus-5-5' },
+        { code: 'opus', value: 'Opus', resolvedModel: 'claude-opus-5-5' },
+        { code: 'claude-fable-5-1[1m]', value: 'Fable', resolvedModel: 'claude-fable-5-1' },
+        { code: 'sonnet', value: 'Sonnet', resolvedModel: 'claude-sonnet-5-5' },
+        { code: 'haiku', value: 'Haiku', resolvedModel: 'claude-haiku-5-5' },
+    ];
+    it('still follows Opus 5.5 — newer Sonnet / Haiku never cross the tier, and no newer Opus exists', () => {
+        const caps = [CLAUDE_OPUS_55_CAPABILITY, 'claude-sonnet-5-5-v1', 'claude-haiku-5-5-v1'];
+        expect(resolveLatestModel(null, 'claude', { kind: 'session', capabilities: caps, catalog: CC_2_1_330 }))
+            .toMatchObject({ model: 'claude-opus-5-5[1m]', newest: 'claude-opus-5-5', limited: false });
+        expect(BUNDLED_LATEST_MODELS.agents.claude!.models.map((m) => m.model)).toEqual(['claude-opus-5-5']);
+    });
+});
+
 describe('resolveLatestModel — codex', () => {
-    it('Codex 0.166 catalog → gpt-6.1-sol', () => {
-        expect(resolveLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_166, configuredModel: null })).toMatchObject({ model: 'gpt-6.1-sol', limited: false });
+    it('Codex 0.171 catalog → gpt-6.2-sol (B-949)', () => {
+        expect(resolveLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_171, configuredModel: null })).toMatchObject({ model: 'gpt-6.2-sol', newest: 'gpt-6.2-sol', limited: false });
+    });
+
+    it('Codex 0.166 catalog → gpt-6.1-sol, marked limited now that gpt-6.2-sol exists', () => {
+        expect(resolveLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_166, configuredModel: null })).toMatchObject({ model: 'gpt-6.1-sol', newest: 'gpt-6.2-sol', limited: true });
     });
 
     it('Codex 0.154 catalog lacks gpt-6.x-sol → newest sol it lists (no 400)', () => {
-        expect(resolveLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_154, configuredModel: null })).toMatchObject({ model: 'gpt-5.6-sol', newest: 'gpt-6.1-sol', limited: true });
+        expect(resolveLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_154, configuredModel: null })).toMatchObject({ model: 'gpt-5.6-sol', newest: 'gpt-6.2-sol', limited: true });
     });
 
     it('a session without a catalog proves nothing → machine default', () => {
@@ -142,13 +165,17 @@ describe('resolveLatestModel — codex', () => {
         expect(resolveLatestModel(null, 'codex', { kind: 'machine', agentVersion: '0.154.0' }).model).toBe('gpt-5.6-sol');
         expect(resolveLatestModel(null, 'codex', { kind: 'machine', agentVersion: '0.158.0' }).model).toBe('gpt-6-sol');
         expect(resolveLatestModel(null, 'codex', { kind: 'machine', agentVersion: '0.166.0' }).model).toBe('gpt-6.1-sol');
+        // B-949: gpt-6.2-sol entered the bundled catalog in 0.169.1, not 0.169.0.
+        expect(resolveLatestModel(null, 'codex', { kind: 'machine', agentVersion: '0.169.0' }).model).toBe('gpt-6.1-sol');
+        expect(resolveLatestModel(null, 'codex', { kind: 'machine', agentVersion: '0.169.1' }).model).toBe('gpt-6.2-sol');
+        expect(resolveLatestModel(null, 'codex', { kind: 'machine', agentVersion: '0.171.0' }).model).toBe('gpt-6.2-sol');
     });
 });
 
 describe('machine configuration wins over follow-latest (codex / gemini)', () => {
     it('a model pinned in the machine config → send nothing, report it', () => {
         expect(resolveLatestModel(null, 'codex', { kind: 'session', catalog: CODEX_166, configuredModel: 'gpt-5.6-sol' }))
-            .toMatchObject({ model: null, configured: 'gpt-5.6-sol', label: 'gpt-5.6-sol', limited: false, newest: 'gpt-6.1-sol' });
+            .toMatchObject({ model: null, configured: 'gpt-5.6-sol', label: 'gpt-5.6-sol', limited: false, newest: 'gpt-6.2-sol' });
         expect(resolveLatestModel(null, 'gemini', { kind: 'session', catalog: [{ code: 'gemini-3.1-pro-preview' }], configuredModel: 'gemini-2.5-flash' }).model).toBeNull();
         expect(resolveLatestModel(null, 'codex', { kind: 'machine', agentVersion: '0.166.0', configuredModel: 'gpt-5.6-sol' }).configured).toBe('gpt-5.6-sol');
     });
@@ -214,7 +241,7 @@ describe('parseLatestModelTable', () => {
 
     it('a broken server tier falls back to the bundled one at resolve time', () => {
         const table = { version: 9, agents: { codex: { tier: 'sol', pattern: '(', models: [] } } } as LatestModelTable;
-        expect(resolveLatestModel(table, 'codex', { kind: 'none' }).model).toBe('gpt-6.1-sol');
+        expect(resolveLatestModel(table, 'codex', { kind: 'none' }).model).toBe('gpt-6.2-sol');
     });
 });
 

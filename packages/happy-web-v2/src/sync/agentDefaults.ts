@@ -15,6 +15,10 @@ import {
     CLAUDE_FABLE_52_MODEL,
     CLAUDE_FABLE_52_CAPABILITY,
     supportsClaudeFable52,
+    CLAUDE_SONNET_55_MODEL,
+    CLAUDE_HAIKU_55_MODEL,
+    supportsClaudeSonnet55,
+    supportsClaudeHaiku55,
     isClaudeOpus55Model,
     isLatestModelMode,
     normalizeAgentKey,
@@ -30,7 +34,7 @@ import {
     AgentDefaultOverrideSchema,
     AgentDefaultOverridesSchema,
 } from '@slopus/happy-wire';
-export { CLAUDE_OPUS_55_MODEL, CLAUDE_OPUS_55_CAPABILITY, supportsClaudeOpus55, CLAUDE_FABLE_52_MODEL, CLAUDE_FABLE_52_CAPABILITY, supportsClaudeFable52, normalizeAgentKey };
+export { CLAUDE_OPUS_55_MODEL, CLAUDE_OPUS_55_CAPABILITY, supportsClaudeOpus55, CLAUDE_FABLE_52_MODEL, CLAUDE_FABLE_52_CAPABILITY, supportsClaudeFable52, CLAUDE_SONNET_55_MODEL, CLAUDE_HAIKU_55_MODEL, supportsClaudeSonnet55, supportsClaudeHaiku55, normalizeAgentKey };
 export type { AgentKey, AgentDefaultConfig };
 export const agentKeys = AGENT_KEYS;
 

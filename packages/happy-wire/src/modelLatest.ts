@@ -81,14 +81,18 @@ export type LatestModelsResponse = z.infer<typeof LatestModelsResponseSchema>;
  * - Claude: claude-agent-sdk 0.3.306 / Claude Code 2.1.306 knows no Opus newer
  *   than claude-opus-5-5; Opus 5.5 needs wrapper capability claude-opus-5-5-v1
  *   (CLI >= 0.2.149, B-487). Re-checked 2026-11-10 on SDK 0.3.322 / CC 2.1.322
- *   (B-907): still no newer Opus. The table holds the Opus tier only — follow
+ *   (B-907): still no newer Opus; again 2026-11-21 on SDK 0.3.330 / CC
+ *   2.1.330 (B-949: newest per family fable-5-2 / opus-5-5 / sonnet-5-5 /
+ *   haiku-5-5). The table holds the Opus tier only — follow
  *   latest never crosses to Fable (B-844); Fable's newest (now claude-fable-5-2,
  *   capability claude-fable-5-2-v1) is the picker's family pick (web
  *   modelModeOptions).
  * - Codex: the sol tier is the flagship — it is `isDefault` in Codex 0.160+'s
  *   `model/list`. Bundled catalogs: gpt-6-sol from 0.157.0, gpt-6.1-sol from
  *   0.160.0 (bisected over 0.154–0.166; re-checked 2026-11-06 for B-893,
- *   gpt-6.1-terra from 0.165.0). `agentVersion` is that catalog threshold, not
+ *   gpt-6.1-terra from 0.165.0). gpt-6.2-sol (and gpt-6.2-astra) from 0.169.1
+ *   — absent in 0.169.0, bisected 2026-11-21 for B-949; Codex 0.171.0's
+ *   app-server `model/list` marks gpt-6.2-sol `isDefault`. `agentVersion` is that catalog threshold, not
  *   a run threshold: `codex exec -m` ran gpt-6.1-sol/terra, gpt-6-sol/luna/astra
  *   end to end on llm-hub with Codex 0.154.0 and 0.167.0 (B-893). Follow-latest
  *   still only resolves to what a wrapper proves; the picker lists the rest

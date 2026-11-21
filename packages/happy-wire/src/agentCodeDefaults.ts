@@ -55,13 +55,35 @@ export function supportsClaudeFable52(metadata: { capabilities?: string[] | null
     return metadata?.capabilities?.includes(CLAUDE_FABLE_52_CAPABILITY) === true;
 }
 
+/**
+ * B-949: Sonnet 5.5 and Haiku 5.5 as pinned ids. Claude Code 2.1.330
+ * (claude-agent-sdk 0.3.330) resolves `sonnet` / `haiku` to them and runs
+ * `claude-sonnet-5-5`, `claude-sonnet-5-5[1m]` and `claude-haiku-5-5` (probed
+ * 2026-11-21). Wrappers on that SDK advertise these capabilities; the picker
+ * lists the pinned ids in a live session only then — an older wrapper simply
+ * does not see them. No `claude-haiku-5-5[1m]`: 2.1.330's catalog has no 1M
+ * twin for Haiku (the marker is accepted and dropped).
+ */
+export const CLAUDE_SONNET_55_MODEL = 'claude-sonnet-5-5';
+export const CLAUDE_SONNET_55_CAPABILITY = 'claude-sonnet-5-5-v1';
+export const CLAUDE_HAIKU_55_MODEL = 'claude-haiku-5-5';
+export const CLAUDE_HAIKU_55_CAPABILITY = 'claude-haiku-5-5-v1';
+
+export function supportsClaudeSonnet55(metadata: { capabilities?: string[] | null } | null | undefined): boolean {
+    return metadata?.capabilities?.includes(CLAUDE_SONNET_55_CAPABILITY) === true;
+}
+
+export function supportsClaudeHaiku55(metadata: { capabilities?: string[] | null } | null | undefined): boolean {
+    return metadata?.capabilities?.includes(CLAUDE_HAIKU_55_CAPABILITY) === true;
+}
+
 export const AGENT_CODE_DEFAULTS: Readonly<Record<AgentKey, AgentDefaultConfig>> = {
     // The Claude UI key for YOLO is `bypassPermissions`; the CLI also accepts
     // `yolo` and maps it to the Claude SDK's bypass mode.
     // model: `latest` (B-844) = the newest model of the agent's tier that the
     // session's wrapper can run, resolved at send time (modelLatest.ts) and
     // never sent as is. Today: Claude → claude-opus-5-5 (pinned id, not the
-    // `opus` alias), Codex → gpt-6.1-sol on Codex >= 0.160, Gemini → the
+    // `opus` alias), Codex → gpt-6.2-sol on Codex >= 0.169.1 (gpt-6.1-sol on >= 0.160), Gemini → the
     // newest pro its session catalog lists. effort null = don't send effort.
     claude: { permissionMode: 'bypassPermissions', modelMode: LATEST_MODEL_MODE, effortLevel: null },
     codex: { permissionMode: 'yolo', modelMode: LATEST_MODEL_MODE, effortLevel: 'medium' },

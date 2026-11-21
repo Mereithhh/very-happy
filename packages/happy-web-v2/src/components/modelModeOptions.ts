@@ -1,7 +1,7 @@
 import type { Metadata } from '@/sync/storageTypes';
 import type { SimpleTranslationKey } from '@/text';
 import { hackModes } from '@/sync/modeHacks';
-import { CLAUDE_FABLE_52_MODEL, getCodeAgentDefaults, isPiAgent, supportsClaudeFable52, supportsClaudeOpus55 } from '@/sync/agentDefaults';
+import { CLAUDE_FABLE_52_MODEL, CLAUDE_HAIKU_55_MODEL, CLAUDE_SONNET_55_MODEL, getCodeAgentDefaults, isPiAgent, supportsClaudeFable52, supportsClaudeHaiku55, supportsClaudeOpus55, supportsClaudeSonnet55 } from '@/sync/agentDefaults';
 import { getLatestModelTier, type LatestModelTable } from '@slopus/happy-wire';
 
 export type ModeOption = {
@@ -99,7 +99,10 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
  * catalog lists Fable only as `claude-fable-5-1[1m]` (B-893), and so does
  * 2.1.322 on a subscription login (B-907; on an API-key provider it lists the
  * `fable` alias → claude-fable-5-2). Fable 5.2 (B-907) ships in SDK 0.3.322;
- * Fable 5.1 stays for sessions already on it. Opus 5.5 is the code default
+ * Fable 5.1 stays for sessions already on it. Sonnet 5.5 and Haiku 5.5 are
+ * pinned too since B-949 (SDK 0.3.330 / CC 2.1.330: `sonnet` → Sonnet 5.5,
+ * `haiku` → Haiku 5.5 without machine overrides, probed 2026-11-21), so the
+ * aliases are named as aliases. Opus 5.5 is the code default
  * (agentDefaults.ts). `[1m]` is Claude Code's 1M-context marker (accepted by
  * the daemon resume path since B-290). `fable5` (pinned Fable 5) is
  * deliberately absent: 2.1.258 rejects it with `unrecognized_model` (probed
@@ -117,9 +120,11 @@ export function getClaudeModelModes(): ModelMode[] {
         { key: 'best', name: 'best', description: null },
         { key: 'opus', name: 'opus (alias)', description: null },
         { key: 'opus[1m]', name: 'opus (alias) · 1M', description: null },
-        { key: 'sonnet', name: 'Sonnet 5.5', description: null },
-        { key: 'sonnet[1m]', name: 'Sonnet 5.5 · 1M', description: null },
-        { key: 'haiku', name: 'Haiku 5.5', description: null },
+        ...CLAUDE_SONNET_55_MODELS,
+        ...CLAUDE_HAIKU_55_MODELS,
+        { key: 'sonnet', name: 'sonnet (alias)', description: null },
+        { key: 'sonnet[1m]', name: 'sonnet (alias) · 1M', description: null },
+        { key: 'haiku', name: 'haiku (alias)', description: null },
         { key: 'opusplan', name: 'opusplan', description: null },
     ];
 }
@@ -133,6 +138,17 @@ const CLAUDE_PINNED_MODELS: ModelMode[] = [
 const CLAUDE_FABLE_52_MODELS: ModelMode[] = [
     { key: 'claude-fable-5-2', name: 'Fable 5.2', description: null },
     { key: 'claude-fable-5-2[1m]', name: 'Fable 5.2 · 1M', description: null },
+];
+
+/** B-949: listed in a live session only when its wrapper advertises `claude-sonnet-5-5-v1` (SDK 0.3.330+). */
+const CLAUDE_SONNET_55_MODELS: ModelMode[] = [
+    { key: CLAUDE_SONNET_55_MODEL, name: 'Sonnet 5.5', description: null },
+    { key: `${CLAUDE_SONNET_55_MODEL}[1m]`, name: 'Sonnet 5.5 · 1M', description: null },
+];
+
+/** B-949: `claude-haiku-5-5-v1`; no 1M twin (Claude Code 2.1.330 lists none for Haiku). */
+const CLAUDE_HAIKU_55_MODELS: ModelMode[] = [
+    { key: CLAUDE_HAIKU_55_MODEL, name: 'Haiku 5.5', description: null },
 ];
 
 const LONG_CONTEXT = '[1m]';
@@ -188,25 +204,31 @@ export function withClaudeCatalogBases(models: ModelMode[]): ModelMode[] {
  * (listed only as the `opus` alias) and — Codex — the gpt-6 generation, which
  * every Codex on llm-hub runs whether or not it bundles the entry (B-893).
  */
-export function catalogRunnableKeys(flavor: AgentFlavor, codes: readonly string[], opts: { claudeOpus55?: boolean; claudeFable52?: boolean } = {}): Set<string> {
+export function catalogRunnableKeys(flavor: AgentFlavor, codes: readonly string[], opts: { claudeOpus55?: boolean; claudeFable52?: boolean; claudeSonnet55?: boolean; claudeHaiku55?: boolean } = {}): Set<string> {
     const out = new Set(codes);
     for (const code of codes) if (code.endsWith(LONG_CONTEXT)) out.add(code.slice(0, -LONG_CONTEXT.length));
     if (flavor === 'codex') for (const { key } of CODEX_KNOWN_MODELS) out.add(key);
     if (flavor === 'claude' && opts.claudeOpus55 !== false) out.add('claude-opus-5-5');
     // B-907: a subscription catalog on CC 2.1.322 still lists only Fable 5.1.
     if (flavor === 'claude' && opts.claudeFable52 !== false) out.add(CLAUDE_FABLE_52_MODEL);
+    // B-949: the catalog lists them only as the `sonnet` / `haiku` aliases.
+    if (flavor === 'claude' && opts.claudeSonnet55 !== false) out.add(CLAUDE_SONNET_55_MODEL);
+    if (flavor === 'claude' && opts.claudeHaiku55 !== false) out.add(CLAUDE_HAIKU_55_MODEL);
     return out;
 }
 
 /**
  * B-893: the gpt-6 generation, newest first, with the first Codex whose
  * bundled `model/list` carries each (`codex debug models`, bisected over
- * 0.154–0.167 on 2026-11-06). An older Codex still runs them — 0.154 ran all
+ * 0.154–0.167 on 2026-11-06; gpt-6.2-* over 0.167–0.171 on 2026-11-21 for
+ * B-949 — 0.169.0 lacks them, 0.169.1 has both). An older Codex still runs them — 0.154 ran all
  * five end to end through `codex exec -m` on llm-hub — it only lacks their
  * catalog entry (effort levels, context window), so the picker lists them
  * everywhere and marks the gap (codexModelGate) instead of hiding them.
  */
 export const CODEX_KNOWN_MODELS: ReadonlyArray<{ key: string; since?: string }> = [
+    { key: 'gpt-6.2-sol', since: '0.169.1' },
+    { key: 'gpt-6.2-astra', since: '0.169.1' },
     { key: 'gpt-6.1-sol', since: '0.160.0' },
     { key: 'gpt-6.1-terra', since: '0.165.0' },
     { key: 'gpt-6-astra' },
@@ -269,8 +291,9 @@ export function getCodexModelModes(): ModelMode[] {
  * Models the wrapper's published catalog can lack but the session can still
  * run: pinned Opus 5.5 (the SDK lists it only under its `opus` alias, and only
  * on wrappers that advertise the capability), pinned Fable 5.2 (B-907, same
- * rule: `claude-fable-5-2-v1`) and Codex models newer than
- * Codex's bundled list.
+ * rule: `claude-fable-5-2-v1`), pinned Sonnet 5.5 / Haiku 5.5 (B-949:
+ * `claude-sonnet-5-5-v1` / `claude-haiku-5-5-v1`) and Codex models newer
+ * than Codex's bundled list.
  */
 function getCatalogExtras(flavor: AgentFlavor, metadata: Metadata | null | undefined): ModelMode[] {
     if (flavor === 'codex') return CODEX_EXTRA_MODELS;
@@ -278,6 +301,8 @@ function getCatalogExtras(flavor: AgentFlavor, metadata: Metadata | null | undef
         return [
             ...(supportsClaudeOpus55(metadata) ? CLAUDE_PINNED_MODELS : []),
             ...(supportsClaudeFable52(metadata) ? CLAUDE_FABLE_52_MODELS : []),
+            ...(supportsClaudeSonnet55(metadata) ? CLAUDE_SONNET_55_MODELS : []),
+            ...(supportsClaudeHaiku55(metadata) ? CLAUDE_HAIKU_55_MODELS : []),
         ];
     }
     return [];
@@ -287,16 +312,24 @@ function getCatalogExtras(flavor: AgentFlavor, metadata: Metadata | null | undef
  * With pinned Opus 5.5 in the menu, the SDK's own `opus` alias entry (display
  * name "Opus 5.5", resolvedModel claude-opus-5-5) reads as a duplicate. Keep
  * the entry — a session may have it selected — but name it for what it is.
+ * B-949: the same for `sonnet` / `haiku` once pinned Sonnet 5.5 / Haiku 5.5 are
+ * listed (CC 2.1.330 names those catalog rows just 「Sonnet」 / 「Haiku」).
  */
 function labelPinnedAliases(flavor: AgentFlavor, metadata: Metadata | null | undefined, models: ModelMode[]): ModelMode[] {
-    if (flavor !== 'claude' || !supportsClaudeOpus55(metadata)) return models;
-    const pinnedKeys = new Set(CLAUDE_PINNED_MODELS.map((model) => model.key));
+    if (flavor !== 'claude') return models;
+    const pinnedIds = new Set([
+        ...(supportsClaudeOpus55(metadata) ? ['claude-opus-5-5'] : []),
+        ...(supportsClaudeSonnet55(metadata) ? [CLAUDE_SONNET_55_MODEL] : []),
+        ...(supportsClaudeHaiku55(metadata) ? [CLAUDE_HAIKU_55_MODEL] : []),
+    ]);
+    if (pinnedIds.size === 0) return models;
+    const base = (id: string) => id.replace(/\[1m\]$/, '');
     const aliasOfPinned = new Set((metadata?.models ?? [])
-        .filter((model) => model.code !== 'default' && !pinnedKeys.has(model.code)
-            && typeof model.resolvedModel === 'string' && model.resolvedModel.replace(/\[1m\]$/, '') === 'claude-opus-5-5')
+        .filter((model) => model.code !== 'default' && !pinnedIds.has(base(model.code))
+            && typeof model.resolvedModel === 'string' && pinnedIds.has(base(model.resolvedModel)))
         .map((model) => model.code));
     return models.map((model) => aliasOfPinned.has(model.key)
-        ? { ...model, name: `${model.key.replace(/\[1m\]$/, '')} (alias${model.key.endsWith('[1m]') ? ', 1M context' : ''})` }
+        ? { ...model, name: `${base(model.key)} (alias${model.key.endsWith('[1m]') ? ', 1M context' : ''})` }
         : model);
 }
 

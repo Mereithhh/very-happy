@@ -26,14 +26,16 @@ export const LONG_CONTEXT_SUFFIX = '[1m]';
 // B-893: the two flagship families (Opus, Fable) lead.
 const CLAUDE_FAMILY_ORDER: readonly ModelFamily[] = ['opus', 'fable', 'sonnet', 'haiku'];
 /** Keys Claude Code accepts with the 1M marker (the pre-B-849a list offered exactly these). */
-const CLAUDE_LONG_CONTEXT_BASES: ReadonlySet<string> = new Set(['claude-opus-5-5', 'claude-fable-5-2', 'claude-fable-5-1', 'opus', 'sonnet', 'fable']);
+const CLAUDE_LONG_CONTEXT_BASES: ReadonlySet<string> = new Set(['claude-opus-5-5', 'claude-fable-5-2', 'claude-fable-5-1', 'claude-sonnet-5-5', 'opus', 'sonnet', 'fable']);
 
 /**
  * B-908: picking one of these takes its 1M twin by default. They are the
  * models whose full 1M window bills at the standard rate (Claude 4.6+ pricing,
  * Haiku excepted) and whose `[1m]` form Claude Code runs. Sonnet keeps its
  * switch but starts off: CC 2.1.322's own catalog lists no Sonnet 5.5 1M
- * entry (only sonnet-4-6[1m]), so we do not turn it on for the user.
+ * entry (only sonnet-4-6[1m]), so we do not turn it on for the user. B-949:
+ * pinned claude-sonnet-5-5 too — CC 2.1.330 runs its `[1m]` form but its
+ * published catalog still lists no 1M Sonnet row.
  */
 const CLAUDE_LONG_CONTEXT_DEFAULT_BASES: ReadonlySet<string> = new Set(['claude-opus-5-5', 'claude-fable-5-2', 'claude-fable-5-1', 'opus', 'fable']);
 
