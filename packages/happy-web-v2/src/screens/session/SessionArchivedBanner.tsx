@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Archive, Moon, RotateCcw, Unplug, UsersRound } from 'lucide-react';
 import { teamOwnedOpenTasks, type TeamBot, type TeamState } from '@slopus/happy-wire';
-import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
+import { useTeamNavigationSnapshot } from '@/screens/sessions/useTeamNavigation';
 import { teamSessionMembership } from '@/screens/sessions/teamNavigation';
 import { leadSessionRevivable, useLeadReviveCopy } from '@/screens/teams/leadRevive';
 import { useSession } from '@/sync/storage';
@@ -39,7 +39,7 @@ export function revivableLeadTeam(teams: TeamState[], sessionId: string): { team
 export function SessionArchivedBanner({ sessionId }: { sessionId: string }) {
     const { t } = useTranslation();
     const reviveCopy = useLeadReviveCopy();
-    const teams = useTeamNavigation();
+    const teams = useTeamNavigationSnapshot();
     const leadTeam = useMemo(() => revivableLeadTeam(teams, sessionId), [teams, sessionId]);
     const session = useSession(sessionId);
     const state = useRestoreState(sessionId);

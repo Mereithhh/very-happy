@@ -60,6 +60,15 @@ export function teamNavigationSnapshot(): TeamState[] {
 export function isTeamNavigationLoaded(teams: readonly TeamState[]): boolean {
   return teams !== empty;
 }
+/** B-945: the same snapshot without starting the fetch loop — for cards and banners that only
+ *  read what the sidebar already loaded (unknown = empty; the server still enforces). */
+function subscribePassive(listener: () => void) {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+export function useTeamNavigationSnapshot() {
+  return useSyncExternalStore(subscribePassive, getSnapshot, () => empty);
+}
 export function useTeamNavigation() {
   return useSyncExternalStore(subscribe, getSnapshot, () => empty);
 }

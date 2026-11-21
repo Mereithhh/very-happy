@@ -13,7 +13,7 @@ import { StaleWrapperItemActions, staleWrapperItemText } from './StaleWrapperIte
 import { WrapupDetails, wrapupHeadlineText } from './WrapupCard';
 import { wrapupView } from './wrapupModel';
 import { SelectChecklist } from './SelectChecklist';
-import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
+import { useTeamNavigationSnapshot } from '@/screens/sessions/useTeamNavigation';
 import { TEAM_SUBMIT_ACCEPT, teamSubmitOpenTasks } from './teamSubmitGuard';
 
 export function boardTime(ts: number): string {
@@ -57,7 +57,7 @@ export const BoardCard = forwardRef<HTMLDivElement, {
     const wrapup = wrapupView(item);
     const title = wrapup ? wrapupHeadlineText(wrapup, copy.wrapup) : (accountText?.title ?? item.title);
     // B-945: 「验收」is off while the lead still owns open tasks (accepting would stop it).
-    const leadOpen = teamSubmitOpenTasks(item, useTeamNavigation());
+    const leadOpen = teamSubmitOpenTasks(item, useTeamNavigationSnapshot());
     return (
         <div ref={ref} className={`brf-card${expanded ? ' is-open' : ''}${selected ? ' is-selected' : ''}${status?.tone === 'done' ? ' is-done' : ''}${wrapup?.failed ? ' is-failed' : ''}`}
             data-item-id={item.id}>

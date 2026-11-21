@@ -91,5 +91,5 @@ const zh: typeof en = {
 /** Both languages, for tests that every key has copy. */
 export const LEAD_REVIVE_COPY = { en, zh };
 export type LeadReviveCopy = typeof en;
-export function leadReviveCopyFor(lang: string): LeadReviveCopy { return lang.startsWith("zh") ? zh : en; }
+export function leadReviveCopyFor(lang: string | undefined): LeadReviveCopy { return lang?.startsWith("zh") ? zh : en; }
 export function useLeadReviveCopy(): LeadReviveCopy { return leadReviveCopyFor(useTranslation().lang); }
