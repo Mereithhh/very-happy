@@ -384,6 +384,23 @@ the board; a session adopted as lead mid-run gets them after its next restart.
 - Cancelling closes the unfinished subtree. Before a parent is submitted or
   handed off, its child work must be resolved. Child completion alone does not
   prove that the parent goal is satisfied.
+- Accepting a task stops its assignee, so a task whose assignee still owns open
+  tasks (tasks it delegated, including the lead's top-level delegations, that are
+  queued, running or submitted) can be neither submitted nor accepted: the
+  refusal is `owned_tasks_unfinished` with the counts, and the team page, task
+  details and Briefing card say "The lead still has N open tasks" with Accept
+  off. Return still works. Accept/return, cancel or hand off those tasks first.
+- **Bring the lead back.** When the lead was stopped while tasks it delegated
+  were still open (a team whose goal was accepted before that check existed),
+  the team page shows "The lead has stopped with N tasks still open" and
+  **Bring the lead back** (owner only, signed in on the web). It relaunches the
+  same lead (new generation, so the old credential stops working) on the team's
+  computer, in a fresh worktree from its original repository, with a task to
+  review, finish or cancel what it still owns; the lead's old conversation
+  points to the team page. The button is off, with the reason, while the
+  computer is offline, its CLI cannot run team launches, or the lead is already
+  running or starting. Members created from the lead's removed worktree are
+  cleaned up against the original repository (CLI 0.2.219).
 - Team write tools (`team_delegate`, `team_message`, `team_submit`,
   `team_accept`, `team_return`, `team_cancel`, `team_handoff`, `team_schedule_*`)
   answer with a short receipt: the task's status, current attempt and goal
