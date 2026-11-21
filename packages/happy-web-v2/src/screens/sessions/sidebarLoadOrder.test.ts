@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { buildSidebarTree } from './sidebarTree';
-import { sortGroupsByRecent, stabilizeGroupOrder, stabilizeRowOrder, type FrozenRowOrder } from './sidebarLoadOrder';
+import { LOAD_SETTLE_MS, settledPrev, sortGroupsByRecent, stabilizeGroupOrder, stabilizeRowOrder, type FrozenRowOrder } from './sidebarLoadOrder';
 import { sortRowsByManualOrder } from './sidebarOrder';
 
 type R = { key: string; ts: number; createdAt?: number; sessionId?: string };
@@ -115,10 +115,42 @@ describe('B-947 manual order is untouched', () => {
   it('Sidebar wires the frozen order only into the non-manual fallback, and the re-sort menu item', () => {
     const src = readFileSync(new URL('./Sidebar.tsx', import.meta.url), 'utf8');
     const manual = src.indexOf('priorityFirst(sortRowsByManualOrder(rows, orderSetting!))');
-    const frozen = src.indexOf('stabilizeRowOrder(rowOrderRef.current, rows)');
+    const frozen = src.indexOf('stabilizeRowOrder(settledPrev(rowOrderRef.current, rowsReadyAtRef.current, Date.now()), rows)');
     expect(manual).toBeGreaterThan(0);
     expect(frozen).toBeGreaterThan(manual); // manual returns before the frozen fallback
     expect(src).toContain("key: 'resort-recent'");
     expect(src).toContain('stabilizeGroupOrder(prev, prev ? built.projects : sortGroupsByRecent(built.projects)');
+    expect(src).toContain('const prev = settledPrev(projectOrderRef.current, projectsReadyAtRef.current, Date.now());');
+  });
+});
+
+describe('B-947 data that arrives in batches at load', () => {
+  const g = (id: string, lastActivity: number) => ({ id, lastActivity });
+  // Mirrors Sidebar: prev = settledPrev(ref, readyAt, now); fresh snapshot sorts by recent.
+  const step = (ref: string[] | null, readyAt: number, now: number, groups: { id: string; lastActivity: number }[]) => {
+    const prev = settledPrev(ref, readyAt, now);
+    return stabilizeGroupOrder(prev, prev ? groups : sortGroupsByRecent(groups), (x) => x.id);
+  };
+  it('a group or activity that arrives inside the settle window is ranked by activity, not put on top', () => {
+    const t0 = 1000;
+    let s = step(null, t0, t0, [g('a', 30), g('b', 20)]);
+    // 400ms later: terminals bring folder group "c" (oldest) and new activity for "b"
+    s = step(s.state, t0, t0 + 400, [g('a', 30), g('b', 50), g('c', 5)]);
+    expect(s.groups.map((x) => x.id)).toEqual(['b', 'a', 'c']);
+    // after the window: frozen — activity no longer moves anything, a NEW group goes on top
+    s = step(s.state, t0, t0 + LOAD_SETTLE_MS + 1, [g('a', 999), g('b', 50), g('c', 5), g('d', 1)]);
+    expect(s.groups.map((x) => x.id)).toEqual(['d', 'b', 'a', 'c']);
+  });
+  it('rows that trail the first batch inside the window land by activity too', () => {
+    const t0 = 0;
+    let st = stabilizeRowOrder(settledPrev(null, t0, t0), [row('s1', 10), row('s2', 5)]).state;
+    const late = stabilizeRowOrder(settledPrev(st, t0, 300), [row('s1', 10), row('s2', 5), row('t:old', 8)]);
+    expect(keys(late.rows)).toEqual(['s1', 't:old', 's2']);
+    st = late.state;
+    const after = stabilizeRowOrder(settledPrev(st, t0, LOAD_SETTLE_MS), [row('s1', 10), row('s2', 99), row('t:old', 8)]);
+    expect(keys(after.rows)).toEqual(['s1', 't:old', 's2']);
+  });
+  it('nothing is frozen before the data is ready', () => {
+    expect(settledPrev(['x'], null, 5)).toBeNull();
   });
 });

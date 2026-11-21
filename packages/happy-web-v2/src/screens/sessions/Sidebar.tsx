@@ -64,7 +64,7 @@ import {
   applyReorderHold,
   SIDEBAR_RECENT_SORT_ENABLED,
 } from './sidebarRecentSort';
-import { stabilizeRowOrder, stabilizeGroupOrder, sortGroupsByRecent, type FrozenRowOrder } from './sidebarLoadOrder';
+import { stabilizeRowOrder, stabilizeGroupOrder, sortGroupsByRecent, settledPrev, type FrozenRowOrder } from './sidebarLoadOrder';
 import { groupRowsByLifecycle, completedTodaySessions } from './sidebarStatusView';
 import { attentionKeysOf, rowSignalOf, type RowSignal } from './sidebarAttention';
 import { useItemNeedsYouSessionIds, useNeedsYouSync, withItemAttention } from '@/sync/needsYou';
@@ -610,6 +610,10 @@ export function Sidebar() {
   const projectOrderRef = useRef<string[] | null>(null);
   const folderOrderRef = useRef<string[] | null>(null);
   const [reorderEpoch, setReorderEpoch] = useState(0);
+  /** When rows (and projects) were first ready — the snapshot is re-taken until LOAD_SETTLE_MS later. */
+  const rowsReadyAtRef = useRef<number | null>(null);
+  const projectsReadyAtRef = useRef<number | null>(null);
+  // (No timer needed: the last snapshot re-taken inside the window is what the refs hold when it closes.)
   const resortByRecent = useCallback(() => {
     rowOrderRef.current = null;
     projectOrderRef.current = null;
@@ -639,7 +643,8 @@ export function Sidebar() {
     if (sortMode === 'recent') return applyReorderHold(heldKeys, priorityFirst(sortRowsByRecent(rows)));
     if ((orderSetting ?? []).length > 0) return priorityFirst(sortRowsByManualOrder(rows, orderSetting!));
     // No hand-made order yet: the load-time activity order, frozen (B-947).
-    const frozen = stabilizeRowOrder(rowOrderRef.current, rows);
+    rowsReadyAtRef.current ??= Date.now();
+    const frozen = stabilizeRowOrder(settledPrev(rowOrderRef.current, rowsReadyAtRef.current, Date.now()), rows);
     rowOrderRef.current = frozen.state;
     const { pinned, rest } = splitPinnedRows(frozen.rows, pinnedSetting ?? []);
     return priorityFirst([...pinned, ...rest]);
@@ -735,7 +740,8 @@ export function Sidebar() {
     // a project that shows up later goes on top. Snapshot only once the
     // project list has loaded, or every project would count as new.
     if (projectsSnap.status !== 'ready') return built;
-    const prev = projectOrderRef.current;
+    projectsReadyAtRef.current ??= Date.now();
+    const prev = settledPrev(projectOrderRef.current, projectsReadyAtRef.current, Date.now());
     const frozen = stabilizeGroupOrder(prev, prev ? built.projects : sortGroupsByRecent(built.projects), (g) => g.id);
     projectOrderRef.current = frozen.state;
     return { ...built, projects: frozen.groups };
@@ -778,7 +784,8 @@ export function Sidebar() {
     // Opt-in (the area's ⋯): the pre-B-762 folder groups, each with 「设为项目」.
     out.push({ id: UNASSIGNED_GROUP_ID, label, count: u.sessions, rows: [], allRows: [], collapsible: false, open: true, area });
     const byFolder = groupRowsByProject(u.rows, [], [], u.teams);
-    const folders = stabilizeGroupOrder(folderOrderRef.current, byFolder.unassigned, workspaceGroupId);
+    const folderPrev = settledPrev(folderOrderRef.current, projectsReadyAtRef.current ?? rowsReadyAtRef.current, Date.now());
+    const folders = stabilizeGroupOrder(folderPrev, folderPrev ? byFolder.unassigned : sortGroupsByRecent(byFolder.unassigned.map((g) => ({ g, id: workspaceGroupId(g), lastActivity: g.rows.reduce((m, r) => Math.max(m, r.ts ?? 0), 0) }))).map((x) => x.g), workspaceGroupId);
     folderOrderRef.current = folders.state;
     for (const g of folders.groups) {
       const sessionIds = g.rows.flatMap((r) => (r.kind === 'session' && r.sessionId && !r.share && !r.teamHistoryLink ? [r.sessionId] : []));

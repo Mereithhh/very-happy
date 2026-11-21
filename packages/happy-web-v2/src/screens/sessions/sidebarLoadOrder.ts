@@ -91,3 +91,21 @@ export function stabilizeGroupOrder<G>(
 export function sortGroupsByRecent<G extends { id: string; lastActivity: number }>(groups: readonly G[]): G[] {
   return [...groups].sort((a, b) => (b.lastActivity - a.lastActivity) || a.id.localeCompare(b.id));
 }
+
+/**
+ * Loading is not one instant: the session list lands with the first sync
+ * (Sidebar renders no rows before `isDataReady`), the project list when its
+ * fetch resolves (no group snapshot before `status === 'ready'`), but web
+ * terminals come with the machines' state, which can trail by a few hundred
+ * ms. Freezing on the very first data would rank a project whose activity is
+ * only in its terminals too low, and push folder groups that arrive late to
+ * the top. So the snapshot keeps being RE-TAKEN for `LOAD_SETTLE_MS` after the
+ * data first became ready, and only then freezes.
+ */
+export const LOAD_SETTLE_MS = 2500;
+
+/** The previous state to extend, or null (= take a fresh snapshot) while the load is still settling. */
+export function settledPrev<S>(prev: S | null, readyAt: number | null, now: number, settleMs = LOAD_SETTLE_MS): S | null {
+  if (readyAt === null) return null;
+  return now - readyAt < settleMs ? null : prev;
+}
