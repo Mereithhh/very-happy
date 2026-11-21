@@ -146,7 +146,8 @@ describe('B-531 wiring (source assertions, verified with mutation-check)', () =>
         expect(source).toContain('}), { fork: forkSource !== null, waitForCatalog: waitsForModelCatalog(agent, options.model) })')
         const gate = source.indexOf('if (opts.fork) {')
         const wait = source.indexOf('const gate = await waitForForkBackfill({')
-        const send = source.indexOf("await deps.sendUserMessage(sessionId, persisted, text, 'cli-spawn', meta)")
+        // B-951: the send goes through the transient-failure retry.
+        const send = source.indexOf("await sendWithRetry((localId) => deps.sendUserMessage(sessionId, persisted, text, 'cli-spawn', { ...meta, localId }), deps.sendRetry, deps.warn)")
         expect(gate).toBeGreaterThan(-1)
         expect(wait).toBeGreaterThan(gate)
         expect(send).toBeGreaterThan(wait)
