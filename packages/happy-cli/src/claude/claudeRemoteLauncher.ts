@@ -348,6 +348,29 @@ export async function claudeRemoteLauncher(
 
     // Handle messages
     let ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
+    /**
+     * B-942 (R67b P3-1): a launch that ended with tool calls still open gives
+     * each an "interrupted" result. That result must go out BEFORE the turn is
+     * closed: sent after the turn-end (as it was, from `finally`), it opened a
+     * turn of its own that nothing ever closed — the next prompt's answer ran
+     * inside it, so its turn-end had no turn-start after the prompt and
+     * `sessions read --wait` saw `ended: false` forever. Idempotent.
+     */
+    const settleOngoingToolCalls = () => {
+        for (let [toolCallId, { parentToolCallId }] of ongoingToolCalls) {
+            const converted = sdkToLogConverter.generateInterruptedToolResult(toolCallId, parentToolCallId);
+            if (converted) {
+                logger.debug('[remote]: terminating tool call ' + toolCallId + ' parent: ' + parentToolCallId);
+                session.client.sendClaudeSessionMessage(converted);
+            }
+        }
+        ongoingToolCalls.clear();
+    };
+    /** Everything the launch produced goes out, then its open tool calls end — before any turn-end. */
+    const settleLaunchOutput = async () => {
+        await messageQueue.flush();
+        settleOngoingToolCalls();
+    };
     let notifiedQuestionToolCalls = new Set<string>();
 
     function onMessage(message: SDKMessage) {
@@ -993,6 +1016,7 @@ export async function claudeRemoteLauncher(
                 if (startArgsUsed) session.consumeOneTimeFlags();
                 
                 if (!exitReason && !session.exiting && abortController.signal.aborted && !silentRelaunch) {
+                    await settleLaunchOutput();
                     session.client.closeClaudeSessionTurn('cancelled');
                     session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                 }
@@ -1000,6 +1024,7 @@ export async function claudeRemoteLauncher(
                 logger.debug('[remote]: launch error', e);
                 // B-939d: Claude Code killed by the exit cleanup is not a failed turn, and is never relaunched.
                 if (!exitReason && !session.exiting) {
+                    await settleLaunchOutput();
                     if (isClaudeEdeOnlySdkError(e)) {
                         session.client.closeClaudeSessionTurn('cancelled');
                         continue;
@@ -1033,15 +1058,8 @@ export async function claudeRemoteLauncher(
 
                 logger.debug('[remote]: launch finally');
 
-                // Terminate all ongoing tool calls
-                for (let [toolCallId, { parentToolCallId }] of ongoingToolCalls) {
-                    const converted = sdkToLogConverter.generateInterruptedToolResult(toolCallId, parentToolCallId);
-                    if (converted) {
-                        logger.debug('[remote]: terminating tool call ' + toolCallId + ' parent: ' + parentToolCallId);
-                        session.client.sendClaudeSessionMessage(converted);
-                    }
-                }
-                ongoingToolCalls.clear();
+                // Terminate all ongoing tool calls (already done before a failed / cancelled turn-end).
+                settleOngoingToolCalls();
 
                 // Flush any remaining messages in the queue
                 logger.debug('[remote]: flushing message queue');

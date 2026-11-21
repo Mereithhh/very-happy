@@ -127,6 +127,7 @@ import { daemonLineage, detectDaemonSupervisor, probeLaunchdJob, probeSystemdKil
 
 import { shellescape } from '@/utils/shellescape';
 import { sanitizeImportTitle } from './importTitle';
+import { closeDanglingTurn, settleExitedWrapper } from '@/sessions/danglingTurn';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -1525,6 +1526,7 @@ export async function startDaemon(): Promise<void> {
         let settled = false;
         const done = () => { if (!settled) { settled = true; resolve(); } };
         // B-634 ①: the wrapper's tree too (Claude Code, MCP servers, tool commands).
+        requestedWrapperStops.add(pid);
         const requested = terminateProcessTree(pid, () => {
           const tracked = pidToTrackedSession.get(pid);
           if (tracked) {
@@ -1699,6 +1701,9 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
+    // B-942: wrapper PIDs this daemon asked to stop — their open turn ends as cancelled, not failed.
+    const requestedWrapperStops = new Set<number>();
+
     // Stop a session by sessionId or PID fallback
     const stopSession = (sessionId: string): boolean => {
       logger.debug(`[DAEMON RUN] Attempting to stop session ${sessionId}`);
@@ -1709,6 +1714,7 @@ export async function startDaemon(): Promise<void> {
           (sessionId.startsWith('PID-') && pid === parseInt(sessionId.replace('PID-', '')))) {
 
           // B-634 ①: the wrapper's tree too (Claude Code, MCP servers, tool commands).
+          requestedWrapperStops.add(pid);
           const requested = terminateProcessTree(pid, (stopped) => {
             if (!stopped) {
               logger.debug(`[DAEMON RUN] Session ${sessionId} survived SIGTERM and SIGKILL attempts`);
@@ -1738,6 +1744,25 @@ export async function startDaemon(): Promise<void> {
     // Handle child process exit — preserve session data for resume
     const onChildExited = (pid: number, exit?: { code: number | null; signal: NodeJS.Signals | null }) => {
       const session = pidToTrackedSession.get(pid);
+      const stopRequested = requestedWrapperStops.delete(pid);
+      // B-942: a wrapper gone mid-turn never writes the turn-end it owed, and one that was killed never
+      // deactivated its server row (`send` would deliver to nobody for 10 minutes). Settle both for it
+      // (sessions/danglingTurn.ts). A hibernating wrapper is idle by definition. Best effort.
+      if (session?.happySessionId && !daemonHibernation.pendingExit(session.happySessionId)) {
+        const sessionId = session.happySessionId;
+        const runsAgain = autoRestartExits.has(sessionId)
+          || [...pidToTrackedSession.entries()].some(([otherPid, other]) => otherPid !== pid && other.happySessionId === sessionId);
+        void settleExitedWrapper(
+          { sessionId, pid, persisted: readPersistedSessions()[sessionId], exit, stopRequested, runsAgain, exitedAt: Date.now() },
+          {
+            closeTurn: (id, persisted, verdict, exitedAt) => closeDanglingTurn(id, persisted, verdict, undefined, exitedAt),
+            deactivate: (id) => api.deactivateSession(id),
+          },
+        ).then(({ closedTurn, deactivated }) => {
+          if (closedTurn) logger.debug(`[DAEMON RUN] Closed turn ${closedTurn} of ${sessionId}: its process (PID ${pid}) exited mid-turn`);
+          if (deactivated !== null) logger.debug(`[DAEMON RUN] Session ${sessionId} marked offline after PID ${pid} exited abnormally: ${deactivated}`);
+        }).catch((error) => logger.debug(`[DAEMON RUN] Could not settle ${sessionId} after PID ${pid} exited`, error));
+      }
       // B-925: an abnormal exit is a wake event (sources.ts decides); before hibernation consumes its mark.
       if (session?.happySessionId && exit) {
         mainAgentProactive?.onSessionExit({

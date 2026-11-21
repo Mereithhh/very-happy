@@ -3439,6 +3439,12 @@ export const en = {
                 record: 'In the chat, a line says how large the record was and why it was not saved. Edits and diffs that Codex shows are cut to a readable size, so they rarely get that large at all.',
                 older: 'Sessions still on an older CLI are unblocked by the server: it keeps everything else and the session shows a strip saying how many records were too large to sync.',
             },
+            nov20c: {
+                title: 'A session whose process died now says so, instead of looking busy',
+                summary: 'When the process behind a session was killed or crashed in the middle of a reply, the reply stayed "running" for good and the session still looked online for about ten minutes: a new message showed as delivered while nothing was there to read it. Now that reply ends as failed with the reason, and the session goes offline right away.',
+                offline: 'A message sent to that session wakes it up again (or `send` says it is offline), instead of being delivered to nobody.',
+                claude: 'When Claude Code itself is killed while a tool is running, the next answer lands in its own reply and finishes normally, instead of one that never ends.',
+            },
             nov20b: {
                 title: 'A terminal whose machine is not connected now says so, instead of staying black',
                 summary: 'When the machine a terminal runs on was not connected, opening the terminal showed only a black screen — most of all for a terminal someone shared with you. Now the terminal says the machine is not connected and names it.',
