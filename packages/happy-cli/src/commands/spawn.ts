@@ -278,6 +278,8 @@ ${chalk.bold('Exit codes:')}
   0  success
   1  spawn failed (no session created)
   2  session spawned but first message failed (session URL still printed).
+     A temporary server error (no answer, 408, 429, 5xx) is retried first,
+     up to 4 attempts with backoff; any other 4xx fails at once.
      For --fork this includes: the forked history was not confirmed uploaded
      within 120s — the message is then NOT sent, so it cannot land inside
      that history; send it later with \`very-happy send\`.

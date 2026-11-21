@@ -344,7 +344,7 @@ Exit codes:
 |------|---------|
 | `0`  | success |
 | `1`  | spawn failed — no session was created |
-| `2`  | session created, but sending the first message failed (the session exists; the URL is still printed) |
+| `2`  | session created, but sending the first message failed (the session exists; the URL is still printed). A temporary server error (no answer, 408, 429, 5xx) is retried first — up to 4 attempts, 1 s / 2 s / 4 s apart, same message id so it is never stored twice; any other 4xx fails at once (B-951) |
 
 ### `very-happy sessions` — inspect and control what is running
 
