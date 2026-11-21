@@ -156,7 +156,7 @@ export class AccountService {
         const id = newAccountId(req.label, req.kind, Object.keys(readAccounts(this.home).accounts));
         const models: string[] = [];
         const contextWindows: Record<string, number> = {};
-        for (const m of req.models ?? []) {
+        for (const m of ('models' in req ? req.models : undefined) ?? []) {
             if (typeof m === 'string') models.push(m);
             else {
                 models.push(m.id);
@@ -168,7 +168,7 @@ export class AccountService {
             agent: req.agent,
             kind: req.kind,
             createdAt: this.now(),
-            ...(req.baseUrl ? { baseUrl: req.baseUrl.replace(/\/+$/, '') } : {}),
+            ...('baseUrl' in req && req.baseUrl ? { baseUrl: req.baseUrl.replace(/\/+$/, '') } : {}),
             ...(req.agent === 'codex' && req.provider ? { provider: req.provider } : {}),
             ...(req.agent === 'codex' && req.wireApi ? { wireApi: req.wireApi } : {}),
             key: req.key.source === 'paste' ? { source: 'stored' } : req.key.source === 'file' ? { source: 'file', path: req.key.path } : { source: 'env', name: req.key.name },
