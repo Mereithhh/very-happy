@@ -2,6 +2,7 @@ import { RouteError } from './RouteError';
 import { useEffect, useState, lazy, Suspense, type ReactNode } from 'react';
 import {
   createBrowserRouter,
+  type RouteObject,
   RouterProvider,
   Navigate,
   Outlet,
@@ -112,19 +113,26 @@ function Lazy({ children, fullViewport = true, centered = false }: { children: R
 function RequireAuth() {
   const { isAuthenticated } = useAuth();
   const location = useLocation();
-  // Global back lives HERE, not in AppLayout: it must also cover /assistant,
-  // which is a sibling of the layout tree. Installs the in-app history tracker
-  // plus the ⌘[ / Alt+← chord and the left-edge swipe.
-  useGlobalBackNav();
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
   return <><Outlet /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><DeferredFeedbackPrompt /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
 }
 
+/** Global back lives HERE, once, as the common parent of `/` (RootGate) and
+ *  every RequireAuth screen (including /assistant, a sibling of AppLayout).
+ *  Installs the in-app history tracker plus the ⌘[ / Alt+← chord and the
+ *  left-edge swipe. B-946b: it used to be called in RootGate AND RequireAuth —
+ *  `/` → `/session/x` swapped trees, the tracker remounted and reset the trail,
+ *  so the phone back REPLACED instead of popping and a further system back
+ *  walked into the previous chat. One instance above both keeps the trail. */
+export function BackNavRoot() {
+  useGlobalBackNav();
+  return <Outlet />;
+}
+
 function RootGate() {
   const { isAuthenticated } = useAuth();
-  useGlobalBackNav();
   // B-624: a white-labelled relay has no marketing page — straight to login.
   if (!isAuthenticated) return BRAND.landingEnabled ? <Lazy><LandingScreen /></Lazy> : <Navigate to="/login" replace />;
   return <><AppLayout /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><DeferredFeedbackPrompt /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
@@ -303,8 +311,8 @@ const TerminalKeyboardHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/TerminalKeyboardHarness').then((m) => ({ default: m.TerminalKeyboardHarness })))
   : null;
 
-const router = createBrowserRouter(
-  [{ errorElement: <RouteError />, children: [
+/** Exported for the route-level back test (appRootBackNav.test.tsx). */
+export const appRoutes: RouteObject[] = [{ errorElement: <RouteError />, children: [
     ...(SidebarHarness
       ? [
           { path: '/dev/sidebar', element: <Lazy><SidebarHarness /></Lazy> },
@@ -442,6 +450,8 @@ const router = createBrowserRouter(
     { path: '/welcome', element: BRAND.landingEnabled ? <Lazy><LandingScreen /></Lazy> : <Navigate to="/login" replace /> },
     { path: '/docs', element: <Lazy><DocsScreen /></Lazy> },
     { path: '/docs/:slug', element: <Lazy><DocsScreen /></Lazy> },
+    // B-946b: one back-nav tracker for `/` AND the authenticated tree.
+    { element: <BackNavRoot />, children: [
     {
       path: '/',
       element: <RootGate />,
@@ -504,7 +514,11 @@ const router = createBrowserRouter(
         },
       ],
     },
-  ] }],
+    ] },
+  ] }];
+
+const router = createBrowserRouter(
+  appRoutes,
   { basename: import.meta.env.BASE_URL.replace(/\/$/, '') || '/' },
 );
 
