@@ -10,6 +10,7 @@ export * from './connectionDiagnostics';
 export * from "./teams";
 export * from "./teamWorktree";
 export * from "./teamActivity";
+export * from "./teamLead";
 export * from "./automations";
 export * from "./projects";
 

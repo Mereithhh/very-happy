@@ -36,4 +36,12 @@ describe('B-775 team refusal messages', () => {
         expect(text).toContain('set-permission-mode');
         expect(text).not.toContain('HTTP 403');
     });
+    it('B-945: a submit refused for open delegations names the counts and ids, and never echoes other text', () => {
+        const text = teamRefusalMessage(409, { error: 'owned_tasks_unfinished', openTasks: 31, submitted: 15, queued: 15, running: 1, taskIds: ['t-1', 'bad id\u0007', 't-2'], hint: 'Bearer secret' });
+        expect(text).toContain('Teams request refused (owned_tasks_unfinished): 31 task(s) you delegated are not closed (15 submitted, 15 queued, 1 running): t-1, t-2.');
+        expect(text).toContain('Accept or return the submitted ones');
+        expect(text).not.toContain('Bearer');
+        expect(text).not.toContain('bad id');
+        expect(teamRefusalMessage(409, { error: 'owned_tasks_unfinished' })).toContain('Some tasks you delegated are not closed.');
+    });
 });

@@ -16,6 +16,7 @@ import { toast } from '@/ui/Toast';
 import { quoteMessage } from '../messageQuote';
 import type { BoardCopy } from './boardCopy';
 import { choiceLabel, followUpQuote } from './boardModel';
+import { ownedTasksRefusalCount } from '@/screens/teams/leadRevive';
 
 function nonce(): string {
     return Math.random().toString(36).slice(2, 10);
@@ -54,7 +55,10 @@ export function isReloginRequired(error: unknown): boolean {
 /** Undo the optimistic change (same version, so it replaces), say so, and resync. */
 function failed(item: AttentionItem, copy: BoardCopy, error?: unknown): void {
     useAttentionStore.getState().apply(item);
+    // B-945: the lead still owns open tasks — say so instead of a generic failure.
+    const openTasks = ownedTasksRefusalCount(error as { code?: unknown; details?: unknown } | null);
     if (isReloginRequired(error)) toast.action(copy.reloginRequired, () => { window.location.assign('/settings/account'); });
+    else if (openTasks !== null) toast.error(copy.leadOpenTasks(openTasks));
     else toast.error(copy.actionFailed);
     void loadAttentionItems(item.sessionId);
 }

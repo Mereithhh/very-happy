@@ -46,6 +46,8 @@
 .brf-body { line-height: 1.5; }
 .brf-body > :first-child { margin-top: 0; }
 .brf-body > :last-child { margin-bottom: 0; }
+/* B-945: why「验收」is off on a root-task card (the lead still owns open tasks). */
+.brf-guard { margin: 0; color: var(--danger); line-height: 1.5; overflow-wrap: anywhere; }
 .brf-opts { display: flex; flex-direction: column; gap: 6px; margin-top: var(--sp-2); }
 .brf-opt { display: flex; align-items: flex-start; gap: var(--sp-2); width: 100%; padding: 7px 9px; border: 0; border-radius: var(--r-btn); background: var(--fill-soft); color: var(--text); font: inherit; font-size: var(--fs-13); text-align: left; cursor: pointer; }
 .brf-opt:disabled { cursor: default; }

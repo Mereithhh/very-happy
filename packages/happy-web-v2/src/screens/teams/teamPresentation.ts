@@ -32,7 +32,9 @@ export function teamMessageTask(team: TeamState, localId: string | null): TeamTa
 }
 
 export function teamLaunchPhase(team: TeamState): 'empty' | 'preparing' | 'failed' | 'connected' | 'finished' | 'cancelled' {
-  const task = teamRootTask(team);
+  // B-945: a relaunched lead (「接回负责人」) works on a newer root task; its launch is the one to narrate.
+  const relaunch = [...team.tasks].reverse().find(t => !t.parentTaskId && !['done', 'cancelled'].includes(t.status) && team.bots.some(b => b.root && b.managed && b.id === t.assigneeBotId));
+  const task = relaunch ?? teamRootTask(team);
   if (!task) return team.bots.length ? 'connected' : 'empty';
   if (task.status === 'done') return 'finished';
   if (task.status === 'cancelled') return 'cancelled';

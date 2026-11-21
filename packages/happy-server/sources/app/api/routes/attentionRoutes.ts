@@ -22,8 +22,9 @@ export function attentionRoutes(app: Fastify) {
             return await work();
         } catch (error) {
             if (error instanceof AttentionError) return reply.code(error.status).send({ error: error.code, ...(error.details ?? {}) });
-            // Root-task accept / return refused by the team reducer (e.g. stale attempt).
-            if (error instanceof TeamError) return reply.code(error.status).send({ error: error.code });
+            // Root-task accept / return refused by the team reducer (e.g. stale attempt). B-945: with its details —
+            // `owned_tasks_unfinished` names how many tasks the lead still owns, which the board shows.
+            if (error instanceof TeamError) return reply.code(error.status).send({ error: error.code, ...(error.details ?? {}) });
             throw error;
         }
     };

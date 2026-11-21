@@ -79,11 +79,23 @@ export function teamRefusalMessage(status: number, body: unknown, actionType?: u
         const used = count('used'), limit = count('limit');
         return `Teams request refused (${code}${used !== null && limit !== null ? `: ${used}/${limit}` : ''}): ${TEAM_LIMIT_EXPLANATION}`;
     }
+    // B-945: a submit (or accept) refused because the assignee still owns open delegations — accepting would stop it.
+    if (code === 'owned_tasks_unfinished') return teamOwnedTasksUnfinishedMessage(body);
     // B-877b: a team archived under a live session (members, or a lead that has not restarted yet).
     if (code === 'team_archived') return TEAM_ARCHIVED_MESSAGE;
     // B-927a: the server refuses a token that is not a signed-in person for owner-only steps.
     if (code === 'owner_login_required') return teamOwnerLoginRequiredMessage(actionType, configuration.webappUrl);
     return `Teams request failed (HTTP ${status}: ${code})`;
+}
+/** B-945: counts only (numbers and ids are allow-listed); the server's own hint is not forwarded. */
+export function teamOwnedTasksUnfinishedMessage(body: unknown): string {
+    const value = (key: string) => { const v = (body as Record<string, unknown> | null)?.[key]; return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : null; };
+    const ids = (body as { taskIds?: unknown } | null)?.taskIds;
+    const taskIds = Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id)).slice(0, 20) : [];
+    const total = value('openTasks');
+    const counts = total === null ? 'Some tasks' : `${total} task(s)`;
+    const detail = value('submitted') !== null ? ` (${value('submitted')} submitted, ${value('queued') ?? 0} queued, ${value('running') ?? 0} running)` : '';
+    return `Teams request refused (owned_tasks_unfinished): ${counts} you delegated are not closed${detail}${taskIds.length ? `: ${taskIds.join(', ')}` : ''}. Accept or return the submitted ones and finish, cancel or hand off the rest (team_inspect lists them), then submit again: accepting this task stops you, and no one would be left to review them. 你派出的任务还没收尾：先验收/退回、取消或转交，再提交。`;
 }
 export function teamOwnerLoginRequiredMessage(actionType: unknown, webappUrl: string): string {
     const step = typeof actionType === 'string' && /^[a-z-]{1,40}$/.test(actionType) ? ` (${actionType})` : '';
