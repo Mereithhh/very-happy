@@ -533,7 +533,6 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                     // generation's「idle 19:50」/「exited」described another conversation.
                     if (bot.sessionId !== action.sessionId) { delete bot.lastEvent; delete bot.lastEventAt; delete bot.idleEscalatedAt; }
                     bot.sessionId = action.sessionId; op.sessionId = action.sessionId; assigned(bot);
-                    op.error = null; // B-706: an earlier failed attempt of this launch no longer applies
                     if (action.workingDirectory) bot.directory = action.workingDirectory;
                     if (t.currentAttemptId === op.attemptId && t.status === 'queued') { t.status = 'running'; t.attempts.find(a => a.id === op.attemptId)!.status = 'running'; }
                     else operation(t, bot, 'stop', op.attemptId);
@@ -544,6 +543,9 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                     if (op.sessionId && bot.sessionId === op.sessionId) releaseBotSession(bot);
                 }
                 op.status = 'completed';
+                // B-951: a completed operation no longer carries the text of an earlier failed try
+                // (a cleanup stop that failed, then succeeded, still read as failing).
+                op.error = null;
             }
             operationId = op.id; break;
         }

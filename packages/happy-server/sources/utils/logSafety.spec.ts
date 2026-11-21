@@ -50,6 +50,20 @@ describe('safe server logging', () => {
         expect(Buffer.byteLength(safe, 'utf8')).toBeLessThanOrEqual(2_048);
     });
 
+    it('B-951: keeps opaque team ids and ISO instants readable, nothing looser', () => {
+        expect(sanitizeLogValue({
+            teamId: 'cmabc123xyz', botId: 'f422df69-6c34-482a-8532-43d8724a0c2d',
+            expiresAt: '2026-12-21T15:04:05.123Z', previousExpiresAt: '2026-11-28T15:04:05Z',
+        })).toEqual({
+            teamId: 'cmabc123xyz', botId: 'f422df69-6c34-482a-8532-43d8724a0c2d',
+            expiresAt: '2026-12-21T15:04:05.123Z', previousExpiresAt: '2026-11-28T15:04:05Z',
+        });
+        const loose = sanitizeLogValue({ teamId: 'team owner@example.com', botId: 'x'.repeat(65), expiresAt: 'tomorrow, said the user', createdAt: '2026-12-21 private' });
+        expect(loose).toEqual({ teamId: '[content:22B]', botId: '[content:65B]', expiresAt: '[content:23B]', createdAt: '[content:18B]' });
+        // Hashed identifiers and secrets are unchanged.
+        expect(sanitizeLogValue({ sessionId: 'abc', token: 'abc' })).toEqual({ sessionId: expect.stringMatching(/^sessionid:[0-9a-f]{16}$/), token: '[redacted]' });
+    });
+
     it('handles cyclic structured values without throwing', () => {
         const value: Record<string, unknown> = { module: 'test' };
         value.self = value;

@@ -1,5 +1,5 @@
 import { db } from '@/storage/db';
-import type { Tx } from '@/storage/inTx';
+import { afterTx, type Tx } from '@/storage/inTx';
 import { log } from '@/utils/log';
 
 /**
@@ -26,7 +26,12 @@ export async function renewTeamCredentialTx(tx: Tx, credential: { id: string; te
     if (!teamCredentialNeedsRenewal(credential.expiresAt, now)) return false;
     const expiresAt = new Date(now + TEAM_CREDENTIAL_TTL_MS);
     const updated = await tx.$executeRaw`UPDATE "TeamAgentCredential" SET "expiresAt"=${expiresAt} WHERE "id"=${credential.id} AND "revokedAt" IS NULL AND "expiresAt">now() AND "expiresAt"<${new Date(now + TEAM_CREDENTIAL_RENEW_BELOW_MS)}`;
-    if (updated === 1) log({ module: 'teams', teamId: credential.teamId, botId: credential.botId, generation: credential.generation, previousExpiresAt: credential.expiresAt.toISOString(), expiresAt: expiresAt.toISOString() }, 'team credential renewed');
+    // B-951: logged once the transaction commits — a request that fails afterwards rolls the
+    // renewal back and must not leave a "renewed" line. teamId / botId / times stay readable (logSafety).
+    if (updated === 1) {
+        const fields = { module: 'teams', teamId: credential.teamId, botId: credential.botId, generation: credential.generation, previousExpiresAt: credential.expiresAt.toISOString(), expiresAt: expiresAt.toISOString() };
+        afterTx(tx, () => log(fields, 'team credential renewed'));
+    }
     return updated === 1;
 }
 
