@@ -33,7 +33,8 @@ import { isStandaloneVersionRequest } from './utils/versionArgs'
 import { configuration } from './configuration'
 import { daemonEndpointsMatch } from './ui/doctorReadiness'
 import { missingPiPrerequisites, parsePiRunnerArgs, piAdapterMissingHint, piSetupMessage } from '@/agent/acp/piRunnerArgs'
-import { commandOnPath } from '@/utils/detectCLI'
+import { commandOnPath, nodeVersionOnPath } from '@/utils/detectCLI'
+import { dshFailureHint, dshPrerequisiteProblem, dshSetupMessage } from '@/agent/acp/dshRunner'
 import { CLAUDE_OPTIONS_HELP, DAEMON_STOP_HELP } from './commands/helpFacts'
 import { errorReason, installExitReasonFallback, recordExitReason } from './utils/exitReason'
 import { exitAfterFlush } from './utils/exitAfterFlush'
@@ -475,6 +476,56 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         resumeAgentSessionId: parsed.resume,
       });
       if (hintPrinted) { recordExitReason(1, 'pi adapter prerequisites are missing'); process.exit(1) }
+    } catch (error) {
+      recordExitReason(1, errorReason(error))
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      printHint(error instanceof Error ? error.message : undefined)
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'dsh') {
+    // B-952: DeepSeek Harness through its own ACP server (`dsh --profile acp`),
+    // same argv shape as `very-happy pi` so the daemon spawns it like any backend.
+    let hintPrinted = false;
+    const printHint = (detail: string | undefined) => {
+      const hint = dshFailureHint(detail);
+      if (hint && !hintPrinted) {
+        hintPrinted = true;
+        console.error(chalk.yellow(hint));
+      }
+    };
+    try {
+      const parsed = parsePiRunnerArgs(args.slice(1), { command: 'dsh', adapter: 'dsh' });
+      // Fail before a session exists when dsh is missing or its Node is too old.
+      // The daemon refuses such spawns from its own availability probe instead.
+      if (parsed.startedBy !== 'daemon') {
+        const problem = dshPrerequisiteProblem(commandOnPath('dsh'), nodeVersionOnPath());
+        if (problem) {
+          console.error(chalk.yellow(dshSetupMessage(problem)));
+          process.exit(1);
+        }
+      }
+      const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');
+      const resolved = resolveAcpAgentConfig(['dsh', ...parsed.passthrough]);
+      const { credentials } = await authAndSetupMachineIfNeeded();
+      await ensureDaemonRunning()
+
+      await runAcp({
+        credentials,
+        startedBy: parsed.startedBy,
+        verbose: parsed.verbose,
+        permissionMode: parsed.permissionMode,
+        model: parsed.model,
+        agentName: resolved.agentName,
+        command: resolved.command,
+        args: resolved.args,
+        onBackendError: printHint,
+        resumeAgentSessionId: parsed.resume,
+      });
+      if (hintPrinted) { recordExitReason(1, 'dsh prerequisites are missing'); process.exit(1) }
     } catch (error) {
       recordExitReason(1, errorReason(error))
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')

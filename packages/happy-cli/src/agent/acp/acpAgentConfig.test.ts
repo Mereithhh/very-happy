@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { KNOWN_ACP_AGENTS, resolveAcpAgentConfig } from './acpAgentConfig';
 
 describe('KNOWN_ACP_AGENTS', () => {
-  it('defines built-in Gemini, OpenCode and pi command mappings', () => {
+  it('defines built-in Gemini, OpenCode, pi and DeepSeek Harness command mappings', () => {
     expect(KNOWN_ACP_AGENTS).toEqual({
       gemini: { command: 'gemini', args: ['--experimental-acp'] },
       opencode: { command: 'opencode', args: ['acp'] },
       pi: { command: 'pi-acp', args: [] },
+      dsh: { command: 'dsh', args: ['--profile', 'acp'] },
     });
   });
 

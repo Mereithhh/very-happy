@@ -1,4 +1,5 @@
 import { VERY_HAPPY_DISCOVERY } from '@/skill/discovery';
+import { dshAutoApproves } from './dshRunner';
 import { isSessionPeerPrompt } from '@/claude/nonUserPrompt';
 import { readPiModelsJson, resolvePiContextUsage, type PiContextReport } from './piContextUsage';
 import { buildAcpPrompt, routeAcpUserText } from './acpSlashCommand';
@@ -457,7 +458,13 @@ function resolveRequestedLegacyModelCode(models: SessionModelState, requested: s
 class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPermissionHandler {
   private readonly logPrefix: string;
 
-  constructor(session: ApiSessionClient, agentName: string) {
+  /**
+   * B-952: `autoApprove` answers an agent's permission ask without the user when
+   * it returns true. dsh has no ACP mode selector and no agent-side gate (unlike
+   * pi), so the session's permission mode — `bypassPermissions` / `yolo` — is
+   * enforced here; every other mode still asks the user.
+   */
+  constructor(session: ApiSessionClient, agentName: string, private readonly autoApprove: () => boolean = () => false) {
     super(session);
     this.logPrefix = `[${agentName}]`;
   }
@@ -467,6 +474,10 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
   }
 
   async handleToolCall(toolCallId: string, toolName: string, input: unknown): Promise<PermissionResult> {
+    if (this.autoApprove()) {
+      logger.debug(`${this.logPrefix} Permission auto-approved (bypass mode) for tool: ${toolName} (${toolCallId})`);
+      return { decision: 'approved' };
+    }
     return new Promise<PermissionResult>((resolve, reject) => {
       this.pendingRequests.set(toolCallId, {
         resolve,
@@ -483,9 +494,13 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
 /** B-632: how long a steer waits for the pi extension's long poll to take it. */
 const PI_STEER_OFFER_TIMEOUT_MS = 5_000;
 
-function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'acp' {
+function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'dsh' | 'acp' {
   if (agentName === 'gemini') {
     return 'gemini';
+  }
+  // B-952: DeepSeek Harness has its own flavor (picker entry, defaults, resume id).
+  if (agentName === 'dsh') {
+    return 'dsh';
   }
   if (agentName === 'opencode') {
     return 'opencode';
@@ -636,7 +651,9 @@ export async function runAcp(opts: {
     }
   }
 
-  permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName);
+  // B-952: dsh's permission asks are answered here in bypass mode (see GenericAcpPermissionHandler).
+  permissionHandler = new GenericAcpPermissionHandler(session, opts.agentName, () =>
+    opts.agentName === 'dsh' && dshAutoApproves(fileBackedPermissionMode ?? initialPermissionMode));
   // Drop any permission requests left in agent state from a previous CLI
   // process that died while a tool prompt was open — see the matching
   // call in claudeRemoteLauncher for the full rationale.
@@ -1347,9 +1364,15 @@ export async function runAcp(opts: {
   // next wrapper (daemon resume) or the next agent process can reopen it.
   let agentSessionId: string | null = opts.resumeAgentSessionId ?? null;
   const rememberAgentSession = (id: string | undefined) => {
-    if (!id || opts.agentName !== 'pi') return;
-    agentSessionId = id;
-    session.updateMetadata((current) => current.piSessionId === id ? current : { ...current, piSessionId: id });
+    if (!id) return;
+    if (opts.agentName === 'pi') {
+      agentSessionId = id;
+      session.updateMetadata((current) => current.piSessionId === id ? current : { ...current, piSessionId: id });
+    } else if (opts.agentName === 'dsh') {
+      // B-952: dsh reopens it with `session/resume` (no history replay; the transcript here is kept).
+      agentSessionId = id;
+      session.updateMetadata((current) => current.dshSessionId === id ? current : { ...current, dshSessionId: id });
+    }
   };
 
   const restartBackend = async () => {

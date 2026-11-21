@@ -177,6 +177,8 @@ export const MachineMetadataSchema = z.object({
     gemini: z.boolean(),
     openclaw: z.boolean(),
     pi: z.boolean().optional(), // absent on daemons that predate the pi runner
+    dsh: z.boolean().optional(), // B-952: absent on daemons that predate the dsh runner
+    dshNode: z.string().nullable().optional(), // B-952: `node --version` on the daemon's PATH when dsh is installed
     detectedAt: z.number(),
   }).optional(),
   resumeSupport: z.object({
@@ -754,6 +756,7 @@ export type Metadata = {
   /** B-901: consecutive app-server deaths while loading `threadId` (codexCrashLoop.ts). Old clients ignore it. */
   codexResumeCrash?: { threadId: string, count: number, at: number, signal?: string | null, code?: number | null },
   piSessionId?: string, // B-633: pi session id (pi-acp `session/load` reopens it)
+  dshSessionId?: string, // B-952: DeepSeek Harness session id (`session/resume` reopens it, no replay)
   tools?: string[],
   slashCommands?: string[],
   mcpServers?: Array<{ name: string; status: string }>,

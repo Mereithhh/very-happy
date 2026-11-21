@@ -100,7 +100,8 @@ export function piAdapterMissingHint(detail: string | undefined | null): string 
   return piSetupMessage(/pi-acp/.test(detail) ? ['pi-acp'] : ['pi', 'pi-acp']);
 }
 
-export function parsePiRunnerArgs(args: readonly string[]): PiRunnerArgs {
+/** `runner` names the subcommand and its adapter in errors (B-952: `very-happy dsh` reuses this parser). */
+export function parsePiRunnerArgs(args: readonly string[], runner: { command: string; adapter: string } = { command: 'pi', adapter: 'pi-acp' }): PiRunnerArgs {
   const parsed: PiRunnerArgs = { verbose: false, passthrough: [] };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -138,7 +139,7 @@ export function parsePiRunnerArgs(args: readonly string[]): PiRunnerArgs {
       i++;
       continue;
     }
-    throw new Error(`Unknown option for very-happy pi: ${arg} (use -- to pass args to pi-acp)`);
+    throw new Error(`Unknown option for very-happy ${runner.command}: ${arg} (use -- to pass args to ${runner.adapter})`);
   }
   return parsed;
 }

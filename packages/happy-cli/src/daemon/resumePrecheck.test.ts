@@ -25,6 +25,13 @@ describe('B-265 resumePrecheck', () => {
         expect(resumePrecheck({ path: '/p', flavor: 'acp', piSessionId: 'pi-1' }, { ...fsOk, cwdExists: () => false })).toMatchObject({ ok: false, reason: 'missing-cwd' });
         expect(resumePrecheck({ path: '/p', flavor: 'acp' }, fsOk)).toMatchObject({ ok: false, reason: 'unsupported-flavor' });
     });
+    it('B-952: dsh needs its recorded dsh session id and the cwd; without one it starts fresh', () => {
+        expect(resumePrecheck({ path: '/p', flavor: 'dsh', dshSessionId: 'd-1' }, { ...fsOk, conversationExists: () => false })).toEqual({ ok: true });
+        expect(resumePrecheck({ path: '/p', flavor: 'dsh', dshSessionId: 'd-1' }, { ...fsOk, cwdExists: () => false })).toMatchObject({ ok: false, reason: 'missing-cwd' });
+        const never = resumePrecheck({ path: '/p', flavor: 'dsh' }, fsOk);
+        expect(never).toMatchObject({ ok: false, reason: 'no-backend-id' });
+        expect(!never.ok && resumeStartsFreshConversation(never.reason)).toBe(true);
+    });
     it('model values are charset-limited so they cannot become another flag', () => {
         expect(sanitizeResumeModel('claude-sonnet-4-5')).toBe('claude-sonnet-4-5');
         expect(sanitizeResumeModel('opus[1m]')).toBe('opus[1m]');

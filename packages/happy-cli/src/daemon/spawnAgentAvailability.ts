@@ -1,4 +1,5 @@
 import { PI_ADAPTER_INSTALL_HINT } from '@/agent/acp/piRunnerArgs';
+import { dshPrerequisiteProblem, dshSpawnRefusal } from '@/agent/acp/dshRunner';
 import type { CLIAvailability } from '@/utils/detectCLI';
 import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 
@@ -16,10 +17,16 @@ import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/r
  */
 export function spawnAgentUnavailableError(
     agent: SpawnSessionOptions['agent'],
-    availability: Pick<CLIAvailability, 'pi'>,
+    availability: Pick<CLIAvailability, 'pi'> & Partial<Pick<CLIAvailability, 'dsh' | 'dshNode'>>,
 ): Extract<SpawnSessionResult, { type: 'error' }> | null {
     if (agent === 'pi' && !availability.pi) {
         return { type: 'error', errorMessage: PI_ADAPTER_INSTALL_HINT };
+    }
+    // B-952: dsh needs the executable AND Node >= 24.9; say which one is missing.
+    if (agent === 'dsh' && availability.dsh !== true) {
+        // `dshNode` is reported only when `dsh` itself is on PATH.
+        const problem = availability.dshNode === undefined ? null : dshPrerequisiteProblem(true, availability.dshNode);
+        return { type: 'error', errorMessage: dshSpawnRefusal(problem ?? { kind: 'missing' }) };
     }
     return null;
 }

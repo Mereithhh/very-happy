@@ -19,7 +19,7 @@ export interface ResumePrecheckFs {
 }
 
 export function resumePrecheck(
-    metadata: Pick<Metadata, 'flavor' | 'path' | 'claudeSessionId' | 'codexThreadId' | 'piSessionId'>,
+    metadata: Pick<Metadata, 'flavor' | 'path' | 'claudeSessionId' | 'codexThreadId' | 'piSessionId' | 'dshSessionId'>,
     fs: ResumePrecheckFs,
 ): { ok: true } | { ok: false; reason: ResumePrecheckReason; detail: string } {
     const flavor = metadata.flavor ?? 'claude';
@@ -31,6 +31,15 @@ export function resumePrecheck(
         if (!metadata.path || !fs.cwdExists(metadata.path)) {
             return { ok: false, reason: 'missing-cwd', detail: `working directory ${metadata.path ?? '(none)'} does not exist` };
         }
+        return { ok: true };
+    }
+    // B-952: a dsh session reopens through `session/resume` (dsh keeps its own
+    // session store); a session that never ran a turn has no id and starts fresh.
+    if (flavor === 'dsh') {
+        if (!metadata.path || !fs.cwdExists(metadata.path)) {
+            return { ok: false, reason: 'missing-cwd', detail: `working directory ${metadata.path ?? '(none)'} does not exist` };
+        }
+        if (!metadata.dshSessionId) return { ok: false, reason: 'no-backend-id', detail: 'session has no DeepSeek Harness session id' };
         return { ok: true };
     }
     if (flavor !== 'claude' && flavor !== 'codex') {

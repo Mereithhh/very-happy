@@ -1071,6 +1071,10 @@ export async function startDaemon(): Promise<void> {
               // `very-happy pi` = the generic ACP runner with the pi-acp adapter
               agentCommand = 'pi';
               break;
+            case 'dsh':
+              // B-952: `very-happy dsh` = the generic ACP runner on `dsh --profile acp`
+              agentCommand = 'dsh';
+              break;
             default:
               return {
                 type: 'error',

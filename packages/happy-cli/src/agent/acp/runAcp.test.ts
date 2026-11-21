@@ -1421,6 +1421,38 @@ it('keeps the session usable after cancelling an in-flight turn', async () => {
     }
   });
 
+  it('B-952: dsh records its flavor and session id, and bypass mode answers its permission asks', async () => {
+    mocks.backendState.startSessionResults = [{ sessionId: 'acp-session-1', agentSessionId: 'dsh-sess-1' }];
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'dsh', command: 'dsh', args: ['--profile', 'acp'], permissionMode: 'bypassPermissions' });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      expect((mocks.mockGetOrCreateSession.mock.calls[0] as any[])[0].metadata.flavor).toBe('dsh');
+      const stored = mocks.mockSession.updateMetadata.mock.calls.map(([apply]) => apply({ path: '/p' })).find((m: any) => m.dshSessionId);
+      expect(stored).toMatchObject({ dshSessionId: 'dsh-sess-1' });
+      expect(stored?.piSessionId).toBeUndefined();
+      const handler = mocks.backendState.constructorArgs.permissionHandler;
+      await expect(handler.handleToolCall('call-1', 'execute', { command: 'ls' })).resolves.toEqual({ decision: 'approved' });
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
+  it('B-952: dsh outside bypass mode still asks the user', async () => {
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'dsh', command: 'dsh', args: ['--profile', 'acp'] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      const handler = mocks.backendState.constructorArgs.permissionHandler;
+      let settled = false;
+      void handler.handleToolCall('call-2', 'execute', { command: 'ls' }).then(() => { settled = true; }, () => { settled = true; });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(settled).toBe(false);
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
   it('B-633: resume (daemon) asks the first agent to reopen and says so only when it could not', async () => {
     mocks.backendState.startSessionResults = [{ sessionId: 'acp-session-1', agentSessionId: 'fresh-1', resumed: 'fresh', loadFailure: 'Unknown sessionId: pi-old' }];
     const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'pi', command: 'pi-acp', args: [], resumeAgentSessionId: 'pi-old' });
