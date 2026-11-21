@@ -79,6 +79,9 @@ export function dshFailureHint(detail: string | undefined | null): string | null
     if (/MISSING_CREDENTIAL|no API key/i.test(detail)) {
         return `DeepSeek Harness has no API key. Add a DeepSeek account under Settings → Models & accounts on this machine, or set ${DSH_API_KEY_ENV} in the daemon's environment.`;
     }
+    if (/Insufficient Balance|HTTP 402|\b402\b.*Payment/i.test(detail)) {
+        return 'DeepSeek says the account behind this API key has no balance left (402). Top it up on the DeepSeek platform, or switch the session to another DeepSeek account; the key itself works.';
+    }
     if (/INVALID_CREDENTIAL|HTTP 401|\b401\b.*unauthori[sz]ed|Authentication Fails/i.test(detail)) {
         return `DeepSeek rejected the API key (401). Check the DeepSeek account under Settings → Models & accounts, or the ${DSH_API_KEY_ENV} the daemon runs with.`;
     }

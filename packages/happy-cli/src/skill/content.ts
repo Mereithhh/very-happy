@@ -39,7 +39,7 @@ An agent session is a Claude / Codex / pi / Gemini / OpenClaw process run by a m
 - \`very-happy sessions approve|deny <id> <requestId>\`: answer a pending permission card (only sessions this machine's daemon spawned).
 - \`very-happy sessions peers\` / \`sessions message <id> <text>\`: sessions working on the same repo and messaging them.
 - \`very-happy resume <sessionId>\`: resume a previous session in this terminal.
-- \`very-happy\` (Claude), \`very-happy codex\`, \`very-happy pi\`, \`very-happy gemini\`, \`very-happy acp\`, \`very-happy openclaw\`: start an interactive session in this terminal, mirrored to the Web.
+- \`very-happy\` (Claude), \`very-happy codex\`, \`very-happy pi\`, \`very-happy gemini\`, \`very-happy acp\`, \`very-happy openclaw\`, \`very-happy dsh\` (DeepSeek Harness; Node.js 24.9+): start an interactive session in this terminal, mirrored to the Web.
 - \`very-happy session provider …\`: per-session provider override (see \`very-happy session provider --help\`).
 
 ## MCP tools in managed sessions

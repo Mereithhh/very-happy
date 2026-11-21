@@ -54,6 +54,8 @@ describe('dsh runner prerequisites (B-952)', () => {
         expect(dshFailureHint('https://api.deepseek.com/models answered HTTP 401')).toContain('rejected the API key');
         // dsh 0.2.2-rc.5's real turn failure for a bad key (key masked by dsh).
         expect(dshFailureHint('Internal error: turn failed: Authentication Fails, Your api key: ****abcd is invalid')).toContain('rejected the API key');
+        // dsh 0.2.2-rc.5's real turn failure for a key with no balance.
+        expect(dshFailureHint('Internal error: turn failed: Insufficient Balance (request_id: x)')).toContain('no balance');
         expect(dshFailureHint('spawn pi-acp ENOENT')).toBeNull();
         expect(dshFailureHint('some other failure')).toBeNull();
         expect(dshFailureHint(undefined)).toBeNull();
