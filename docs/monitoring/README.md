@@ -78,6 +78,8 @@ does not work.
 | --- | --- | --- |
 | `VeryHappyMetricsDown` | `max(up)` < 1 or absent, 5m | both slots unscrapeable |
 | `VeryHappySocketStreamStalled` | head age > 30 s, 1m | B-494 frozen pushes |
+| `VeryHappyTeamRootCredentialExpiring` | `team_root_credentials{state="expiring"}` > 0, 30m | B-944 a Lead credential (active session) has < 7 days left |
+| `VeryHappyTeamRootCredentialExpired` | `team_root_credentials{state="expired"}` > 0, 10m | B-944 a Lead credential is expired: its team tools return 401 |
 | `VeryHappyRedisErrors` | > 1 Redis error/min, 5m | ECONNRESET/OOM/timeout |
 | `VeryHappySocketStreamTooLong` | length > 50k, 10m | MAXLEN regression |
 | `VeryHappyMachinesDropped` | machine sockets < 80% of 5 min ago (base > 10), 3m | B-484 fleet-wide daemon handshake failure |

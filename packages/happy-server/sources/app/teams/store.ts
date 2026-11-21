@@ -14,6 +14,7 @@ import { requireCapacity } from './errors';
 import { machineJoinRefusal, ownerGuardMode } from '@/app/auth/ownerGuard';
 import { OWNER_LOGIN_REQUIRED } from '@/app/auth/tokenKind';
 import { log, warn } from '@/utils/log';
+import { renewTeamCredentialTx, TEAM_CREDENTIAL_TTL_MS } from './credentials';
 import { adoptLeadAccount, otherTeamBinding, reduceTeam, requireTeam, sessionInOtherTeamMessage, teamView, transferSessionOut, TeamError, type TeamActor } from './reducer';
 
 type Principal = { accountId: string; actor: TeamActor; credentialId?: string };
@@ -97,12 +98,14 @@ async function principal(tx: Tx, teamId: string, auth: { accountId: string } | {
     if ('accountId' in auth) { assertTeamsEnabled(auth.accountId); return { accountId: auth.accountId, actor: { kind: 'owner' } }; }
     requireTeam(auth.token.startsWith('vh_team_'), 'invalid_team_token', 401);
     const tokenHash = hash(auth.token);
-    const rows = await tx.$queryRaw<{ id: string; accountId: string; botId: string; generation: number }[]>`
-        SELECT c."id", t."accountId", c."botId", c."generation" FROM "TeamAgentCredential" c
+    const rows = await tx.$queryRaw<{ id: string; accountId: string; botId: string; generation: number; expiresAt: Date }[]>`
+        SELECT c."id", t."accountId", c."botId", c."generation", c."expiresAt" FROM "TeamAgentCredential" c
         JOIN "AgentTeam" t ON t."id"=c."teamId"
         WHERE c."teamId"=${teamId} AND c."tokenHash"=${tokenHash} AND c."revokedAt" IS NULL AND c."expiresAt">now()`;
     requireTeam(rows[0], 'invalid_team_token', 401);
     assertTeamsEnabled(rows[0].accountId);
+    // B-944: slide a live credential back to 30 days (same transaction: only a request that succeeds keeps it).
+    await renewTeamCredentialTx(tx, { ...rows[0], teamId });
     return { accountId: rows[0].accountId, actor: { kind: 'agent', botId: rows[0].botId, generation: rows[0].generation }, credentialId: rows[0].id };
 }
 /**
@@ -133,7 +136,7 @@ async function credential(tx: Tx, team: TeamState, botId: string): Promise<{ bot
     const tokenHash = hash(token);
     const tokenEnc = Buffer.from(encryptString(path(team.id, botId), token)).toString('base64');
     const credentialId = randomUUID();
-    const expiresAt = new Date(Date.now() + 30 * 86400_000);
+    const expiresAt = new Date(Date.now() + TEAM_CREDENTIAL_TTL_MS);
     await tx.$executeRaw`INSERT INTO "TeamAgentCredential" ("id","teamId","botId","generation","tokenHash","tokenEnc","expiresAt") VALUES (${credentialId},${team.id},${botId},${bot.generation},${tokenHash},${tokenEnc},${expiresAt})`;
     return { botId, token };
 }
