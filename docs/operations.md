@@ -1091,3 +1091,38 @@ prove that a metrics listener exists. After deploying this change, check the
 active slot's loopback `/metrics` endpoint for a nonempty Prometheus response,
 then confirm the scraper targets the current host and slot. Metrics remain opt-in
 and loopback-only by default outside this explicit compose configuration.
+
+### Team credential expired (B-944)
+
+A team member's scoped credential (`x-happy-team-token`) lives 30 days. Since B-944 the server slides a live,
+unrevoked credential back to 30 days on a successful scoped request once fewer than 7 days remain (at most one
+write per credential per day, because a renewal leaves 30 days). A revoked or already-expired credential is never
+renewed, so an idle Lead can still expire: after 30 days without a successful team call.
+
+**Detect.** Alerts `VeryHappyTeamRootCredentialExpiring` (< 7 days left, warning) and
+`VeryHappyTeamRootCredentialExpired` (critical) come from the gauge `team_root_credentials{state}`, which counts
+unrevoked current-generation root-member credentials of active sessions in unarchived teams. Symptom of an expired
+one: every team tool of that Lead (`team_inspect`, `team_accept`, `team_message`, `team_delegate`) answers 401
+`invalid_team_token`, while other members of the same team keep working.
+
+**Recover** (production write: Owner or release admin only; use `psql -f`, not an inline quoted statement; the
+columns are `timestamp without time zone`, UTC):
+
+1. Find the row, read-only. Only touch a row with `revokedAt IS NULL`:
+   ```sql
+   SELECT c."id", c."botId", c."generation", c."expiresAt", c."revokedAt"
+   FROM "TeamAgentCredential" c WHERE c."teamId" = '<team id>' AND c."botId" = '<lead bot id>'
+   ORDER BY c."generation" DESC, c."createdAt" DESC;
+   ```
+2. Record `id` and the original `expiresAt` in the incident note (this is the rollback value; never record the token).
+3. Extend that one row (`revokedAt IS NULL` is re-checked in the WHERE; it must report `UPDATE 1`):
+   ```sql
+   UPDATE "TeamAgentCredential" SET "expiresAt" = now() + interval '30 days'
+   WHERE "id" = '<credential id>' AND "revokedAt" IS NULL;
+   ```
+4. Verify from the Lead session: `team_inspect` answers again; the first successful call needs no further renewal.
+5. Roll back (only if the extension was a mistake): `UPDATE "TeamAgentCredential" SET "expiresAt" = '<recorded value>' WHERE "id" = '<credential id>';`
+   Revoke instead of rolling back when the credential itself is suspected leaked:
+   `UPDATE "TeamAgentCredential" SET "revokedAt" = now() WHERE "id" = '<credential id>';` (the Lead must then re-join).
+
+Do not extend a row with `revokedAt` set, and do not bulk-update every expired row: abandoned teams are expected to expire.

@@ -54,3 +54,20 @@ spec:
           annotations:
             summary: Connected Very Happy daemons dropped more than 20% in 5 minutes
             description: 'Machine sockets now {{ $value | humanize }}. Check daemon handshakes, Redis and the last release.'
+        - alert: VeryHappyTeamRootCredentialExpiring
+          # B-944: a Lead credential is slid back to 30 days by any successful scoped request, so one that
+          # still has < 7 days left on an active session means that Lead has made no successful team call for ~23 days.
+          expr: max(team_root_credentials{job="very-happy",state="expiring"}) > 0
+          for: 30m
+          labels: { severity: warning, app: very-happy }
+          annotations:
+            summary: A team Lead credential expires within 7 days
+            description: '{{ $value | humanize }} root-member team credential(s) of an active session have < 7 days left. See docs/operations.md "Team credential expired (B-944)".'
+        - alert: VeryHappyTeamRootCredentialExpired
+          # B-944: every team tool of that Lead already answers 401 invalid_team_token.
+          expr: max(team_root_credentials{job="very-happy",state="expired"}) > 0
+          for: 10m
+          labels: { severity: critical, app: very-happy }
+          annotations:
+            summary: A team Lead credential has expired
+            description: '{{ $value | humanize }} root-member team credential(s) of an active session are expired: team_inspect / team_accept / team_delegate return 401. Recover per docs/operations.md "Team credential expired (B-944)".'
