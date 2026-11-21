@@ -12,7 +12,7 @@ const httpError = (status: number) => Object.assign(new Error(`Request failed wi
 function deps(failures: unknown[]) {
     const sleeps: number[] = []
     const warn = vi.fn()
-    const sendUserMessage = vi.fn(async () => {
+    const sendUserMessage = vi.fn(async (..._args: any[]) => {
         const failure = failures.shift()
         if (failure) throw failure
     })
