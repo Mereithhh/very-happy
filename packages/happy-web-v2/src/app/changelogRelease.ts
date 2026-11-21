@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-21-sonnet-haiku-5-5-claude-code-2-1-330',
+    cliVersion: '0.2.219',
+    date: '2026-11-21',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov21d.title',
+    summaryKey: 'changelog.releases.nov21d.summary',
+    itemKeys: ['changelog.releases.nov21d.claude', 'changelog.releases.nov21d.codex', 'changelog.releases.nov21d.upgrade'],
+  },
+  {
     id: '2026-11-21-sidebar-order-stays-put',
     date: '2026-11-21',
     buildVersion: __APP_VERSION__,

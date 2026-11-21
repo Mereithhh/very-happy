@@ -3595,6 +3595,13 @@ export const zhHans: TranslationStructure = {
                 shared: '别人分享给你的终端会写明是谁的哪台机器（比如「Alex 的 mac-studio」）：连接时显示正在连接，机器没连上时显示没连上，看的过程中掉线也一样。',
                 recover: '机器重新连上后，终端会自动恢复，不用刷新，也不用点重试。你自己的终端也一样。',
             },
+            nov21d: {
+                title: 'Claude 模型选择器新增 Sonnet 5.5 和 Haiku 5.5；Claude Code 升到 2.1.330',
+                summary: 'Claude 会话把 Sonnet 5.5（含 1M 上下文）和 Haiku 5.5 列为独立模型，选了就固定在这个版本，不随 sonnet / haiku 别名以后的指向变化。内置的 Claude Agent SDK 升到 0.3.330（Claude Code 2.1.330）。默认模型仍是 Opus 5.5。',
+                claude: 'sonnet、haiku 两项改名为别名；在 Claude Code 2.1.330 上它们运行的就是 Sonnet 5.5 和 Haiku 5.5。用量费用按 Fable 5.2、Opus 5.5、Sonnet 5.5、Haiku 5.5 的现行价格计算（Haiku 5.5 单次请求超过 100K token 时按更高一档计价）。',
+                codex: 'Codex 会话新增 gpt-6.2-sol 和 gpt-6.2-astra。「跟随最新」在 Codex 0.169.1 及以上运行 gpt-6.2-sol；更早的 Codex 仍用 gpt-6.1-sol，选择器会标出新模型需要的 Codex 版本。',
+                upgrade: '机器的 CLI 自动升级到 0.2.219、会话重启之后，新的 Claude 选项才会出现在会话里；仍在旧版 CLI 上的会话不会列出它们。',
+            },
             nov20a: {
                 title: '会话不会再因为一条存不下的记录而不再回应',
                 summary: '会话产生了一条超出服务器上限的记录时（比如 Codex 改了紧挨着几 MB 长行的文件），这条之后写出的内容都会被卡住：会话还在干活，你后面的提问看上去却没有回应。现在后面的内容照常送达，并会告诉你少了什么。',

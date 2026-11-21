@@ -3435,6 +3435,13 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov21d: {
+                title: 'Sonnet 5.5 and Haiku 5.5 in the Claude model picker; Claude Code 2.1.330',
+                summary: 'Claude sessions list Sonnet 5.5 (also with 1M context) and Haiku 5.5 as models of their own, so a pick stays on them whatever the sonnet / haiku aliases point to later. The bundled Claude Agent SDK is now 0.3.330 (Claude Code 2.1.330). The default model is still Opus 5.5.',
+                claude: 'The sonnet and haiku entries are now named as aliases; on Claude Code 2.1.330 they run Sonnet 5.5 and Haiku 5.5. Usage costs use the current prices for Fable 5.2, Opus 5.5, Sonnet 5.5 and Haiku 5.5 (Haiku 5.5 at its higher rate when one request is over 100K tokens).',
+                codex: 'Codex sessions list gpt-6.2-sol and gpt-6.2-astra. Follow latest runs gpt-6.2-sol where Codex is 0.169.1 or newer; an older Codex stays on gpt-6.1-sol, and the picker marks the new models with the Codex version they need.',
+                upgrade: 'The new Claude entries show in a session once its machine has updated to CLI 0.2.219 (automatic) and the session has restarted; sessions on an older CLI do not list them.',
+            },
             nov21c: {
                 title: 'The sidebar order no longer changes while you use it',
                 summary: 'Projects and sessions in the sidebar used to move around whenever a session in the background printed output or got a message. Now the order is set when the page loads — most recently active first — and stays put until you reload.',

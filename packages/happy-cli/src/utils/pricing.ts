@@ -5,10 +5,18 @@ import { Usage } from '../api/types';
  *
  * Source: https://platform.claude.com/docs/en/about-claude/pricing (Fable /
  * Mythos 5.2 rows read there 2026-11-10: $8 in, $40 out, $10 5-min cache
- * write, $0.20 cache read; older rows kept for JSONL backfills of historical
- * sessions). The `cache_write` column is the 5-minute cache write (1.25×
- * input); the `cache_read` column is 0.1× input except where Anthropic
- * publishes a different rate (Fable/Mythos 5.2: 0.025× = $0.20; 5.1: $0.25).
+ * write, $0.20 cache read; Sonnet 5.5 / Haiku 5.5 rows 2026-11-21, B-949:
+ * Sonnet 5.5 $2 / $10 / $0.10 cache read, Haiku 5.5 $0.10 / $0.50 for
+ * prompts up to 100K tokens and $0.50 / $2.50 beyond; older rows kept for
+ * JSONL backfills of historical sessions). The `cache_write` column is the
+ * 5-minute cache write (1.25× input); the `cache_read` column is 0.1× input
+ * except where Anthropic publishes a different rate (Fable/Mythos 5.2 and
+ * Opus 5.5: $0.20; Fable 5.1: $0.25; Sonnet 5.5: 0.05× = $0.10). Haiku 5.5
+ * publishes no cache rates of its own, so both use the 1.25× / 0.1× rule.
+ *
+ * `long_context` is a prompt-size tier (Haiku 5.5): one request whose prompt
+ * — input + cache write + cache read tokens — exceeds `above` bills every
+ * token of that request at the tier's rates.
  *
  * Lookup is by exact id first, then by `resolvePricingKey` which classifies
  * an arbitrary id (aliases like `opus[1m]`, dated snapshots, Bedrock ARNs)
@@ -28,7 +36,12 @@ export const PRICING = {
     // --- Claude 5 ---
     'claude-opus-5-5': { input: 4.0, output: 20.0, cache_write: 5.0, cache_read: 0.20 },
     'claude-opus-5': { input: 5.0, output: 25.0, cache_write: 6.25, cache_read: 0.50 },
+    'claude-sonnet-5-5': { input: 2.0, output: 10.0, cache_write: 2.5, cache_read: 0.10 },
     'claude-sonnet-5': { input: 2.0, output: 10.0, cache_write: 2.5, cache_read: 0.20 },
+    'claude-haiku-5-5': {
+        input: 0.10, output: 0.50, cache_write: 0.125, cache_read: 0.01,
+        long_context: { above: 100_000, input: 0.50, output: 2.50, cache_write: 0.625, cache_read: 0.05 },
+    },
 
     // --- Claude 4.x ---
     'claude-opus-4-8': { input: 5.0, output: 25.0, cache_write: 6.25, cache_read: 0.50 },
@@ -50,7 +63,9 @@ export const PRICING = {
     'claude-3-7-sonnet-20250219': { input: 3.0, output: 15.0, cache_write: 3.75, cache_read: 0.3 },
     'claude-3-haiku-20240307': { input: 0.25, output: 1.25, cache_write: 0.3125, cache_read: 0.025 },
     'claude-3-5-haiku-20241022': { input: 0.8, output: 4.0, cache_write: 1.0, cache_read: 0.08 },
-} as const;
+} as const satisfies Record<string, Rates & { long_context?: Rates & { above: number } }>;
+
+type Rates = { input: number; output: number; cache_write: number; cache_read: number };
 
 export type ModelId = keyof typeof PRICING;
 
@@ -58,13 +73,14 @@ export type ModelId = keyof typeof PRICING;
 const DEFAULT_MODEL: ModelId = 'claude-opus-5-5';
 
 const FAMILY_DEFAULTS: Record<'fable' | 'mythos' | 'opus' | 'sonnet' | 'haiku', ModelId> = {
-    // The bundled Claude Code (2.1.322) resolves the `fable` alias to Fable 5.2.
+    // The bundled Claude Code (2.1.330, probed 2026-11-21 without machine model
+    // overrides) resolves `fable` → Fable 5.2, `sonnet` → Sonnet 5.5, `haiku` → Haiku 5.5.
     fable: 'claude-fable-5-2',
     // Project Glasswing counterpart of Fable: same tier, same published rates.
     mythos: 'claude-mythos-5-2',
     opus: 'claude-opus-5-5',
-    sonnet: 'claude-sonnet-5',
-    haiku: 'claude-haiku-4-5',
+    sonnet: 'claude-sonnet-5-5',
+    haiku: 'claude-haiku-5-5',
 };
 
 /**
@@ -108,7 +124,9 @@ export function resolvePricingKey(modelId?: string | null): ModelId {
  * @param modelId - Model ID (optional, defaults to the current Claude Code default)
  */
 export function calculateCost(usage: Usage, modelId?: string): { total: number, input: number, output: number } {
-    const pricing = PRICING[resolvePricingKey(modelId)];
+    const row: Rates & { long_context?: Rates & { above: number } } = PRICING[resolvePricingKey(modelId)];
+    const prompt = usage.input_tokens + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0);
+    const pricing: Rates = row.long_context && prompt > row.long_context.above ? row.long_context : row;
 
     const inputCost = (usage.input_tokens / 1_000_000) * pricing.input;
     const outputCost = (usage.output_tokens / 1_000_000) * pricing.output;

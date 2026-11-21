@@ -46,14 +46,20 @@ describe('Claude model picker (Fable 5.2 / 5.1)', () => {
             'claude-opus-5-5[1m]': 'Opus 5.5 · 1M',
             opus: 'opus (alias)',
             'opus[1m]': 'opus (alias) · 1M',
-            sonnet: 'Sonnet 5.5',
-            'sonnet[1m]': 'Sonnet 5.5 · 1M',
-            haiku: 'Haiku 5.5',
+            // B-949: pinned Sonnet 5.5 / Haiku 5.5; the aliases are named as aliases.
+            'claude-sonnet-5-5': 'Sonnet 5.5',
+            'claude-sonnet-5-5[1m]': 'Sonnet 5.5 · 1M',
+            'claude-haiku-5-5': 'Haiku 5.5',
+            sonnet: 'sonnet (alias)',
+            'sonnet[1m]': 'sonnet (alias) · 1M',
+            haiku: 'haiku (alias)',
             opusplan: 'opusplan',
             best: 'best',
         });
         // fable5 is rejected by Claude Code 2.1.258 (unrecognized_model) — never offer it.
         expect(modes.some((m) => m.key === 'fable5')).toBe(false);
+        // Haiku 5.5 has no 1M twin in Claude Code 2.1.330's catalog.
+        expect(modes.some((m) => m.key === 'claude-haiku-5-5[1m]')).toBe(false);
         expect(modes[0].key).toBe('default');
         expect(modes[1].key).toBe('claude-opus-5-5');
         // B-844: the code default is the follow-latest sentinel, resolved at send time.
@@ -174,10 +180,10 @@ describe('model-specific reasoning catalogs', () => {
         // Codex 0.154's model/list (dev-sg, 2026-11-06): astra and 5.6-* only.
         const metadata = { models: [{ code: 'gpt-6-astra', value: 'GPT-6-Astra' }, { code: 'gpt-5.6-sol', value: 'GPT-5.6-Sol' }, { code: 'gpt-5.5', value: 'GPT-5.5' }] } as any;
         expect(getAvailableModels('codex', metadata, t as any).map((m) => m.key))
-            .toEqual(['default', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.5']);
+            .toEqual(['default', 'gpt-6.2-sol', 'gpt-6.2-astra', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.5']);
         // A model this Codex does not bundle still runs (0.154 on llm-hub ran them all): never disabled.
         expect(getAvailableModels('codex', metadata, t as any).filter((m) => m.disabled)).toEqual([]);
-        expect(getCodexModelModes().map((m) => m.key).slice(1, 6)).toEqual(['gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']);
+        expect(getCodexModelModes().map((m) => m.key).slice(1, 8)).toEqual(['gpt-6.2-sol', 'gpt-6.2-astra', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']);
     });
     it('B-893: marks a gpt-6 model this machine\'s Codex does not bundle, never one it does', () => {
         const catalog154 = new Set(['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.5']);
@@ -194,6 +200,10 @@ describe('model-specific reasoning catalogs', () => {
         // No catalog yet (new-session dialog): the installed version decides.
         expect(codexModelGate('gpt-6.1-sol', { agentVersion: '0.157.2' })).toEqual({ since: '0.160.0' });
         expect(codexModelGate('gpt-6.1-sol', { agentVersion: 'v0.160.0' })).toBeNull();
+        // B-949: gpt-6.2-* entered the bundled catalog in 0.169.1 (0.169.0 lacks them).
+        expect(codexModelGate('gpt-6.2-sol', { agentVersion: '0.169.0' })).toEqual({ since: '0.169.1' });
+        expect(codexModelGate('gpt-6.2-astra', { catalogCodes: new Set(['gpt-6.1-sol']), agentVersion: '0.167.0' })).toEqual({ since: '0.169.1' });
+        expect(codexModelGate('gpt-6.2-sol', { agentVersion: '0.171.0' })).toBeNull();
     });
     it('B-893: a [1m]-only Claude catalog entry (Fable, CC 2.1.30x+) gets its plain id, both named by version', () => {
         const t = (k: string) => k;
@@ -211,8 +221,8 @@ describe('model-specific reasoning catalogs', () => {
         // A session already on claude-fable-5-1: CC lists that id, still named 「Fable」.
         expect(withClaudeCatalogBases([{ key: 'claude-fable-5-1', name: 'Fable' }, { key: 'claude-opus-5-5', name: 'Opus 5.5 (custom)' }]))
             .toEqual([{ key: 'claude-fable-5-1', name: 'Fable 5.1' }, { key: 'claude-opus-5-5', name: 'Opus 5.5 (custom)' }]);
-        expect([...catalogRunnableKeys('claude', ['claude-fable-5-1[1m]'])]).toEqual(['claude-fable-5-1[1m]', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-fable-5-2']);
-        expect([...catalogRunnableKeys('claude', ['claude-fable-5-1[1m]'], { claudeFable52: false })]).toEqual(['claude-fable-5-1[1m]', 'claude-fable-5-1', 'claude-opus-5-5']);
+        expect([...catalogRunnableKeys('claude', ['claude-fable-5-1[1m]'])]).toEqual(['claude-fable-5-1[1m]', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-fable-5-2', 'claude-sonnet-5-5', 'claude-haiku-5-5']);
+        expect([...catalogRunnableKeys('claude', ['claude-fable-5-1[1m]'], { claudeFable52: false, claudeSonnet55: false, claudeHaiku55: false })]).toEqual(['claude-fable-5-1[1m]', 'claude-fable-5-1', 'claude-opus-5-5']);
     });
     it('B-907: pinned Fable 5.2 is offered in a session only when its wrapper advertises claude-fable-5-2-v1', () => {
         const t = (k: string) => k;
@@ -272,5 +282,51 @@ describe('permission display vocabulary', () => {
         expect(modes[1].name).toBe('agentInput.geminiPermissionMode.yolo');
         expect(modes[1].description).toBe('agentInput.permissionMode.autoRunDescription');
         expect(modes[2]).toEqual({ key: 'custom-policy', name: 'Company policy', description: 'Managed by host' });
+    });
+});
+
+describe('B-949: pinned Sonnet 5.5 / Haiku 5.5 gated by wrapper capability', () => {
+    const t = ((k: string) => k) as any;
+    // SDK 0.3.330 / CC 2.1.330 supportedModels() without machine overrides, 2026-11-21.
+    const models = [
+        { code: 'default', value: 'Default (recommended)', resolvedModel: 'claude-opus-5-5' },
+        { code: 'opus', value: 'Opus', resolvedModel: 'claude-opus-5-5' },
+        { code: 'claude-fable-5-1[1m]', value: 'Fable', resolvedModel: 'claude-fable-5-1' },
+        { code: 'sonnet', value: 'Sonnet', resolvedModel: 'claude-sonnet-5-5' },
+        { code: 'haiku', value: 'Haiku', resolvedModel: 'claude-haiku-5-5' },
+    ];
+    const newCaps = ['claude-opus-5-5-v1', 'claude-fable-5-2-v1', 'claude-sonnet-5-5-v1', 'claude-haiku-5-5-v1'];
+
+    it('a 0.3.330 wrapper lists the pinned ids and names the aliases as aliases', () => {
+        const list = getAvailableModels('claude', { models, capabilities: newCaps } as any, t).map((m) => `${m.key}=${m.name}`);
+        expect(list).toEqual(expect.arrayContaining([
+            'claude-sonnet-5-5=Sonnet 5.5', 'claude-sonnet-5-5[1m]=Sonnet 5.5 · 1M', 'claude-haiku-5-5=Haiku 5.5',
+            'sonnet=sonnet (alias)', 'haiku=haiku (alias)', 'opus=opus (alias)',
+        ]));
+        expect(list.some((entry) => entry.startsWith('claude-haiku-5-5[1m]='))).toBe(false);
+    });
+
+    it('an older wrapper (no capability) sees neither pinned id, and nothing breaks', () => {
+        // SDK 0.3.322 wrapper: Opus 5.5 + Fable 5.2 capabilities only.
+        const old = getAvailableModels('claude', { models, capabilities: ['claude-opus-5-5-v1', 'claude-fable-5-2-v1'] } as any, t);
+        const keys = old.map((m) => m.key);
+        expect(keys).not.toContain('claude-sonnet-5-5');
+        expect(keys).not.toContain('claude-sonnet-5-5[1m]');
+        expect(keys).not.toContain('claude-haiku-5-5');
+        // Its own catalog rows stay, under their catalog names.
+        expect(old.find((m) => m.key === 'sonnet')?.name).toBe('Sonnet');
+        expect(old.find((m) => m.key === 'haiku')?.name).toBe('Haiku');
+        // Each capability gates only its own model.
+        const sonnetOnly = getAvailableModels('claude', { models, capabilities: ['claude-sonnet-5-5-v1'] } as any, t).map((m) => m.key);
+        expect(sonnetOnly).toContain('claude-sonnet-5-5');
+        expect(sonnetOnly).not.toContain('claude-haiku-5-5');
+    });
+
+    it('newest-of-family proofs follow the same capabilities', () => {
+        const codes = models.map((m) => m.code);
+        expect(catalogRunnableKeys('claude', codes, { claudeSonnet55: true, claudeHaiku55: true }).has('claude-sonnet-5-5')).toBe(true);
+        const old = catalogRunnableKeys('claude', codes, { claudeSonnet55: false, claudeHaiku55: false });
+        expect(old.has('claude-sonnet-5-5')).toBe(false);
+        expect(old.has('claude-haiku-5-5')).toBe(false);
     });
 });

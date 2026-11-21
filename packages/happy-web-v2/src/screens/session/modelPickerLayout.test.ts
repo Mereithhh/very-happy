@@ -227,8 +227,8 @@ describe('B-893: Fable and the gpt-6 generation on the top list', () => {
         const codes = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.2'];
         const listed = getAvailableModels('codex', { models: codes.map((code) => ({ code, value: code })) } as never, t);
         const layout = layoutModelPicker(listed, { flavor: 'codex', selectedKey: 'default', runnable: catalogRunnableKeys('codex', codes) });
-        expect(keys(layout.primary)).toEqual(['default', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-luna', 'gpt-6-astra']);
-        expect(keys(layout.more)).toEqual(expect.arrayContaining(['gpt-6-sol', 'gpt-5.6-sol', 'gpt-5.5']));
+        expect(keys(layout.primary)).toEqual(['default', 'gpt-6.2-sol', 'gpt-6.2-astra', 'gpt-6.1-terra', 'gpt-6-luna']);
+        expect(keys(layout.more)).toEqual(expect.arrayContaining(['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-sol', 'gpt-5.6-sol', 'gpt-5.5']));
     });
 });
 

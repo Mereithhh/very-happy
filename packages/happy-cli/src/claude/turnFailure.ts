@@ -2,7 +2,7 @@
  * B-913 — did this Claude turn end because the model / upstream API failed?
  * Pure; the launcher feeds it SDK frames and asks at the result.
  *
- * Shapes seen (SDK 0.3.322, sdk.d.ts + the 11-05 Lead transcript):
+ * Shapes seen (SDK 0.3.322, re-seen on 0.3.330, sdk.d.ts + the 11-05 Lead transcript):
  *  - Claude Code ends a turn whose API call failed (a 400, or a 529 after its
  *    own retries ran out) with a synthetic assistant frame: `error` set
  *    ('invalid_request' | 'overloaded' | 'unknown' | …), `message.model`
