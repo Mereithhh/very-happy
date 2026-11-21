@@ -90,7 +90,8 @@ function MenuPart() {
     { key: 'delete', label: '删除', icon: Trash2, onSelect: () => setPicked('delete'), danger: true },
   ];
   return <main style={{ minHeight: '100dvh', background: 'var(--bg-0)', color: 'var(--text)', padding: 16 }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--line)', marginTop: '60dvh' }}>
+    {/* the row sits where the phone sheet's 「分享…」 opens (the QA repro: ⋯ under the sheet) */}
+    <div style={{ position: 'fixed', left: 16, right: 16, top: 'calc(100dvh - 117px)', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
       <span style={{ flex: 1 }}>修复登录页的跳转</span>
       <ActionDropdownMenu items={items} sheetTitle="修复登录页的跳转">
         <button type="button" data-b950-more aria-label="更多" style={{ width: 32, height: 32 }}><MoreHorizontal size={16} /></button>
