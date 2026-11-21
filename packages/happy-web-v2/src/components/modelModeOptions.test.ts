@@ -297,6 +297,20 @@ describe('B-949: pinned Sonnet 5.5 / Haiku 5.5 gated by wrapper capability', () 
     ];
     const newCaps = ['claude-opus-5-5-v1', 'claude-fable-5-2-v1', 'claude-sonnet-5-5-v1', 'claude-haiku-5-5-v1'];
 
+    it('B-950: before the wrapper publishes a catalog, the code list hides Sonnet 5.5 / Haiku 5.5 unless it advertises them', () => {
+        const old = getAvailableModels('claude', { capabilities: ['claude-opus-5-5-v1', 'claude-fable-5-2-v1'] } as any, t).map((m) => m.key);
+        expect(old).not.toContain('claude-sonnet-5-5');
+        expect(old).not.toContain('claude-sonnet-5-5[1m]');
+        expect(old).not.toContain('claude-haiku-5-5');
+        expect(old).toContain('claude-opus-5-5');
+        expect(old).toContain('sonnet');
+        const fresh = getAvailableModels('claude', { capabilities: newCaps } as any, t).map((m) => m.key);
+        expect(fresh).toEqual(expect.arrayContaining(['claude-sonnet-5-5', 'claude-sonnet-5-5[1m]', 'claude-haiku-5-5']));
+        const sonnetOnly = getAvailableModels('claude', { capabilities: ['claude-sonnet-5-5-v1'] } as any, t).map((m) => m.key);
+        expect(sonnetOnly).toContain('claude-sonnet-5-5');
+        expect(sonnetOnly).not.toContain('claude-haiku-5-5');
+    });
+
     it('a 0.3.330 wrapper lists the pinned ids and names the aliases as aliases', () => {
         const list = getAvailableModels('claude', { models, capabilities: newCaps } as any, t).map((m) => `${m.key}=${m.name}`);
         expect(list).toEqual(expect.arrayContaining([

@@ -1,6 +1,6 @@
 import { StartupLoader } from '@/ui/StartupLoader';
-import { LoaderCircle, Unplug } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { LoaderCircle, Unplug, X } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { TerminalConnectionNoticeState } from './termConnectionState';
 
@@ -8,6 +8,11 @@ import type { TerminalConnectionNoticeState } from './termConnectionState';
  * The in-pane connection notice: a spinner while waiting, otherwise an unplugged
  * icon, then the title, WHICH machine, what is going on and what one can do.
  * Shared by the owner's terminal and a terminal someone shared with me (B-943).
+ *
+ * B-950: over a painted terminal (`compact`) it is one row — title · machine and
+ * the actions — so the old output stays readable under it; the explanation is
+ * kept for screen readers and as the row's tooltip. The row can be folded into a
+ * small corner chip; a new notice (another title) unfolds it again.
  */
 export function TerminalNoticeView({ waiting, compact, title, machine, detail, actions }: {
     waiting: boolean;
@@ -17,11 +22,33 @@ export function TerminalNoticeView({ waiting, compact, title, machine, detail, a
     detail: string;
     actions?: ReactNode;
 }) {
-    return <div className={`term-connection-notice${compact ? ' is-compact' : ''}`} role="status" aria-live="polite" aria-atomic="true">
+    const { t } = useTranslation();
+    const [foldedTitle, setFoldedTitle] = useState<string | null>(null);
+    if (compact) {
+        const icon = waiting ? <LoaderCircle className="term-connection-spinner" size={16} aria-hidden="true" /> : <Unplug size={16} aria-hidden="true" />;
+        if (foldedTitle === title) {
+            return <div className="term-connection-notice is-compact is-folded" role="status" aria-live="polite" aria-atomic="true">
+                <button type="button" className="term-connection-chip" aria-label={`${title} · ${machine}`} title={`${title} · ${machine}`} aria-expanded={false} onClick={() => setFoldedTitle(null)}>{icon}</button>
+            </div>;
+        }
+        return <div className="term-connection-notice is-compact" role="status" aria-live="polite" aria-atomic="true" title={detail}>
+            <div className="term-connection-content">
+                {icon}
+                <div className="term-connection-copy">
+                    <strong>{title}</strong>
+                    <span className="mono term-connection-machine">{machine}</span>
+                    <span className="term-connection-detail">{detail}</span>
+                </div>
+                {!waiting && actions && <div className="term-connection-actions">{actions}</div>}
+                <button type="button" className="term-connection-fold" aria-label={t('common.close')} title={t('common.close')} aria-expanded onClick={() => setFoldedTitle(title)}><X size={14} aria-hidden="true" /></button>
+            </div>
+        </div>;
+    }
+    return <div className="term-connection-notice" role="status" aria-live="polite" aria-atomic="true">
         <div className="term-connection-content">
-        {waiting && !compact ? <StartupLoader compact showWordmark={false} label={title} className="term-connection-loading" /> : waiting ? <LoaderCircle className="term-connection-spinner" size={24} aria-hidden="true" /> : <Unplug size={24} aria-hidden="true" />}
+        {waiting ? <StartupLoader compact showWordmark={false} label={title} className="term-connection-loading" /> : <Unplug size={24} aria-hidden="true" />}
         <div className="term-connection-copy">
-            {(!waiting || compact) && <strong>{title}</strong>}
+            {!waiting && <strong>{title}</strong>}
             <span className="mono term-connection-machine">{machine}</span>
             <p>{detail}</p>
             {!waiting && actions && <div className="term-connection-actions">{actions}</div>}

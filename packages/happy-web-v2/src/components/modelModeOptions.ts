@@ -146,7 +146,7 @@ const CLAUDE_SONNET_55_MODELS: ModelMode[] = [
     { key: `${CLAUDE_SONNET_55_MODEL}[1m]`, name: 'Sonnet 5.5 · 1M', description: null },
 ];
 
-/** B-949: `claude-haiku-5-5-v1`; no 1M twin (Claude Code 2.1.330 lists none for Haiku). */
+/** B-949: `claude-haiku-5-5-v1`; no `[1m]` twin — the plain id already runs at 1M on CC 2.1.330 (B-950 probe), there is no 200k variant to switch from. */
 const CLAUDE_HAIKU_55_MODELS: ModelMode[] = [
     { key: CLAUDE_HAIKU_55_MODEL, name: 'Haiku 5.5', description: null },
 ];
@@ -473,7 +473,19 @@ export function getAvailableModels(
         }
         return withExtras;
     }
+    // B-950: a live session whose wrapper has not published its catalog yet (an old
+    // wrapper before its first turn) falls back to the code list — Sonnet 5.5 /
+    // Haiku 5.5 there obey the same capabilities as in getCatalogExtras.
+    if (flavor === 'claude') return withoutUngatedClaude55(getHardcodedModelModes(flavor, translate), metadata);
     return getHardcodedModelModes(flavor, translate);
+}
+
+function withoutUngatedClaude55(models: ModelMode[], metadata: Metadata | null | undefined): ModelMode[] {
+    const hidden = new Set([
+        ...(supportsClaudeSonnet55(metadata) ? [] : CLAUDE_SONNET_55_MODELS.map((model) => model.key)),
+        ...(supportsClaudeHaiku55(metadata) ? [] : CLAUDE_HAIKU_55_MODELS.map((model) => model.key)),
+    ]);
+    return hidden.size === 0 ? models : models.filter((model) => !hidden.has(model.key));
 }
 
 export function getAvailablePermissionModes(

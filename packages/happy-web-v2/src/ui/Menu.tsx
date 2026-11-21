@@ -182,12 +182,15 @@ function useMenuSheet(surface: 'dropdown' | 'context', titled: boolean): boolean
   return menuIsSheet(surface, { titled, coarse, narrowCoarse });
 }
 
-/** Wires the release guard to a trigger: its pointerdown handler and the menu's onOpenChange. */
-function useReleaseClickGuard() {
+/** Wires the release guard to a trigger: its pointerdown handler and the menu's onOpenChange.
+ *  B-950: a mouse press is guarded too when the menu is a bottom sheet — Radix opens
+ *  the dropdown on mousedown, the sheet then covers the trigger, and the mouseup
+ *  over 「分享…」 selected it. A dropdown anchored to its trigger keeps press-drag-release. */
+function useReleaseClickGuard(sheet: boolean) {
   const [guard] = useState(() => createLongPressReleaseGuard());
   const contentRef = useRef<HTMLDivElement>(null);
   const onPointerDown = (e: ReactPointerEvent) => {
-    if (e.pointerType === 'mouse') return;
+    if (e.pointerType === 'mouse' && !sheet) return;
     guard.press();
     const end = () => {
       document.removeEventListener('pointerup', end, true);
@@ -225,7 +228,7 @@ export function ActionDropdownMenu({
   sheetTitle?: string;
 }) {
   const sheet = useMenuSheet('dropdown', !!sheetTitle);
-  const { contentRef, onPointerDown, onOpenChange } = useReleaseClickGuard();
+  const { contentRef, onPointerDown, onOpenChange } = useReleaseClickGuard(sheet);
   return (
     <DropdownMenu.Root onOpenChange={onOpenChange}>
       <DropdownMenu.Trigger asChild onPointerDown={onPointerDown}>{children}</DropdownMenu.Trigger>
@@ -306,7 +309,7 @@ export function ActionContextMenu({
   sheetTitle?: string;
 }) {
   const sheet = useMenuSheet('context', !!sheetTitle);
-  const { contentRef, onPointerDown, onOpenChange } = useReleaseClickGuard();
+  const { contentRef, onPointerDown, onOpenChange } = useReleaseClickGuard(sheet);
   return (
     <ContextMenu.Root onOpenChange={onOpenChange}>
       <ContextMenu.Trigger asChild onPointerDown={onPointerDown}>{children}</ContextMenu.Trigger>

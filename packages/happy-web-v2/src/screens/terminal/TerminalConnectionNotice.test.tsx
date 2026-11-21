@@ -39,3 +39,16 @@ it('B-943: the shared-terminal notice names the machine and offers its action on
     expect(waiting).toContain('term-connection-loading');
     expect(waiting).not.toContain('<button');
 });
+it('B-950: over a painted terminal the notice is one row (title · machine + actions + fold), the explanation kept for screen readers', () => {
+    const html = renderToStaticMarkup(<View waiting={false} compact title="This machine isn't connected" machine="Alex's mac-studio" detail="comes back by itself" actions={<button type="button">Retry now</button>} />);
+    expect(html).toContain('is-compact');
+    expect(html).not.toContain('<p>');
+    expect(html).toContain('term-connection-detail');
+    expect(html).toContain('title="comes back by itself"');
+    expect(html).toContain('term-connection-fold');
+    expect(html.match(/<button/g)).toHaveLength(2);
+    // The full-pane notice (nothing painted yet) keeps its paragraph and has no fold.
+    const full = renderToStaticMarkup(<View waiting={false} compact={false} title="t" machine="m" detail="d" actions={<button type="button">Retry now</button>} />);
+    expect(full).toContain('<p>d</p>');
+    expect(full).not.toContain('term-connection-fold');
+});

@@ -69,7 +69,8 @@ describe('deep-link task dialog + unread release notes (real components)', () =>
     ({ ChangelogNotice } = await import('./ChangelogNotice'));
     ({ TeamDialog } = await import('@/screens/teams/TeamDialog'));
   });
-  afterEach(() => { act(() => root?.unmount()); host?.remove(); resetOverlayQueueForTest(); });
+  // Each case is its own page load (B-950: the notes surface on their own once per load).
+  afterEach(async () => { act(() => root?.unmount()); host?.remove(); resetOverlayQueueForTest(); (await import('./changelogReadStore')).resetChangelogReadStoreForTest(); });
   const render = (dialog: boolean) => act(() => root.render(createElement(MemoryRouter, null,
     createElement(ChangelogNotice),
     dialog ? createElement(TeamDialog, { title: 'Task details', onClose: () => {}, children: createElement('p', null, 'task body') }) : null)));

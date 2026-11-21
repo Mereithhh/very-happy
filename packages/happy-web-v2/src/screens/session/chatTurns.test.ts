@@ -46,6 +46,20 @@ describe('buildChatRows', () => {
         expect(refused[1]).toMatchObject({ type: 'message', message: { id: 'refused' } });
     });
 
+    it('B-950: the CLI\'s 「记录没保存」placeholder (outbox-rejected) stays visible above the answer, not in the fold', () => {
+        const rejected: Message = {
+            kind: 'agent-event', id: 'rejected', createdAt: 3,
+            event: { type: 'message', message: 'A 1 KB record from this session was not saved: the server refused it (HTTP 413).', kind: 'outbox-rejected' },
+        } as Message;
+        const answered = buildChatRows([user('u1', 1), tool('patch', 2), rejected, tool('read', 4), finalAgent('ok', 5, 4000)], false);
+        expect(answered.map((row) => row.type)).toEqual(['message', 'message', 'activity', 'message']);
+        expect(answered[1]).toMatchObject({ type: 'message', message: { id: 'rejected' } });
+        expect(answered[2]).toMatchObject({ type: 'activity', messages: [{ id: 'patch' }, { id: 'read' }] });
+        const answerless = buildChatRows([user('u2', 1), tool('patch', 2), rejected], false);
+        expect(answerless.map((row) => row.type)).toEqual(['message', 'activity', 'message']);
+        expect(answerless[2]).toMatchObject({ type: 'message', message: { id: 'rejected' } });
+    });
+
     it('keeps the failure of an answerless turn visible and drops the reason-less duplicate (B-487)', () => {
         const event = (id: string, createdAt: number, message: string): Message => ({
             kind: 'agent-event', id, createdAt, event: { type: 'message', message },
