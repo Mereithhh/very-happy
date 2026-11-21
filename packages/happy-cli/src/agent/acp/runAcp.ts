@@ -1,4 +1,6 @@
 import { VERY_HAPPY_DISCOVERY } from '@/skill/discovery';
+import { loadDshWrapperAccount, MACHINE_DSH_ACCOUNT, type DshWrapperAccount } from '@/agentProfiles/dshAccount';
+import { SPAWN_ACCOUNT_ENV } from '@/agentProfiles/store';
 import { dshAutoApproves } from './dshRunner';
 import { isSessionPeerPrompt } from '@/claude/nonUserPrompt';
 import { readPiModelsJson, resolvePiContextUsage, type PiContextReport } from './piContextUsage';
@@ -768,6 +770,28 @@ export async function runAcp(opts: {
   // connect to HAPPY_MCP_URL directly. `mcpServers` stays for agents that do
   // honour the ACP handoff.
   const teamsPiEnv = opts.agentName === 'pi' ? await preparePiTeamsRuntime() : {};
+  // B-952: the session's DeepSeek account (agentProfiles/dshAccount.ts). Its key
+  // reaches the dsh child only; a binding that cannot be honoured refuses every
+  // turn instead of running on the machine's own key (Owner Q3).
+  const spawnAccountId = process.env[SPAWN_ACCOUNT_ENV] || undefined;
+  delete process.env[SPAWN_ACCOUNT_ENV];
+  let dshAccount: DshWrapperAccount = MACHINE_DSH_ACCOUNT;
+  if (opts.agentName === 'dsh') {
+    try {
+      dshAccount = loadDshWrapperAccount(configuration.happyHomeDir, session.sessionId, spawnAccountId);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      dshAccount = spawnAccountId
+        ? { profile: { id: spawnAccountId, label: spawnAccountId, kind: 'dsh-api', status: 'unavailable', reason: 'error' }, childEnv: {}, unavailable: true, notices: [`Account "${spawnAccountId}" could not be loaded: ${reason}`] }
+        : MACHINE_DSH_ACCOUNT;
+    }
+    logger.debug(`[dsh] account: ${dshAccount.profile ? `${dshAccount.profile.id} ${dshAccount.profile.status}` : 'machine setup'}`);
+    const profile = dshAccount.profile;
+    session.updateMetadata((current) => ({ ...current, agentProfile: profile }));
+    for (const notice of dshAccount.notices) {
+      session.sendSessionEvent({ type: 'message', message: notice, kind: dshAccount.unavailable ? 'agent-profile-unavailable' : 'agent-profile-warning' });
+    }
+  }
   const createBackend = () => new AcpBackend({
     agentName: opts.agentName,
     cwd: process.cwd(),
@@ -775,6 +799,7 @@ export async function runAcp(opts: {
     args: opts.args,
     env: {
       ...teamsPiEnv,
+      ...dshAccount.childEnv,
       HAPPY_MCP_URL: happyServer.url,
       ...(happyServer.contextUsageUrl ? { HAPPY_CONTEXT_USAGE_URL: happyServer.contextUsageUrl } : {}),
       ...(happyServer.steerUrl ? { HAPPY_PI_STEER_URL: happyServer.steerUrl } : {}),
@@ -1209,6 +1234,12 @@ export async function runAcp(opts: {
   registerAgentAttachmentDownloads(session);
   let userMessageDelivery = Promise.resolve();
   session.onUserMessage((message) => {
+    // B-952: bound to a DeepSeek account that cannot run — not run, and said why.
+    if (dshAccount.unavailable && dshAccount.profile) {
+      if (message.localKey) session.sendQueueCancelReason([message.localKey], 'failed');
+      session.sendSessionEvent({ type: 'message', message: dshAccount.notices[0] ?? `Account "${dshAccount.profile.label}" is unavailable.`, kind: 'agent-profile-unavailable' });
+      return;
+    }
     // Claim synchronously, then preserve message order while downloads finish.
     const downloads = session.drainAttachmentsForUserMessage();
     userMessageDelivery = userMessageDelivery.then(async () => {

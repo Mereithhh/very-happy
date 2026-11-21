@@ -849,7 +849,8 @@ export async function startDaemon(): Promise<void> {
         // Only the validated choice below may set it — never `--env` / environmentVariables.
         delete extraEnv[SPAWN_ACCOUNT_ENV];
         // B-850b: Codex sessions too (ChatGPT overlay / API provider).
-        const accountAgent = (options.agent ?? 'claude') === 'claude' ? 'claude' : options.agent === 'codex' ? 'codex' : null;
+        // B-952: DeepSeek Harness sessions too (dsh-api: the key reaches the dsh child only).
+        const accountAgent = (options.agent ?? 'claude') === 'claude' ? 'claude' : options.agent === 'codex' ? 'codex' : options.agent === 'dsh' ? 'dsh' : null;
         if (accountAgent && accountServiceRef) {
           try {
             // B-850d: a fork continues on its parent's account (transcript and

@@ -17,7 +17,7 @@ import {
     type AgentProfileSummary,
     type AgentProfilesState,
 } from '@slopus/happy-wire';
-import { checkApiAccount, checkSubscriptionAccount } from './checkAccount';
+import { checkApiAccount, checkDshAccount, checkSubscriptionAccount } from './checkAccount';
 import { SetupTokenLoginManager, type SpawnPty } from './setupTokenLogin';
 import { baseCodexHome, readCodexProviders } from './codexConfig';
 import { syncCodexOverlay } from './codexHome';
@@ -44,7 +44,7 @@ import {
     type AccountRecord,
 } from './store';
 
-const ACCOUNT_AGENTS = ['claude', 'codex'] as const;
+const ACCOUNT_AGENTS = ['claude', 'codex', 'dsh'] as const;
 
 export class AccountError extends Error {
     constructor(readonly code: string, message: string, readonly sessions?: string[]) {
@@ -230,7 +230,7 @@ export class AccountService {
     }
 
     setDefault(agent: unknown, accountId: unknown): AgentProfilesState {
-        if (!ACCOUNT_AGENTS.includes(agent as never)) throw new AccountError('invalid-params', 'agent must be "claude" or "codex"');
+        if (!ACCOUNT_AGENTS.includes(agent as never)) throw new AccountError('invalid-params', 'agent must be "claude", "codex" or "dsh"');
         if (accountId !== null && typeof accountId !== 'string') throw new AccountError('invalid-params', 'accountId must be a string or null');
         if (typeof accountId === 'string') {
             const record = readAccounts(this.home).accounts[accountId];
@@ -279,7 +279,9 @@ export class AccountService {
                     ? await checkSubscriptionAccount(secret, join(this.home, 'tmp', 'account-check'), this.now)
                     : record.kind === 'codex-provider'
                         ? await this.checkCodexProvider(record, secret)
-                        : await checkApiAccount(record, secret, this.now);
+                        : record.kind === 'dsh-api'
+                            ? await checkDshAccount(secret, this.now)
+                            : await checkApiAccount(record, secret, this.now);
         }
         // Legacy (providers.json) accounts are read-only: report, do not persist.
         if (!record.legacy) {
