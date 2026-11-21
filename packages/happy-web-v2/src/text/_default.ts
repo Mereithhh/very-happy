@@ -2435,6 +2435,8 @@ export const en = {
         // mode and what a click does, since one icon carries both.
         sortByRecent: 'Sorted by recent activity — click for manual order',
         sortManual: 'Manual order — click to sort by recent activity',
+        // B-947: the list order is fixed per page load; this re-sorts it once.
+        resortByRecent: 'Re-sort by recent activity',
         // B-091 tag grouping (列表 view) — label states the CURRENT mode and
         // what a click does, same convention as the sort switch above.
         groupByTagOn: 'Grouped by tag — click for flat list',
@@ -3432,6 +3434,12 @@ export const en = {
                 summary: 'When an agent tries to preview a file that does not exist (or a folder), it is told so instead of being told the preview went out, so it stops saying "preview opened" for nothing.',
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
+            },
+            nov21c: {
+                title: 'The sidebar order no longer changes while you use it',
+                summary: 'Projects and sessions in the sidebar used to move around whenever a session in the background printed output or got a message. Now the order is set when the page loads — most recently active first — and stays put until you reload.',
+                new: 'A new session goes to the top of its project, and a new project to the top of the list; nothing else moves. Unread and running markers still update right away.',
+                resort: 'To sort by recent activity again without reloading, open the grouping menu at the top of the session list and pick "Re-sort by recent activity".',
             },
             nov21b: {
                 title: 'On a phone, back returns to your list — where you left it',

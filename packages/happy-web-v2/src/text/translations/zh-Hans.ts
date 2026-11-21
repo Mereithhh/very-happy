@@ -2583,6 +2583,8 @@ export const zhHans: TranslationStructure = {
         moveDown: '下移',
         sortByRecent: '按最近活跃排序 · 点击改为手动排序',
         sortManual: '手动排序 · 点击改为按最近活跃排序',
+        // B-947: the list order is fixed per page load; this re-sorts it once.
+        resortByRecent: '按最近活动重新排序',
         groupByTagOn: '按 tag 分组中 · 点击恢复平铺列表',
         groupByTagOff: '平铺列表 · 点击按 tag 分组',
         groupUntagged: '未分组',
@@ -3561,6 +3563,12 @@ export const zhHans: TranslationStructure = {
                 summary: '模型要预览的文件不存在（或是个文件夹）时，会直接收到失败和原因，而不是「已推送」，也就不会再告诉你「已打开预览」。',
                 agent: 'Claude、Codex、pi 会话都生效。模型会被要求先生成文件或核对路径；相对路径按会话所在目录解析。',
                 notice: '打开的预览如果找不到文件，现在会显示完整路径（可一键复制）、查找的是哪台机器，以及可能原因：还没生成、已被清理，或在另一台机器上。',
+            },
+            nov21c: {
+                title: '侧边栏的顺序不会在用的时候自己变了',
+                summary: '以前后台哪个会话有输出、收到消息，侧边栏里的项目和会话就会换位置。现在顺序在页面加载时按最近活动排好，之后保持不动，刷新页面才重新排。',
+                new: '新建的会话放在所属项目的最上面，新项目放在列表最上面，其他的都不挪。未读、运行中这些标记照常实时更新。',
+                resort: '不刷新也想按最近活动重排：打开侧边栏的分组菜单（「项目」旁边），选「按最近活动重新排序」。',
             },
             nov21b: {
                 title: '手机上点返回，回到你的列表，而且还是原来的位置',

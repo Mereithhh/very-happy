@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-21-sidebar-order-stays-put',
+    date: '2026-11-21',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov21c.title',
+    summaryKey: 'changelog.releases.nov21c.summary',
+    itemKeys: ['changelog.releases.nov21c.new', 'changelog.releases.nov21c.resort'],
+  },
+  {
     id: '2026-11-21-phone-back-returns-to-the-list',
     date: '2026-11-21',
     buildVersion: __APP_VERSION__,

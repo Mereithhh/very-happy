@@ -601,6 +601,9 @@
   line-height: 1.5;
 }
 .sb-order-hint > span { min-width: 0; }
+/* B-947: the load-order note sits on its own line under the hint. */
+.sb-order-hint { flex-wrap: wrap; }
+.sb-order-hint-note { flex-basis: 100%; }
 .sb-order-hint button {
   flex-shrink: 0;
   padding: 4px 6px;
