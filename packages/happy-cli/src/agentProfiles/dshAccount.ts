@@ -53,7 +53,7 @@ export function resolveDshAccount(sessionId: string, deps: DshAccountDeps): DshA
     }
     key = key?.trim();
     if (!key) return unavailable(label, kind, 'missing-secret');
-    return { kind: 'active', id, profile: { id, label, kind, status: 'ok' }, key };
+    return { kind: 'active', id, profile: { id, label, kind, status: 'active' }, key };
 }
 
 export type DshWrapperAccount = {

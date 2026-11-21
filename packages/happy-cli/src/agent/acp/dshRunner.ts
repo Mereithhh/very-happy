@@ -93,3 +93,24 @@ export function dshFailureHint(detail: string | undefined | null): string | null
 export function dshAutoApproves(mode: string | null | undefined): boolean {
     return mode === 'bypassPermissions' || mode === 'yolo';
 }
+
+/**
+ * B-952: dsh's ACP server sends every tool call as `kind: 'other'` with the
+ * model-visible tool name as the title. The standard ACP kind for dsh's own
+ * tools lets the Web draw the usual command / read / edit / search cards;
+ * anything else stays `other` (a generic card with its raw input).
+ */
+const DSH_TOOL_KINDS: Record<string, string> = {
+    bash: 'execute', pwsh: 'execute',
+    read: 'read', read_image: 'read',
+    write: 'edit', edit: 'edit', apply_patch: 'edit', str_replace_editor: 'edit',
+    glob: 'search', grep: 'search', web_search: 'search',
+    web_fetch: 'fetch',
+};
+
+export function dshToolKind(toolName: string | undefined): string | null {
+    return toolName && Object.prototype.hasOwnProperty.call(DSH_TOOL_KINDS, toolName) ? DSH_TOOL_KINDS[toolName] : null;
+}
+
+/** B-952: the one-time line a new dsh session shows — the limits are dsh's ACP surface, not a fault. */
+export const DSH_SESSION_NOTICE = 'DeepSeek Harness session: replies appear one message at a time (dsh sends no word-by-word stream); resuming keeps this transcript but dsh does not replay it; plan mode, slash commands and images are not available. Tool permissions are asked here unless the session runs in yolo mode.';

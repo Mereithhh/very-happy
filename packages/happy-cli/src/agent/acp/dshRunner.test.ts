@@ -72,3 +72,22 @@ describe('dsh runner prerequisites (B-952)', () => {
         expect(resolveAcpAgentConfig(['dsh'])).toEqual({ agentName: 'dsh', command: 'dsh', args: ['--profile', 'acp'] });
     });
 });
+
+describe('dsh tool kinds (B-952)', () => {
+    it('maps dsh tool names to standard ACP kinds for the Web tool cards', async () => {
+        const { dshToolKind } = await import('./dshRunner');
+        const { deriveAcpToolArgs } = await import('./acpToolArgs');
+        expect(dshToolKind('bash')).toBe('execute');
+        expect(dshToolKind('read')).toBe('read');
+        expect(dshToolKind('apply_patch')).toBe('edit');
+        expect(dshToolKind('grep')).toBe('search');
+        expect(dshToolKind('web_fetch')).toBe('fetch');
+        expect(dshToolKind('todo_write')).toBeNull();
+        expect(dshToolKind('constructor')).toBeNull();
+        expect(deriveAcpToolArgs({ title: 'bash', kind: 'other', rawInput: { command: 'ls' } }, { agentName: 'dsh' }))
+            .toEqual({ acpTitle: 'bash', acpKind: 'execute', rawInput: { command: 'ls' } });
+        expect(deriveAcpToolArgs({ title: 'subagent', kind: 'other' }, { agentName: 'dsh' })).toEqual({ acpTitle: 'subagent', acpKind: 'other' });
+        // Other agents keep the kind they sent.
+        expect(deriveAcpToolArgs({ title: 'bash', kind: 'other' }, { agentName: 'opencode' }).acpKind).toBe('other');
+    });
+});

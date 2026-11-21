@@ -21,7 +21,7 @@ describe('B-952 dsh-api accounts', () => {
         const base = { home: '/h', bindings: { s1: { account: 'ds' } }, env: { MY_DS_KEY: ` ${KEY} ` } };
         const readSecret = vi.fn((path: string) => `${KEY}\n${path === accountSecretPath('/h', 'ds') ? '' : ''}`);
         expect(resolveDshAccount('s1', { ...base, accounts: accounts(), readSecret })).toEqual({
-            kind: 'active', id: 'ds', key: KEY, profile: { id: 'ds', label: 'DeepSeek', kind: 'dsh-api', status: 'ok' },
+            kind: 'active', id: 'ds', key: KEY, profile: { id: 'ds', label: 'DeepSeek', kind: 'dsh-api', status: 'active' },
         });
         expect(readSecret).toHaveBeenCalledWith(accountSecretPath('/h', 'ds'));
         expect(resolveDshAccount('s1', { ...base, accounts: accounts({ key: { source: 'env', name: 'MY_DS_KEY' } }), readSecret })).toMatchObject({ kind: 'active', key: KEY });
@@ -52,7 +52,7 @@ describe('B-952 dsh-api accounts', () => {
 
         const env: NodeJS.ProcessEnv = {};
         const wrapper = loadDshWrapperAccount(home, 'sess-1', 'deepseek', env);
-        expect(wrapper).toMatchObject({ unavailable: false, profile: { id: 'deepseek', status: 'ok' }, childEnv: { DEEPSEEK_API_KEY: KEY } });
+        expect(wrapper).toMatchObject({ unavailable: false, profile: { id: 'deepseek', status: 'active' }, childEnv: { DEEPSEEK_API_KEY: KEY } });
         expect(env.DEEPSEEK_API_KEY).toBeUndefined();
         expect(JSON.stringify(wrapper.profile)).not.toContain(KEY);
         // The binding sticks: the next wrapper (resume) needs no spawn env.

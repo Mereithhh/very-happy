@@ -368,7 +368,8 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
     if (flavor === 'openclaw') {
         return getOpenClawPermissionModes(translate);
     }
-    if (isPiAgent(flavor)) {
+    // B-952: dsh has the same two modes as pi — ask (default) or auto-approve (yolo).
+    if (isPiAgent(flavor) || flavor === 'dsh') {
         return getPiPermissionModes(translate);
     }
     return getClaudePermissionModes(translate);

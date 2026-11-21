@@ -8,7 +8,7 @@
  * Identity is never coloured — `--accent` means live and the tag palette means
  * metadata, so the name carries identity and the status slot carries state.
  */
-export type AgentKind = 'claude' | 'codex' | 'pi' | 'terminal' | 'subagent' | 'team' | 'unknown';
+export type AgentKind = 'claude' | 'codex' | 'pi' | 'dsh' | 'terminal' | 'subagent' | 'team' | 'unknown';
 
 /** Runner flavor / Teams `assistant` / peer `agent` field → kind. */
 export function agentKindOf(flavor: string | null | undefined): AgentKind {
@@ -16,6 +16,7 @@ export function agentKindOf(flavor: string | null | undefined): AgentKind {
         case 'claude': return 'claude';
         case 'codex': return 'codex';
         case 'pi': case 'pi-acp': case 'acp': return 'pi';
+        case 'dsh': return 'dsh';
         case 'terminal-mirror': case 'terminal': return 'terminal';
         default: return 'unknown';
     }
@@ -27,6 +28,7 @@ export function agentKindLabel(kind: AgentKind): string | null {
         case 'claude': return 'Claude Code';
         case 'codex': return 'Codex';
         case 'pi': return 'Pi';
+        case 'dsh': return 'DeepSeek Harness';
         case 'terminal': return 'Terminal';
         default: return null;
     }

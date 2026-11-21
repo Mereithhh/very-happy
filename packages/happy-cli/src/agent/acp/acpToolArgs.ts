@@ -1,3 +1,4 @@
+import { dshToolKind } from './dshRunner';
 /**
  * ACP tool-call fidelity (B-353 lane I).
  *
@@ -55,6 +56,11 @@ export function deriveAcpToolArgs(
 
   if (title !== undefined) args.acpTitle = title;
   if (kind !== undefined) args.acpKind = kind;
+  // B-952: dsh reports `other` for all tools; its tool name gives the real kind.
+  if (options.agentName === 'dsh' && (kind === undefined || kind === 'other')) {
+    const mapped = dshToolKind(title);
+    if (mapped) args.acpKind = mapped;
+  }
 
   if (update.rawInput && typeof update.rawInput === 'object' && !Array.isArray(update.rawInput)) {
     const rawInput = update.rawInput as Record<string, unknown>;

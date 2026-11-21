@@ -1433,6 +1433,7 @@ it('keeps the session usable after cancelling an in-flight turn', async () => {
     try {
       await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
       expect((mocks.mockGetOrCreateSession.mock.calls[0] as any[])[0].metadata.flavor).toBe('dsh');
+      expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: expect.stringContaining('replies appear one message at a time') });
       const stored = mocks.mockSession.updateMetadata.mock.calls.map(([apply]) => apply({ path: '/p' })).find((m: any) => m.dshSessionId);
       expect(stored).toMatchObject({ dshSessionId: 'dsh-sess-1' });
       expect(stored?.piSessionId).toBeUndefined();
@@ -1447,7 +1448,7 @@ it('keeps the session usable after cancelling an in-flight turn', async () => {
   it('B-952: a bound DeepSeek account reaches the dsh child env only; an unusable one refuses turns', async () => {
     const KEY = ['sk', 'test', 'only'].join('-');
     process.env.VH_AGENT_PROFILE_ID = 'deepseek';
-    dshAccountMock.next = { profile: { id: 'deepseek', label: 'DeepSeek', kind: 'dsh-api', status: 'ok' }, childEnv: { DEEPSEEK_API_KEY: KEY }, unavailable: false, notices: [] };
+    dshAccountMock.next = { profile: { id: 'deepseek', label: 'DeepSeek', kind: 'dsh-api', status: 'active' }, childEnv: { DEEPSEEK_API_KEY: KEY }, unavailable: false, notices: [] };
     const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'dsh', command: 'dsh', args: ['--profile', 'acp'] });
     try {
       await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
@@ -1456,7 +1457,7 @@ it('keeps the session usable after cancelling an in-flight turn', async () => {
       expect(process.env.DEEPSEEK_API_KEY).toBeUndefined();
       expect(mocks.backendState.constructorArgs.env.DEEPSEEK_API_KEY).toBe(KEY);
       const metas = mocks.mockSession.updateMetadata.mock.calls.map(([apply]) => apply({}));
-      expect(metas.find((m: any) => m.agentProfile)?.agentProfile).toMatchObject({ id: 'deepseek', status: 'ok' });
+      expect(metas.find((m: any) => m.agentProfile)?.agentProfile).toMatchObject({ id: 'deepseek', status: 'active' });
       expect(JSON.stringify(metas)).not.toContain(KEY);
     } finally {
       dshAccountMock.next = null;
@@ -1478,6 +1479,20 @@ it('keeps the session usable after cancelling an in-flight turn', async () => {
       expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: 'Account "DeepSeek" is unavailable.', kind: 'agent-profile-unavailable' });
     } finally {
       dshAccountMock.next = null;
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
+  it('B-952: a dsh turn that fails for a missing key says how to add one', async () => {
+    mocks.backendState.sendPromptScript = async () => { throw Object.assign(new Error('Internal error: turn failed: llm-deepseek: no API key for provider route "deepseek-official"'), { code: -32603 }); };
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'dsh', command: 'dsh', args: ['--profile', 'acp'] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'hi' } });
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: expect.stringContaining('Add a DeepSeek account under Settings') }));
+    } finally {
+      mocks.backendState.sendPromptScript = null;
       await mocks.getKillHandler()!();
       await runPromise;
     }

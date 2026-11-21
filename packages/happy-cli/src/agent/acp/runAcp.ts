@@ -1,7 +1,7 @@
 import { VERY_HAPPY_DISCOVERY } from '@/skill/discovery';
 import { loadDshWrapperAccount, MACHINE_DSH_ACCOUNT, type DshWrapperAccount } from '@/agentProfiles/dshAccount';
 import { SPAWN_ACCOUNT_ENV } from '@/agentProfiles/store';
-import { dshAutoApproves } from './dshRunner';
+import { DSH_SESSION_NOTICE, dshAutoApproves, dshFailureHint } from './dshRunner';
 import { isSessionPeerPrompt } from '@/claude/nonUserPrompt';
 import { readPiModelsJson, resolvePiContextUsage, type PiContextReport } from './piContextUsage';
 import { buildAcpPrompt, routeAcpUserText } from './acpSlashCommand';
@@ -1436,6 +1436,10 @@ export async function runAcp(opts: {
     rememberAgentSession(started.agentSessionId);
     backendStarted = true;
     await afterSessionStarted(opts.model);
+    // B-952: say once, in the session, what dsh does differently (never on a reconnect or resume).
+    if (opts.agentName === 'dsh' && !reconnect && !resumeId) {
+      session.sendSessionEvent({ type: 'message', message: DSH_SESSION_NOTICE });
+    }
     if (resumeId) {
       logger.debug(`[${opts.agentName}] Resume of agent session ${resumeId}: ${started.resumed ?? 'new'}${started.loadFailure ? ` (${started.loadFailure})` : ''}`);
       if (started.resumed !== 'loaded') session.sendSessionEvent({ type: 'message', message: piRestartNotice(opts.agentName, 'resume', started) });
@@ -1575,6 +1579,11 @@ export async function runAcp(opts: {
         // send). Say what the agent said; keep the session; the next message runs anew.
         const failure = describeAcpTurnFailure(opts.agentName, error);
         session.sendSessionEvent({ type: 'message', message: failure.message });
+        // B-952: a missing / rejected DeepSeek key gets the fix, not only dsh's words.
+        if (opts.agentName === 'dsh') {
+          const hint = dshFailureHint(failure.message);
+          if (hint) session.sendSessionEvent({ type: 'message', message: hint });
+        }
         // B-854: failed before the prompt reached the agent (restart, mode / model
         // switch, prompt building): 「未执行」 with put-back under the error line.
         heldInput.drop('failed');

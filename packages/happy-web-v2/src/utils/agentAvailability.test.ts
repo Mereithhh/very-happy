@@ -92,3 +92,22 @@ describe('agentsNeedingSetup', () => {
         expect(agentSetupInstruction('pi')).toEqual({ kind: 'command', command: 'npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33' });
     });
 });
+
+describe('B-952 DeepSeek Harness availability', () => {
+    const base = { claude: true, codex: true, gemini: true, openclaw: true, pi: true, detectedAt: 1 };
+
+    it('is hidden on daemons that predate the dsh runner and enabled only on an explicit true', () => {
+        expect(isAgentOffered({ cliAvailability: base } as any, 'dsh')).toBe(false);
+        expect(resolveAgentAvailability({ cliAvailability: base } as any, 'dsh').available).toBe(false);
+        expect(isAgentOffered({ cliAvailability: { ...base, dsh: false } } as any, 'dsh')).toBe(true);
+        expect(resolveAgentAvailability({ cliAvailability: { ...base, dsh: true, dshNode: 'v24.9.0' } } as any, 'dsh').available).toBe(true);
+        expect(agentsNeedingSetup({ cliAvailability: { ...base, dsh: false } } as any)).toEqual(['dsh']);
+    });
+
+    it('says install dsh when it is missing, and upgrade Node when dsh is there but Node is too old', () => {
+        expect(agentSetupInstruction('dsh', { cliAvailability: { ...base, dsh: false } } as any)).toEqual({ kind: 'command', command: 'npm install -g @deepseek-ai/dsh' });
+        expect(agentSetupInstruction('dsh', { cliAvailability: { ...base, dsh: false, dshNode: 'v22.23.2' } } as any)).toEqual({ kind: 'node-upgrade', nodeVersion: 'v22.23.2', minimum: '24.9.0' });
+        expect(agentSetupInstruction('dsh', { cliAvailability: { ...base, dsh: false, dshNode: null } } as any)).toEqual({ kind: 'node-upgrade', nodeVersion: null, minimum: '24.9.0' });
+        expect(agentSetupInstruction('dsh')).toEqual({ kind: 'command', command: 'npm install -g @deepseek-ai/dsh' });
+    });
+});
