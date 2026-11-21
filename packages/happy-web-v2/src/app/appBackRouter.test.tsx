@@ -9,7 +9,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeAll, expect, it } from 'vitest';
-import { __setNavDepth, useAppBack, useGlobalBackNav } from './appBack';
+import { __setNavDepth, setPinnedSidebar, useAppBack, useGlobalBackNav } from './appBack';
 
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
@@ -24,6 +24,7 @@ afterEach(() => {
   root = null;
   host = null;
   __setNavDepth(0);
+  setPinnedSidebar(true);
   sessionStorage.clear();
 });
 
@@ -73,4 +74,46 @@ it('in-app history still wins: push then back returns to the previous page, not 
     await router.navigate('/settings/account');
   });
   expect(await pressBack(1, router)).toEqual(['/settings/account', '/session/a']);
+});
+
+// ---------------------------------------------------------------------------
+// B-946: no sidebar (phone) → back goes to the list, and the system back button
+// cannot walk into the conversation again
+// ---------------------------------------------------------------------------
+
+it('no sidebar: list → chat A → chat B → back returns to the LIST, and a further system back stays there', async () => {
+  setPinnedSidebar(false);
+  const router = openDeepLink('/');
+  await act(async () => { await router.navigate('/session/a'); });
+  await act(async () => { await router.navigate('/session/b'); });
+  expect(await pressBack(1, router)).toEqual(['/session/b', '/']);
+  // the chat entries are BEHIND us now — the system/browser back has nothing
+  // of ours to return to (one more in-app back is a no-op at the root)
+  expect(await pressBack(1, router)).toEqual(['/']);
+  await act(async () => { await router.navigate(-1); });
+  expect(router.state.location.pathname).toBe('/');
+});
+
+it('no sidebar: a chat opened from /board returns to /board', async () => {
+  setPinnedSidebar(false);
+  const router = openDeepLink('/board');
+  await act(async () => { await router.navigate('/session/a'); });
+  await act(async () => { await router.navigate('/session/b'); });
+  expect(await pressBack(1, router)).toEqual(['/session/b', '/board']);
+});
+
+it('no sidebar: deep-linked chat (cold start, empty stack) goes to the list by replacing', async () => {
+  setPinnedSidebar(false);
+  const router = openDeepLink('/session/a');
+  expect(await pressBack(1, router)).toEqual(['/session/a', '/']);
+  // replacing keeps the stack empty: pressing again does nothing
+  expect(await pressBack(1, router)).toEqual(['/']);
+});
+
+it('sidebar on screen (desktop): history still wins — back returns to the previous chat', async () => {
+  setPinnedSidebar(true);
+  const router = openDeepLink('/');
+  await act(async () => { await router.navigate('/session/a'); });
+  await act(async () => { await router.navigate('/session/b'); });
+  expect(await pressBack(1, router)).toEqual(['/session/b', '/session/a']);
 });

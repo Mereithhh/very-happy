@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { PanelLeft } from 'lucide-react';
 import { useIsDesktop, useMediaQuery } from '@/app/useMediaQuery';
-import { appShellMode, nextSidebarParked, TOUCH_DRAWER_MQ } from '@/app/appShellMode';
+import { appShellMode, nextSidebarParked, pinnedSidebar, TOUCH_DRAWER_MQ } from '@/app/appShellMode';
+import { setAppRoot, setPinnedSidebar } from '@/app/appBack';
 import { useSidebarPrefs, SIDEBAR_MIN, SIDEBAR_MAX } from '@/app/useSidebarPrefs';
 import { useDrawerSwipe } from '@/app/drawerSwipe';
 import { Sidebar } from '@/screens/sessions/Sidebar';
@@ -125,6 +126,12 @@ export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
   const settings = location.pathname === '/settings' || location.pathname.startsWith('/settings/');
   const mode = appShellMode({ settings, desktop: isDesktop, touchDrawer, collapsed, atRoot, firstRun, workspaceGuide });
   const drawer = mode === 'drawer';
+  // B-946: back goes to the conversation behind only while a sidebar is on
+  // screen; the single-pane shell sends it (and the edge swipe) to the list.
+  useEffect(() => setPinnedSidebar(pinnedSidebar(mode)), [mode]);
+  // B-946: the back rules read the list as `/` — the DEV device harness mounts
+  // this same shell under /dev/device, so tell them where the root is.
+  useEffect(() => setAppRoot(rootPath), [rootPath]);
   useEffect(() => setDrawer(drawer), [drawer, setDrawer]);
   // B-800: edge swipe right opens the drawer, swipe left on it closes (follows the finger).
   useDrawerSwipe(drawer);

@@ -3433,6 +3433,12 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov21b: {
+                title: 'On a phone, back returns to your list — where you left it',
+                summary: 'With no sidebar on screen (a phone, a narrow window), the back arrow and the edge swipe went to the previous conversation instead of your list. Now they go to the list you opened the conversation from — the home list, the board or the team page — scrolled back to where it was, with the row you opened in view.',
+                list: 'The list keeps its scroll position and its folded groups; the conversation you just opened is visible even if the list reordered itself meanwhile. On the team page and the board the way back is the same.',
+                desktop: 'With the sidebar on screen (desktop, or the rail on a tablet) nothing changes: back still returns to the conversation you came from.',
+            },
             nov20a: {
                 title: 'A session no longer goes quiet after one record it could not save',
                 summary: 'When a session produced one record too large for the server (for example a Codex edit next to a multi-megabyte line), everything it wrote after that record was held back — later questions looked unanswered while the session kept working. Now the rest goes out, and you are told what is missing.',

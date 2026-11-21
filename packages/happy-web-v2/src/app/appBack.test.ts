@@ -3,6 +3,7 @@ import {
   backParentPath,
   resolveBackTarget,
   backNavigation,
+  isListDetail,
   nextNavDepth,
   matchBackChord,
   navHubFor,
@@ -122,6 +123,103 @@ describe('resolveBackTarget', () => {
     expect(resolveBackTarget({ pathname: '/login', search: '', depth: 2, origin: null })).toEqual({
       kind: 'none',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B-946: no sidebar on screen → the LIST is the level above a conversation
+// (Owner 11-21: on a phone the back arrow returned to the previous session)
+// ---------------------------------------------------------------------------
+
+describe('resolveBackTarget — pinned sidebar × in-app history × origin', () => {
+  const origins: Array<[string, BackOrigin | null, string]> = [
+    ['home', 'home', '/'],
+    ['board', 'board', '/board'],
+    ['teams', '/teams/demo', '/teams/demo'],
+  ];
+
+  for (const [name, origin, hub] of origins) {
+    it(`no sidebar, history: a session opened from ${name} goes back to ${hub}, not the session behind`, () => {
+      const trail = [hub, '/session/a', '/session/b'];
+      expect(
+        resolveBackTarget({ pathname: '/session/b', search: '', depth: 2, origin, pinnedSidebar: false, trail }),
+      ).toEqual({ kind: 'pop', index: 0, to: hub, delta: -2 });
+    });
+
+    it(`no sidebar, no history (deep link / cold start): ${name} → ${hub} by replacing`, () => {
+      expect(
+        resolveBackTarget({ pathname: '/session/a', search: '', depth: 0, origin, pinnedSidebar: false, trail: ['/session/a'] }),
+      ).toEqual({ kind: 'path', to: hub });
+    });
+
+    it(`sidebar on screen, history: ${name} keeps "go back to the previous page" (desktop unchanged)`, () => {
+      const trail = [hub, '/session/a', '/session/b'];
+      expect(
+        resolveBackTarget({ pathname: '/session/b', search: '', depth: 2, origin, pinnedSidebar: true, trail }),
+      ).toEqual({ kind: 'history' });
+    });
+
+    it(`sidebar on screen, no history: ${name} → ${hub} by replacing`, () => {
+      expect(
+        resolveBackTarget({ pathname: '/session/a', search: '', depth: 0, origin, pinnedSidebar: true, trail: [] }),
+      ).toEqual({ kind: 'path', to: hub });
+    });
+  }
+
+  it('no sidebar: an open terminal also returns to its list (edge swipe / arrow share this)', () => {
+    expect(
+      resolveBackTarget({
+        pathname: '/terminal/m1',
+        search: '?tid=t1',
+        depth: 1,
+        origin: 'board',
+        pinnedSidebar: false,
+        trail: ['/board', '/terminal/m1'],
+      }),
+    ).toEqual({ kind: 'pop', index: 0, to: '/board', delta: -1 });
+  });
+
+  it('no sidebar: the list is gone from the stack → replace (never walk into a conversation)', () => {
+    expect(
+      resolveBackTarget({
+        pathname: '/session/b',
+        search: '',
+        depth: 2,
+        origin: 'home',
+        pinnedSidebar: false,
+        trail: ['/settings', '/session/a', '/session/b'],
+      }),
+    ).toEqual({ kind: 'path', to: '/' });
+  });
+
+  it('no sidebar: only conversations are re-routed — settings still walk up in history', () => {
+    expect(
+      resolveBackTarget({
+        pathname: '/settings/appearance',
+        search: '',
+        depth: 2,
+        origin: null,
+        pinnedSidebar: false,
+        trail: ['/', '/settings', '/settings/appearance'],
+      }),
+    ).toEqual({ kind: 'history' });
+  });
+
+  it('no sidebar: the root still hides the control', () => {
+    expect(
+      resolveBackTarget({ pathname: '/', search: '', depth: 2, origin: 'board', pinnedSidebar: false, trail: ['/', '/board', '/'] }),
+    ).toEqual({ kind: 'none' });
+  });
+});
+
+describe('isListDetail', () => {
+  it('sessions and open terminals are list details; the picker and the rest are not', () => {
+    expect(isListDetail('/session/abc')).toBe(true);
+    expect(isListDetail('/terminal/m1')).toBe(true);
+    expect(isListDetail('/terminal')).toBe(false);
+    expect(isListDetail('/board')).toBe(false);
+    expect(isListDetail('/teams/demo')).toBe(false);
+    expect(isListDetail('/')).toBe(false);
   });
 });
 

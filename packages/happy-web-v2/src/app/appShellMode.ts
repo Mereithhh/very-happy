@@ -36,6 +36,17 @@ export function sidebarMounted(mode: AppShellMode): boolean {
 }
 
 /**
+ * B-946: is a sidebar — or the rail that opens it — somewhere on screen? The
+ * single-pane shell is the ONLY mode without one: `expanded`/`collapsed` show
+ * it beside (or as a rail beside) the conversation, `drawer` keeps the rail,
+ * and `list` IS the sidebar. Back semantics read this: with no sidebar the
+ * session list is the level above a conversation.
+ */
+export function pinnedSidebar(mode: AppShellMode): boolean {
+  return mode !== 'single';
+}
+
+/**
  * Folding a two-pane screen into one pane must not unmount the sidebar: its
  * dialogs (新建会话, rename, share, move-to-project …) and its scroll / group
  * state live there. So when the layout alone drops the sidebar (same route) it

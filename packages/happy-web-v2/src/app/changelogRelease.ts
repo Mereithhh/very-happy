@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-21-phone-back-returns-to-the-list',
+    date: '2026-11-21',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov21b.title',
+    summaryKey: 'changelog.releases.nov21b.summary',
+    itemKeys: ['changelog.releases.nov21b.list', 'changelog.releases.nov21b.desktop'],
+  },
+  {
     id: '2026-11-20-dead-session-process-ends-its-turn',
     cliVersion: '0.2.219',
     date: '2026-11-20',

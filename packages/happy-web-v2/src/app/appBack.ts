@@ -41,6 +41,9 @@ export type BackOrigin = 'home' | 'board' | '/teams' | `/teams/${string}`;
 
 export type BackTarget =
   | { kind: 'history' }
+  /** B-946: pop straight back to a list entry that is still behind us —
+   *  `index` is its position in this document's stack (`delta` entries up). */
+  | { kind: 'pop'; index: number; to: string; delta: number }
   | { kind: 'path'; to: string }
   | { kind: 'none' };
 
@@ -50,6 +53,17 @@ export interface BackContext {
   /** in-app navigations pushed in THIS document (0 after reload / cold start) */
   depth: number;
   origin: BackOrigin | null;
+  /**
+   * B-946: is a sidebar (or its rail / drawer) on screen? Defaults to `true`:
+   * the two-pane shell, where the list stays visible beside the conversation
+   * and rule 1 is right. On the single-pane shell it is `false` — there the
+   * list is the level above, not the conversation behind.
+   */
+  pinnedSidebar?: boolean;
+  /** Pathnames of this document's in-app entries, oldest → newest (the entry on
+   *  screen last). Lets a list be reached by POPPING rather than replacing, so
+   *  the system back button cannot walk into the conversation again. */
+  trail?: readonly string[];
 }
 
 function normalizePath(pathname: string): string {
@@ -58,10 +72,40 @@ function normalizePath(pathname: string): string {
   return p === '' ? '/' : p;
 }
 
+/**
+ * Where the list lives. `/` in the app; the DEV device harness mounts the same
+ * shell under `/dev/device`, and the rules below must read that exactly like
+ * the real root (it is the same layout code on the same screens).
+ */
+let appRoot = '/';
+
+export function setAppRoot(path: string): void {
+  const p = normalizePath(path);
+  appRoot = p === '' ? '/' : p;
+}
+
+export function getAppRoot(): string {
+  return appRoot;
+}
+
+/** Route path → app-space path (`/dev/device/session/x` → `/session/x`). */
+function inApp(pathname: string): string {
+  const p = normalizePath(pathname);
+  if (appRoot === '/') return p;
+  if (p === appRoot) return '/';
+  return p.startsWith(`${appRoot}/`) ? p.slice(appRoot.length) : p;
+}
+
+/** App-space path → route path. */
+function onRoute(path: string): string {
+  if (appRoot === '/') return path;
+  return path === '/' ? appRoot : `${appRoot}${path}`;
+}
+
 /** The hub a given path IS (used to remember where a detail view was opened
  *  from, so a reloaded deep link can still fall back to the right list). */
 export function navHubFor(pathname: string): BackOrigin | null {
-  const p = normalizePath(pathname);
+  const p = inApp(pathname);
   if (p === '/') return 'home';
   if (p === '/board') return 'board';
   if (p === '/teams' || /^\/teams\/[^/]+$/.test(p)) return p as BackOrigin;
@@ -81,7 +125,11 @@ export function backParentPath(
   _search: string,
   origin: BackOrigin | null,
 ): string | null {
-  const p = normalizePath(pathname);
+  const parent = backParentInApp(inApp(pathname), origin);
+  return parent === null ? null : onRoute(parent);
+}
+
+function backParentInApp(p: string, origin: BackOrigin | null): string | null {
   // Root and the auth screens are terminal points — no back affordance.
   if (p === '/' || p === '/login' || p === '/signup') return null;
   // Detail views opened from a list go back to THAT list.
@@ -107,9 +155,36 @@ export function backParentPath(
   return '/';
 }
 
+/**
+ * B-946: a detail view whose list is a *place* rather than a pane — a session
+ * or an open terminal. Those are the routes the no-sidebar rule covers.
+ */
+export function isListDetail(pathname: string): boolean {
+  const p = inApp(pathname);
+  return p.startsWith('/session/') || /^\/terminal\/[^/]+$/.test(p);
+}
+
+/** Last stack position holding `pathname`, or −1 (normalized, so `/` ≈ `//`). */
+function lastEntryIndex(trail: readonly string[], pathname: string): number {
+  const want = normalizePath(pathname);
+  for (let i = trail.length - 1; i >= 0; i--) if (normalizePath(trail[i]) === want) return i;
+  return -1;
+}
+
 export function resolveBackTarget(ctx: BackContext): BackTarget {
   const parent = backParentPath(ctx.pathname, ctx.search, ctx.origin);
   if (parent === null) return { kind: 'none' };
+  // B-946 (Owner 11-21): with no sidebar on screen, the list is the level
+  // above a conversation — even when another conversation sits behind it. The
+  // stack may still hold that list, and popping to it (instead of replacing)
+  // is what keeps the system back button from walking into the conversation
+  // again and bouncing back (the ping-pong backNavigation warns about).
+  if (ctx.pinnedSidebar === false && isListDetail(ctx.pathname)) {
+    const trail = ctx.trail ?? [];
+    const index = lastEntryIndex(trail, parent);
+    if (index >= 0 && index < ctx.depth) return { kind: 'pop', index, to: parent, delta: index - ctx.depth };
+    return { kind: 'path', to: parent };
+  }
   if (ctx.depth > 0) return { kind: 'history' };
   return { kind: 'path', to: parent };
 }
@@ -124,8 +199,9 @@ export function resolveBackTarget(ctx: BackContext): BackTarget {
  */
 export function backNavigation(
   target: BackTarget,
-): { delta: -1 } | { to: string; replace: true } | null {
+): { delta: number } | { to: string; replace: true } | null {
   if (target.kind === 'history') return { delta: -1 };
+  if (target.kind === 'pop') return { delta: target.delta };
   if (target.kind === 'path') return { to: target.to, replace: true };
   return null;
 }
@@ -172,14 +248,49 @@ const ORIGIN_KEY = 'vh.backOrigin';
 
 let navDepth = 0;
 
+/** B-946: pathnames of this document's in-app entries, oldest → newest.
+ *  Empty only before the first location is seen (or after the test seam). */
+let navTrail: string[] = [];
+
+/** Multi-entry pops this module performed itself: the router reports them as
+ *  one POP, but the counters were already moved — see `dropNavTo`. */
+let selfPops = 0;
+
+/** B-946: whether a sidebar is on screen, published by AppLayout (the only
+ *  place that knows the shell mode). `true` until a layout says otherwise, so
+ *  the desktop rule is the default. */
+let pinnedSidebar = true;
+
+export function setPinnedSidebar(pinned: boolean): void {
+  pinnedSidebar = pinned;
+}
+
+export function getPinnedSidebar(): boolean {
+  return pinnedSidebar;
+}
+
 export function getNavDepth(): number {
   return navDepth;
+}
+
+export function getNavTrail(): readonly string[] {
+  return navTrail;
 }
 
 /** Test seam. Production code never calls this — the counter is per-document
  *  and a fresh document is exactly what resets it. */
 export function __setNavDepth(n: number): void {
   navDepth = n;
+  navTrail = [];
+  selfPops = 0;
+}
+
+/** Move the counters to `index` BEFORE the pop that `goBack` is about to run:
+ *  the router will report one POP, which the tracker must not count again. */
+export function dropNavTo(index: number): void {
+  navDepth = Math.max(0, index);
+  navTrail = navTrail.slice(0, navDepth + 1);
+  selfPops += 1;
 }
 
 export function getNavOrigin(): BackOrigin | null {
@@ -210,8 +321,23 @@ function useNavHistoryTracker(): void {
   useEffect(() => {
     if (first.current) {
       first.current = false;
+      navTrail = [location.pathname];
+    } else if (navType === 'POP' && selfPops > 0) {
+      // A pop this module already accounted for (dropNavTo): keep the depth,
+      // just record where we landed.
+      selfPops -= 1;
+      if (navTrail.length === 0) navTrail = [location.pathname];
+      else navTrail[navTrail.length - 1] = location.pathname;
     } else {
       navDepth = nextNavDepth(navDepth, navType);
+      if (navType === 'PUSH') navTrail.push(location.pathname);
+      else if (navTrail.length === 0) navTrail = [location.pathname];
+      else if (navType === 'REPLACE') navTrail[navTrail.length - 1] = location.pathname;
+      else {
+        navTrail.pop();
+        if (navTrail.length === 0) navTrail = [location.pathname];
+        else navTrail[navTrail.length - 1] = location.pathname;
+      }
     }
     const hub = navHubFor(location.pathname);
     if (hub) setNavOrigin(hub);
@@ -246,11 +372,17 @@ export function useAppBack(): AppBack {
       search: l.search,
       depth: getNavDepth(),
       origin: getNavOrigin(),
+      pinnedSidebar: getPinnedSidebar(),
+      trail: navTrail,
     });
     const nav = backNavigation(target);
     if (!nav) return false;
-    if ('delta' in nav) navigate(nav.delta);
-    else navigate(nav.to, { replace: nav.replace });
+    if ('delta' in nav) {
+      // B-946: a multi-entry pop has to move the bookkeeping first — the
+      // router will report the whole jump as ONE POP.
+      if (target.kind === 'pop') dropNavTo(target.index);
+      navigate(nav.delta);
+    } else navigate(nav.to, { replace: nav.replace });
     return true;
   }, [navigate]);
 
