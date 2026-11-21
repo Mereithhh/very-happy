@@ -5,6 +5,8 @@ import { delay } from '@/utils/delay';
 import { shutdownSignal } from '@/utils/shutdown';
 import { Socket } from 'socket.io';
 import { resolveSignupPolicy } from '@/app/auth/signupPolicy';
+import { rootTeamCredentialHealth } from '@/app/teams/credentials';
+import { warn } from '@/utils/log';
 
 // Global default labels — applied to ALL metrics at scrape time
 register.setDefaultLabels({ app: 'happy-server' });
@@ -313,9 +315,25 @@ export async function updateDatabaseMetrics(): Promise<void> {
     signupCapacityRemainingGauge.set(maxAccounts === null ? -1 : Math.max(0, maxAccounts - exactAccountCount));
 }
 
+/** B-944: Lead credentials about to expire / already expired (alert `VeryHappyTeamRootCredentialExpiring` / `...Expired`). */
+export const teamRootCredentialsGauge = new Gauge({
+    name: 'team_root_credentials',
+    help: 'Unrevoked root-member team credentials of active sessions in live teams, by state (expiring = < 7 days left, expired)',
+    labelNames: ['state'] as const,
+    registers: [register]
+});
+
+export async function updateTeamCredentialMetrics(): Promise<void> {
+    const health = await rootTeamCredentialHealth(db);
+    teamRootCredentialsGauge.set({ state: 'expiring' }, health.expiring);
+    teamRootCredentialsGauge.set({ state: 'expired' }, health.expired);
+}
+
 export function startDatabaseMetricsUpdater(): void {
     forever('database-metrics-updater', async () => {
         await updateDatabaseMetrics();
+        // A failing team query must not stop the account/session gauges above.
+        await updateTeamCredentialMetrics().catch(error => warn({ module: 'metrics' }, `team credential metrics failed: ${error instanceof Error ? error.message : String(error)}`));
         
         // Wait 60 seconds before next update
         await delay(60 * 1000, shutdownSignal);
