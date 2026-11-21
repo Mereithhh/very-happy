@@ -41,6 +41,7 @@ import { chooseProject, joinProject } from '@/projects/attribution'
 import { sharedProjectsClient } from '@/projects/client'
 import chalk from 'chalk'
 import { readFileSync, statSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { checkIfDaemonRunningAndCleanupStaleState, spawnDaemonSession, stopDaemonSession } from '@/daemon/controlClient'
 import { readPersistedSessions, readSettings, type PersistedSession } from '@/persistence'
@@ -292,6 +293,51 @@ export interface FirstMessageDeps {
     /** B-844 knobs for the model-catalog wait. */
     catalogWait?: { timeoutMs?: number; pollMs?: number; sleep?: (ms: number) => Promise<void>; now?: () => number }
     warn?: (message: string) => void
+    /** B-951 knobs for the first-message retry. */
+    sendRetry?: { attempts?: number; baseDelayMs?: number; sleep?: (ms: number) => Promise<void> }
+}
+
+/** B-951: the HTTP status of a failed request (undefined: no answer at all). */
+function failedStatus(error: unknown): number | undefined {
+    const status = (error as { response?: { status?: unknown } } | null)?.response?.status
+    return typeof status === 'number' ? status : undefined
+}
+
+/** B-951: worth another try — no answer, 408, 429 or 5xx. Any other 4xx is final. */
+export function isTransientSendError(error: unknown): boolean {
+    const status = failedStatus(error)
+    return status === undefined || status === 408 || status === 429 || status >= 500
+}
+
+/**
+ * B-951: the first message used to fail the spawn on a single 503 (R69 QA),
+ * leaving a session with no question in it. Transient failures are retried with
+ * exponential backoff, a bounded number of times; the same localId every time,
+ * so the server (unique on session + localId) never stores it twice.
+ */
+export async function sendWithRetry(
+    send: (localId: string) => Promise<void>,
+    knobs: NonNullable<FirstMessageDeps['sendRetry']> = {},
+    warn?: (message: string) => void,
+): Promise<void> {
+    const attempts = knobs.attempts ?? 4
+    const baseDelayMs = knobs.baseDelayMs ?? 1_000
+    const sleep = knobs.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+    const localId = randomUUID()
+    for (let attempt = 1; ; attempt++) {
+        try {
+            await send(localId)
+            return
+        } catch (error) {
+            const status = failedStatus(error)
+            const what = status === undefined ? `no answer from the server (${error instanceof Error ? error.message : String(error)})` : `HTTP ${status}`
+            if (!isTransientSendError(error)) throw new Error(`the server refused it (${what})`)
+            if (attempt >= attempts) throw new Error(`${what}, still failing after ${attempts} attempts`)
+            const waitMs = baseDelayMs * 2 ** (attempt - 1)
+            warn?.(`sending the first message failed (${what}); retrying in ${Math.round(waitMs / 1000)}s (${attempt}/${attempts - 1})`)
+            await sleep(waitMs)
+        }
+    }
 }
 
 const defaultFirstMessageDeps: FirstMessageDeps = {
@@ -381,7 +427,7 @@ export async function sendFirstMessage(
         ? await waitForModelCatalog(() => deps.readSessionMetadata(sessionId, persisted), persisted.metadata as FirstMessageMetadata | undefined, deps.catalogWait)
         : persisted.metadata as FirstMessageMetadata | undefined
     const meta = metaFor(metadata)
-    await deps.sendUserMessage(sessionId, persisted, text, 'cli-spawn', meta)
+    await sendWithRetry((localId) => deps.sendUserMessage(sessionId, persisted, text, 'cli-spawn', { ...meta, localId }), deps.sendRetry, deps.warn)
     return meta
 }
 

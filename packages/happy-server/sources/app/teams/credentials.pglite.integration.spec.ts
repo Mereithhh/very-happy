@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -6,6 +6,15 @@ import type { PrismaClient } from '@prisma/client';
 import type * as Store from './store';
 
 const DAY = 86400_000;
+
+// B-951: capture the structured log lines, through the real sanitizer.
+const logged = vi.hoisted(() => [] as Array<{ fields: Record<string, unknown>; message: string }>);
+vi.mock('@/utils/log', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/utils/log')>();
+    const { sanitizeLogValue } = await import('@/utils/logSafety');
+    return { ...actual, log: (fields: Record<string, unknown>, message: string) => { logged.push({ fields: sanitizeLogValue(fields) as Record<string, unknown>, message }); } };
+});
+const renewals = (teamId: string) => logged.filter((line) => line.message === 'team credential renewed' && line.fields.teamId === teamId);
 
 describe('B-944 scoped team credential sliding renewal (pglite)', () => {
     const parent = join(homedir(), 'code/github/skills/tmp/agent-teams-tests');
@@ -54,6 +63,11 @@ describe('B-944 scoped team credential sliding renewal (pglite)', () => {
         await store.readTeam(teamId, { token });
         const renewed = await expiry(teamId);
         expect(Math.abs(renewed - Date.now() - 30 * DAY)).toBeLessThan(60_000);
+        // B-951: one readable line once committed — who, which generation, from when to when; no token.
+        const [line, ...more] = renewals(teamId);
+        expect(more).toHaveLength(0);
+        expect(line.fields).toMatchObject({ module: 'teams', teamId, botId: expect.stringMatching(/^[A-Za-z0-9_-]+$/), generation: expect.any(Number), expiresAt: new Date(renewed).toISOString(), previousExpiresAt: expect.stringMatching(/Z$/) });
+        expect(JSON.stringify(line)).not.toContain(token);
         await store.readTeam(teamId, { token });
         await store.actOnTeam(teamId, { token }, { requestId: `noop-${n}`, action: { type: 'message', body: 'hi' } as never }).catch(() => undefined);
         expect(await expiry(teamId)).toBe(renewed);
@@ -79,6 +93,8 @@ describe('B-944 scoped team credential sliding renewal (pglite)', () => {
         const before = await expiry(teamId);
         await expect(store.actOnTeam(teamId, { token }, { requestId: `forge-${n}`, action: { type: 'join', name: 'evil', sessionId: 'nope' } })).rejects.toBeTruthy();
         expect(await expiry(teamId)).toBe(before);
+        // B-951: the rolled-back renewal leaves no "renewed" line.
+        expect(renewals(teamId)).toHaveLength(0);
     });
     it('health counts expiring and expired root credentials of active sessions only', async () => {
         const { rootTeamCredentialHealth } = await import('./credentials');

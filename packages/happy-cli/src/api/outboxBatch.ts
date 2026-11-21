@@ -26,6 +26,11 @@ export interface OutboxItem {
     backfill?: boolean;
     /** B-942: the wrapper's own "this record was not saved" line — never replaced again. */
     notice?: boolean;
+    /**
+     * B-951: the item is a turn-start, kept in plaintext so a refused one can be
+     * rebuilt — without it the turn's `turn-end` has no opening and the turn never ends.
+     */
+    turnStart?: { role: string; turn?: string; subagent?: string; time: number };
 }
 
 export interface OutboxBatchLimits {

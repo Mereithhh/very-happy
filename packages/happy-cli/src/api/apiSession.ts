@@ -940,6 +940,18 @@ export class ApiSessionClient extends EventEmitter {
             notice: true,
             ...(rejected.backfill ? { backfill: true } : {}),
         });
+        // B-951: a refused turn-start is rebuilt bare (marker only) ahead of the notice, so
+        // the turn's turn-end still has its opening. Flagged notice: refused again → dropped.
+        if (rejected.turnStart) {
+            const { role, turn, subagent, time } = rejected.turnStart;
+            const bare = { role: 'session', content: createEnvelope(role as SessionEnvelope['role'], { t: 'turn-start' }, { time, turn, subagent }), meta: { sentFrom: 'cli' } };
+            this.pendingOutbox.unshift({
+                content: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, bare)),
+                localId: randomUUID(),
+                notice: true,
+                ...(rejected.backfill ? { backfill: true } : {}),
+            });
+        }
     }
 
     /**
@@ -1193,7 +1205,7 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
-    private enqueueMessage(content: unknown, invalidate: boolean = true, localId?: string) {
+    private enqueueMessage(content: unknown, invalidate: boolean = true, localId?: string, turnStart?: OutboxItem['turnStart']) {
         this.noteActivity();
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
         this.pendingOutbox.push({
@@ -1203,6 +1215,7 @@ export class ApiSessionClient extends EventEmitter {
             // else keeps the fire-once random id.
             localId: localId ?? randomUUID(),
             ...(this.replayingHistory ? { backfill: true } : {}),
+            ...(turnStart ? { turnStart } : {}),
         });
         if (invalidate && !this.replayingHistory) {
             this.sendSync.invalidate();
@@ -1386,7 +1399,10 @@ export class ApiSessionClient extends EventEmitter {
             }
         };
 
-        this.enqueueMessage(content, invalidate, localId);
+        const turnStart = envelope.ev.t === 'turn-start'
+            ? { role: envelope.role, time: envelope.time, ...(envelope.turn ? { turn: envelope.turn } : {}), ...(envelope.subagent ? { subagent: envelope.subagent } : {}) }
+            : undefined;
+        this.enqueueMessage(content, invalidate, localId, turnStart);
     }
 
     sendSessionProtocolMessage(envelope: SessionEnvelope, localId?: string) {

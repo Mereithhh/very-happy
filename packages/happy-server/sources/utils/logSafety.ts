@@ -7,6 +7,12 @@ const SECRET_KEY = /(?:authorization|cookie|credential|password|private.?key|sec
 const CONTENT_KEY = /(?:body|content|detail|endpoint|err|error|message|payload|path|prompt|reason|response|stack|text|url)$/i;
 const IDENTIFIER_KEY = /^(?:accountId|conversationId|deviceId|githubUserId|machineId|roomId|sessionId|socketId|tag|userId|voiceId)$/i;
 // tokenKind / uaFamily: bounded categories (B-933 archive audit), never raw tokens or UA strings.
+// B-951: opaque team ids (cuid / uuid shape only) stay readable so an operator can tell which team a line is about.
+const OPAQUE_ID_KEY = /^(?:teamId|botId)$/;
+const OPAQUE_ID_VALUE = /^[A-Za-z0-9_-]{1,64}$/;
+// B-951: a `…At` field holding an ISO-8601 UTC instant (Date#toISOString) is a time, not content.
+const TIMESTAMP_KEY = /At$/;
+const ISO_INSTANT_VALUE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const SAFE_STRING_KEY = /^(?:client|clientType|code|connectionType|event|event_type|kind|lang|language|level|method|mode|module|operation|platform|provider|resource|role|source|status|tokenKind|type|uaFamily)$/i;
 
 function byteLength(value: string): number {
@@ -109,6 +115,8 @@ export function sanitizeLogValue(value: unknown, key?: string, seen = new WeakSe
     if (value instanceof Error) return safeErrorMetadata(value);
     if (typeof value === 'string') {
         if (!key || SAFE_STRING_KEY.test(key)) return sanitizeLogText(value);
+        if (OPAQUE_ID_KEY.test(key) && OPAQUE_ID_VALUE.test(value)) return value;
+        if (TIMESTAMP_KEY.test(key) && ISO_INSTANT_VALUE.test(value)) return value;
         return contentSummary(value);
     }
     if (value === null || value === undefined || typeof value === 'number' || typeof value === 'boolean') return value;
