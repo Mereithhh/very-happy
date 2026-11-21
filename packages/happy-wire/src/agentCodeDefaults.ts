@@ -13,7 +13,7 @@
 
 import { LATEST_MODEL_MODE } from './modelLatest';
 
-export const AGENT_KEYS = ['claude', 'codex', 'gemini', 'openclaw', 'pi'] as const;
+export const AGENT_KEYS = ['claude', 'codex', 'gemini', 'openclaw', 'pi', 'dsh'] as const;
 export type AgentKey = typeof AGENT_KEYS[number];
 
 export type AgentDefaultConfig = {
@@ -97,6 +97,11 @@ export const AGENT_CODE_DEFAULTS: Readonly<Record<AgentKey, AgentDefaultConfig>>
     // metadata.currentModelCode, B-362). Thinking levels follow the session
     // catalog and travel through ACP config options, independently of permissions.
     pi: { permissionMode: 'bypassPermissions', modelMode: 'default', effortLevel: null },
+    // B-952 dsh (DeepSeek Harness, `dsh --profile acp`): no ACP permission modes, so
+    // Very Happy asks for every tool unless the session runs yolo (`bypassPermissions`,
+    // auto-approved by the runner). Model / reasoning effort come from dsh's own ACP
+    // config options; 'default' = whatever dsh is configured with.
+    dsh: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
 };
 
 /**
@@ -107,7 +112,7 @@ export const AGENT_CODE_DEFAULTS: Readonly<Record<AgentKey, AgentDefaultConfig>>
  * to the same defaults slot.
  */
 export function normalizeAgentKey(flavor: string | null | undefined): AgentKey {
-    if (flavor === 'codex' || flavor === 'gemini' || flavor === 'openclaw' || flavor === 'pi') {
+    if (flavor === 'codex' || flavor === 'gemini' || flavor === 'openclaw' || flavor === 'pi' || flavor === 'dsh') {
         return flavor;
     }
     if (flavor === 'acp') {
