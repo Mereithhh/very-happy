@@ -66,7 +66,7 @@ const source = readFileSync(CHANGELOG, 'utf8');
 const declared = [...source.matchAll(/^\s*cliVersion:\s*'([^']+)'/gm)].map((m) => m[1]);
 
 /** `[{ id, cliVersion }]` — an entry runs from its `id:` to the next one. */
-function entriesWithCliVersion() {
+function parseEntriesWithCliVersion() {
     const out = [];
     const ids = [...source.matchAll(/^\s*id:\s*'([^']+)'/gm)];
     ids.forEach((match, i) => {
@@ -76,6 +76,7 @@ function entriesWithCliVersion() {
     });
     return out;
 }
+const entriesWithCliVersion = parseEntriesWithCliVersion();
 
 function git(args) {
     try {
@@ -85,24 +86,36 @@ function git(args) {
     }
 }
 
-/** The commit that first put this entry id into the changelog, or null. */
+/**
+ * The commit that first put this entry id into the changelog, or null.
+ *
+ * B-955: memoized. Each call is a pickaxe walk over the file's whole history
+ * (~50 ms locally, far more on a CI runner), and `versionsIntroducedBy` used to
+ * ask it again for every entry once per distinct commit — O(entries²) walks,
+ * ~10⁴ of them at 154 entries, which is what pushed this step to 14–16 min.
+ * With the memo each entry id is walked exactly once.
+ */
+const introducedByCache = new Map();
 function introducedBy(id) {
-    const log = git(['log', '--format=%H', '-S', id, '--', CHANGELOG]);
-    return log ? log.split('\n').filter(Boolean).at(-1) ?? null : null;
+    if (!introducedByCache.has(id)) {
+        const log = git(['log', '--format=%H', '-S', id, '--', CHANGELOG]);
+        introducedByCache.set(id, log ? log.split('\n').filter(Boolean).at(-1) ?? null : null);
+    }
+    return introducedByCache.get(id);
 }
 
 /** How many distinct cliVersions this commit introduced — >1 means a backfill. */
-const versionsByCommit = new Map();
+let versionsByCommit = null;
 function versionsIntroducedBy(commit) {
-    let versions = versionsByCommit.get(commit);
-    if (!versions) {
-        versions = new Set();
-        for (const entry of entriesWithCliVersion()) {
-            if (introducedBy(entry.id) === commit) versions.add(entry.cliVersion);
+    if (!versionsByCommit) {
+        versionsByCommit = new Map();
+        for (const entry of entriesWithCliVersion) {
+            const introducing = introducedBy(entry.id);
+            if (!versionsByCommit.has(introducing)) versionsByCommit.set(introducing, new Set());
+            versionsByCommit.get(introducing).add(entry.cliVersion);
         }
-        versionsByCommit.set(commit, versions);
     }
-    return versions;
+    return versionsByCommit.get(commit) ?? new Set();
 }
 
 /** Did that commit carry CLI code, i.e. is it the work the entry describes? */
@@ -139,7 +152,7 @@ const shipped = [];
 if (git(['rev-parse', '--is-shallow-repository']) === 'true') {
     console.log('note: shallow clone — skipping the "entry is inside the tag it claims" check');
 } else {
-    for (const entry of entriesWithCliVersion()) {
+    for (const entry of entriesWithCliVersion) {
         if (!known.has(entry.cliVersion)) continue; // no tag yet: the checks above own it
         const commit = introducedBy(entry.id);
         if (!commit || !touchesCli(commit)) continue; // backfill, or unknowable
