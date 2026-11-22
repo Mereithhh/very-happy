@@ -3,6 +3,7 @@ import { ApiMachineClient, CLI_AVAILABILITY_RECHECK_MS } from './apiMachine';
 import type { Machine } from './types';
 import { detectCLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
+import { agentSpawnPathEnv, resetRememberedAgentBins } from '@/utils/agentBinResolver';
 
 const {
     mockIo,
@@ -54,6 +55,12 @@ vi.mock('@/utils/detectCLI', async () => ({
         gemini: false,
         openclaw: false
     }))
+}));
+
+// B-956: the async resolver probes the real filesystem / login shell; stub it.
+vi.mock('@/utils/agentBinResolver', async () => ({
+    ...(await vi.importActual('@/utils/agentBinResolver')),
+    resolveAgentBins: vi.fn(async () => ({ dsh: { dir: null, nodeVersion: null, extraPath: [] }, pi: null, gemini: null })),
 }));
 
 vi.mock('@/resume/localHappyAgentAuth', () => ({
@@ -271,6 +278,32 @@ describe('ApiMachineClient socket reconnection', () => {
         expect(aliveHour).toBe(180);
         expect(probe).toHaveBeenCalledTimes(12);
 
+        client.shutdown();
+    });
+
+    it('B-956: recheck folds in a dsh found outside the daemon PATH, publishes it, remembers the spawn PATH, and runs one probe at a time', async () => {
+        resetRememberedAgentBins();
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        const published: any[] = [];
+        (client as any).updateMachineMetadata = vi.fn(async (fn: (m: any) => any) => { published.push(fn({})); });
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => { release = resolve; });
+        const resolver = vi.fn(async () => {
+            await gate;
+            return { dsh: { dir: '/n/v24/bin', nodeVersion: 'v24.22.3', extraPath: ['/n/v24/bin'] }, pi: null, gemini: ['/n/v24/bin'] };
+        });
+        client.resolveAgentBinsImpl = resolver;
+
+        const first = client.recheckCliAvailability();
+        const second = client.recheckCliAvailability();
+        release();
+        await Promise.all([first, second]);
+
+        expect(resolver).toHaveBeenCalledTimes(1);
+        expect(client.getCLIAvailability()).toMatchObject({ dsh: true, dshNode: 'v24.22.3', dshPath: '/n/v24/bin', gemini: true, pi: false });
+        expect(published.at(-1).cliAvailability).toMatchObject({ dsh: true, dshPath: '/n/v24/bin' });
+        expect(agentSpawnPathEnv('dsh')).toEqual({ VH_AGENT_PATH_PREPEND: '/n/v24/bin' });
+        resetRememberedAgentBins();
         client.shutdown();
     });
 

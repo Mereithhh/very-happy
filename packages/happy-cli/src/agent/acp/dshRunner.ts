@@ -8,6 +8,8 @@
  * module error that reads like a crash, so it is checked up front.
  */
 
+import { AGENT_SEARCH_LOCATIONS } from '@/utils/agentSearchLocations';
+
 export const DSH_PACKAGE = '@deepseek-ai/dsh';
 export const DSH_INSTALL_COMMAND = `npm install -g ${DSH_PACKAGE}`;
 export const DSH_MIN_NODE = '24.9.0';
@@ -56,15 +58,22 @@ export function dshSetupMessage(problem: DshPrerequisiteProblem): string {
     return [
         `very-happy dsh cannot start: DeepSeek Harness needs Node.js ${DSH_MIN_NODE} or newer, and the \`node\` on PATH is ${have}.`,
         `Install Node.js ${DSH_MIN_NODE}+ (for example with nvm: \`nvm install 24\`) so that \`node --version\` on the daemon's PATH reports it, then reinstall dsh with \`${DSH_INSTALL_COMMAND}\`.`,
-        'The daemon re-checks every 5 minutes; restart it if it was started from a shell with the old PATH.',
+        `The daemon also looks in ${AGENT_SEARCH_LOCATIONS}, and re-checks every 5 minutes; no restart needed.`,
     ].join('\n');
 }
 
-/** One line for the daemon's `/spawn-session` refusal (the Web shows it as is). */
-export function dshSpawnRefusal(problem: DshPrerequisiteProblem): string {
-    return problem.kind === 'missing'
-        ? `DeepSeek Harness is not available on this machine: \`dsh\` is not on the daemon's PATH. Install with: ${DSH_INSTALL_COMMAND} (needs Node.js ${DSH_MIN_NODE}+; picked up within 5 minutes)`
-        : `DeepSeek Harness needs Node.js ${DSH_MIN_NODE}+, the daemon's node is ${problem.nodeVersion ?? 'missing'}. Upgrade Node.js on this machine (e.g. \`nvm install 24\`), then restart the daemon.`;
+/**
+ * One line for the daemon's `/spawn-session` refusal (the Web shows it as is):
+ * where the daemon looked and what to do. B-956: the daemon finds dsh outside
+ * its own PATH too (login shell, nvm/fnm/volta/mise/asdf), so neither case
+ * needs a daemon restart any more.
+ */
+export function dshSpawnRefusal(problem: DshPrerequisiteProblem, dshPath?: string): string {
+    if (problem.kind === 'missing') {
+        return `DeepSeek Harness is not available on this machine: \`dsh\` was not found in ${AGENT_SEARCH_LOCATIONS}. Install it with: ${DSH_INSTALL_COMMAND} (under Node.js ${DSH_MIN_NODE}+, e.g. after \`nvm install 24\`). It is picked up within 5 minutes, no daemon restart needed; if it lives somewhere else, add that dir to your login shell's PATH.`;
+    }
+    const where = dshPath ? ` (found in ${dshPath})` : '';
+    return `DeepSeek Harness needs Node.js ${DSH_MIN_NODE}+, and the node that \`dsh\`${where} runs on is ${problem.nodeVersion ?? 'missing'}. Install Node.js ${DSH_MIN_NODE}+ (e.g. \`nvm install 24\`) and install dsh under it with ${DSH_INSTALL_COMMAND}; it is picked up within 5 minutes, no daemon restart needed.`;
 }
 
 /**

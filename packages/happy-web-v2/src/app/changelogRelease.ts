@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-22-agent-cli-found-outside-path',
+    cliVersion: '0.2.221',
+    date: '2026-11-22',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov22d.title',
+    summaryKey: 'changelog.releases.nov22d.summary',
+    itemKeys: ['changelog.releases.nov22d.found', 'changelog.releases.nov22d.where'],
+  },
+  {
     id: '2026-11-22-goal-dsh-localized',
     date: '2026-11-22',
     buildVersion: __APP_VERSION__,

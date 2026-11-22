@@ -34,7 +34,8 @@ import { sendToVhTerminal } from '@/assistant/terminals';
 import { isValidTerminalId } from '@/assistant/ids';
 import { parseMirrorSendParams } from '@/mirror/mirrorProtocol';
 import { sendTerminalNotification, terminalNotifyLink, terminalNotifyMessage } from '@/terminal/terminalNotify';
-import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
+import { detectCLIAvailability, CLIAvailability, withResolvedAgentBins } from '@/utils/detectCLI';
+import { defaultAgentBinContext, defaultAgentBinProbes, rememberAgentBins, resolveAgentBins, type ResolvedAgentBins } from '@/utils/agentBinResolver';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
 import { shouldReconnect } from '@/utils/lidState';
 import { createReconnectGate } from './reconnectGate';
@@ -216,6 +217,9 @@ export class ApiMachineClient {
      *  stale" so the FIRST keep-alive tick always probes and populates the
      *  machine metadata that a connecting/reconnecting web client reads. */
     private lastCliProbeAt = Date.now() - CLI_AVAILABILITY_RECHECK_MS;
+    private cliRecheckInFlight: Promise<void> | null = null;
+    /** B-956: injectable for tests; the real one probes the filesystem and the login shell. */
+    resolveAgentBinsImpl: () => Promise<ResolvedAgentBins> = () => resolveAgentBins(defaultAgentBinContext(), defaultAgentBinProbes);
     /** Stable across socket reconnects; a new client/run invalidates old version checks. */
     private readonly agentVersionEpoch = Date.now();
     private cliUpdateState: CliUpdateState | null = null;
@@ -1834,7 +1838,7 @@ export class ApiMachineClient {
             if (Date.now() - this.lastCliProbeAt < CLI_AVAILABILITY_RECHECK_MS) {
                 return;
             }
-            this.recheckCliAvailability();
+            void this.recheckCliAvailability();
         }, 20000);
         logger.debug('[API MACHINE] Keep-alive started (20s interval)');
     }
@@ -1844,13 +1848,30 @@ export class ApiMachineClient {
      * throttled keep-alive and, B-719, right after the owner installed a
      * harness so the launcher enables it without waiting up to five minutes.
      */
-    recheckCliAvailability(): void {
+    recheckCliAvailability(): Promise<void> {
         this.lastCliProbeAt = Date.now();
-        const newAvailability = detectCLIAvailability();
+        // B-956: one probe at a time; a second caller waits for the running one.
+        this.cliRecheckInFlight ??= this.runCliRecheck().finally(() => { this.cliRecheckInFlight = null; });
+        return this.cliRecheckInFlight;
+    }
+
+    private async runCliRecheck(): Promise<void> {
+        let newAvailability = detectCLIAvailability();
+        // B-956: CLIs installed under another Node (nvm/fnm/…) or only on the
+        // login shell's PATH. Async: no main-thread stall beyond the PATH probe above.
+        if (process.platform !== 'win32') {
+            try {
+                const resolved = await this.resolveAgentBinsImpl();
+                rememberAgentBins(resolved);
+                newAvailability = withResolvedAgentBins(newAvailability, resolved);
+            } catch (err) {
+                logger.debug('[API MACHINE] agent bin resolve failed:', err);
+            }
+        }
         const prev = this.lastKnownCLIAvailability;
         const newResumeSupport = detectResumeSupport();
         const prevResume = this.lastKnownResumeSupport;
-        const cliAvailabilityChanged = !prev || prev.claude !== newAvailability.claude || prev.codex !== newAvailability.codex || prev.gemini !== newAvailability.gemini || prev.openclaw !== newAvailability.openclaw || prev.pi !== newAvailability.pi || prev.dsh !== newAvailability.dsh || prev.dshNode !== newAvailability.dshNode;
+        const cliAvailabilityChanged = !prev || prev.claude !== newAvailability.claude || prev.codex !== newAvailability.codex || prev.gemini !== newAvailability.gemini || prev.openclaw !== newAvailability.openclaw || prev.pi !== newAvailability.pi || prev.dsh !== newAvailability.dsh || prev.dshNode !== newAvailability.dshNode || prev.dshPath !== newAvailability.dshPath;
         const resumeSupportChanged = !prevResume
             || prevResume.rpcAvailable !== newResumeSupport.rpcAvailable
             || prevResume.happyAgentAuthenticated !== newResumeSupport.happyAgentAuthenticated;

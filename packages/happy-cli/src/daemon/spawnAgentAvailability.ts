@@ -17,7 +17,7 @@ import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/r
  */
 export function spawnAgentUnavailableError(
     agent: SpawnSessionOptions['agent'],
-    availability: Pick<CLIAvailability, 'pi'> & Partial<Pick<CLIAvailability, 'dsh' | 'dshNode'>>,
+    availability: Pick<CLIAvailability, 'pi'> & Partial<Pick<CLIAvailability, 'dsh' | 'dshNode' | 'dshPath'>>,
 ): Extract<SpawnSessionResult, { type: 'error' }> | null {
     if (agent === 'pi' && !availability.pi) {
         return { type: 'error', errorMessage: PI_ADAPTER_INSTALL_HINT };
@@ -26,7 +26,7 @@ export function spawnAgentUnavailableError(
     if (agent === 'dsh' && availability.dsh !== true) {
         // `dshNode` is reported only when `dsh` itself is on PATH.
         const problem = availability.dshNode === undefined ? null : dshPrerequisiteProblem(true, availability.dshNode);
-        return { type: 'error', errorMessage: dshSpawnRefusal(problem ?? { kind: 'missing' }) };
+        return { type: 'error', errorMessage: dshSpawnRefusal(problem ?? { kind: 'missing' }, availability.dshPath) };
     }
     return null;
 }

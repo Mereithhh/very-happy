@@ -383,6 +383,8 @@ export const MachineMetadataSchema = z.object({
         pi: z.boolean().optional(), // absent on daemons that predate the pi runner
         dsh: z.boolean().optional(), // B-952: absent on daemons that predate the dsh runner
         dshNode: z.string().nullable().optional(), // B-952: `node --version` on the daemon's PATH, only when dsh is installed
+        dshPath: z.string().optional(), // B-956: the dir dsh was found in, when it is outside the daemon's PATH
+        binSearch: z.literal(1).optional(), // B-956: the daemon also searched the login shell PATH and nvm/fnm/volta/mise/asdf dirs
         detectedAt: z.number(),
     }).optional(),
     resumeSupport: z.object({

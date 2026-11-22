@@ -64,6 +64,7 @@ import { WORKTREE_CAPABILITY_VERSION } from '@/worktree/worktreeRpc';
 import { ModelConfigService } from '@/modules/modelConfig/service';
 import { MODEL_CONFIG_CAPABILITY_VERSION } from '@/modules/modelConfig/types';
 import { commandOnPath } from '@/utils/detectCLI';
+import { agentSpawnPathEnv } from '@/utils/agentBinResolver';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { startWebPanelsSync } from '@/webPanels/webPanelsSync';
 import { readSettings, updateSettings, readCredentials, rewriteCredentialsForRelay } from '@/persistence';
@@ -592,7 +593,13 @@ export async function startDaemon(): Promise<void> {
       // Fail fast (before any tmux/plain spawn) when this machine cannot run
       // the requested agent — the wrapper's own ENOENT hint is invisible from
       // here (stdio 'ignore'). See spawnAgentAvailability.ts.
-      const unavailable = spawnAgentUnavailableError(options.agent, currentCliAvailability());
+      let unavailable = spawnAgentUnavailableError(options.agent, currentCliAvailability());
+      // B-956: the CLI may have been installed since the last (5-minute) probe —
+      // look again once before refusing; the probe is async and bounded.
+      if (unavailable && apiMachineRef) {
+        await apiMachineRef.recheckCliAvailability();
+        unavailable = spawnAgentUnavailableError(options.agent, currentCliAvailability());
+      }
       if (unavailable) {
         logger.warn(`[DAEMON RUN] Refusing spawn of agent '${options.agent}': ${unavailable.errorMessage}`);
         return unavailable;
@@ -984,6 +991,8 @@ export async function startDaemon(): Promise<void> {
 
           // B-478: same per-spawn home override as the direct path.
           Object.assign(tmuxEnv, agentHomeSpawnEnv({ workingDirectory: directory, claudeSessionId: options.resumeClaudeSessionId, codexThreadId: options.resumeCodexThreadId }));
+          // B-956: the dir the agent CLI was found in, outside the daemon's PATH.
+          Object.assign(tmuxEnv, agentSpawnPathEnv(agent));
           // Add extra environment variables (these should already be filtered)
           Object.assign(tmuxEnv, extraEnv);
 
@@ -1114,6 +1123,9 @@ export async function startDaemon(): Promise<void> {
               // B-478: a fork/duplicate resumes a transcript that may live in
               // a moved config dir. Explicit environmentVariables still win.
               ...agentHomeSpawnEnv({ workingDirectory: directory, claudeSessionId: options.resumeClaudeSessionId, codexThreadId: options.resumeCodexThreadId }),
+              // B-956: the dir the agent CLI was found in (nvm/fnm/… or the login
+              // shell's PATH); the wrapper puts it in front of PATH for the CLI only.
+              ...agentSpawnPathEnv(options.agent),
               ...extraEnv
             },
             directoryCreated,
@@ -2572,7 +2584,7 @@ export async function startDaemon(): Promise<void> {
           .catch(error => logger.debug('[DAEMON RUN] harness install state publish failed', error));
       },
       afterInstall: async () => {
-        apiMachine.recheckCliAvailability();
+        await apiMachine.recheckCliAvailability();
         await stopAgentVersionChecks.refresh();
       },
       log: message => logger.warn(`[DAEMON RUN] ${message}`),

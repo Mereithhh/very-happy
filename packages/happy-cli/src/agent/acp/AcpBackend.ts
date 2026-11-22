@@ -148,6 +148,7 @@ import {
   handleThinkingUpdate,
 } from './sessionUpdateHandlers';
 import { resolveAcpPermissionRequest } from './acpToolArgs';
+import { agentChildEnv } from '@/utils/agentBinResolver';
 import { piDialogOutcome, piSelectQuestionInput, readPiExtensionDialog } from './piExtensionDialogs';
 
 /**
@@ -491,7 +492,8 @@ export class AcpBackend implements AgentBackend {
       } else {
         this.process = spawn(this.options.command, args, {
           cwd: this.options.cwd,
-          env: { ...process.env, ...this.options.env },
+          // B-956: the daemon may have found the CLI outside its PATH (nvm/fnm/…).
+          env: agentChildEnv({ ...process.env, ...this.options.env }),
           // Use 'pipe' for all stdio to capture output without printing to console
           // stdout and stderr will be handled by our event listeners
           stdio: ['pipe', 'pipe', 'pipe'],

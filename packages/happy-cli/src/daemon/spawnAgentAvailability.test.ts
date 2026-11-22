@@ -35,4 +35,15 @@ describe('spawnAgentUnavailableError (e2e bug 1: spawn --agent pi exited 0 on a 
         expect(impl).toContain('spawnAgentUnavailableError(options.agent, currentCliAvailability())')
         expect(run).toContain('apiMachineRef?.getCLIAvailability() ?? startupCliAvailability')
     })
+
+    it('B-956: re-probes once before refusing, and every spawn path puts the found CLI dir on to the wrapper', () => {
+        const run = readFileSync(new URL('./run.ts', import.meta.url), 'utf8')
+        const start = run.indexOf('const spawnSessionImpl = async')
+        const impl = run.slice(start, run.indexOf('const assistantMode = assistantSpawnMode(options)', start))
+        expect(impl).toMatch(/if \(unavailable && apiMachineRef\) \{\s*await apiMachineRef\.recheckCliAvailability\(\);\s*unavailable = spawnAgentUnavailableError\(options\.agent, currentCliAvailability\(\)\);/)
+        // tmux path
+        expect(run).toContain('Object.assign(tmuxEnv, agentSpawnPathEnv(agent));')
+        // plain spawn path
+        expect(run).toMatch(/\.\.\.agentSpawnPathEnv\(options\.agent\),\s*\.\.\.extraEnv/)
+    })
 })

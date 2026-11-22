@@ -3,6 +3,7 @@ import { dshPrerequisiteProblem } from '@/agent/acp/dshRunner';
 import os from 'os';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import type { ResolvedAgentBins } from '@/utils/agentBinResolver';
 
 export interface CLIAvailability {
   claude: boolean;
@@ -24,6 +25,10 @@ export interface CLIAvailability {
   dsh: boolean;
   /** B-952: `node --version` on PATH, reported only when `dsh` is installed (null: no node answered), so the Web can say why dsh is off. */
   dshNode?: string | null;
+  /** B-956: the dir `dsh` was found in, reported with `dshNode` when it is outside the daemon's PATH. */
+  dshPath?: string;
+  /** B-956: 1 when this daemon also looked outside its PATH (login shell, nvm/fnm/volta/mise/asdf), so the Web can say where. */
+  binSearch?: 1;
   detectedAt: number;
 }
 
@@ -41,6 +46,28 @@ function detectDsh(onPath: (command: string) => boolean): Pick<CLIAvailability, 
   if (!onPath('dsh')) return { dsh: false };
   const node = nodeVersionOnPath();
   return { dsh: dshPrerequisiteProblem(true, node) === null, dshNode: node };
+}
+
+/**
+ * B-956: fold in what the async resolver found outside the daemon's PATH
+ * (login shell PATH, nvm / fnm / volta / mise / asdf). The PATH-only probe
+ * stays the source for everything else; a found copy only turns an agent on.
+ */
+export function withResolvedAgentBins(base: CLIAvailability, resolved: ResolvedAgentBins): CLIAvailability {
+  const { dsh } = resolved;
+  const next: CLIAvailability = {
+    ...base,
+    pi: base.pi || resolved.pi !== null,
+    gemini: base.gemini || resolved.gemini !== null,
+    binSearch: 1,
+  };
+  delete next.dshNode;
+  delete next.dshPath;
+  if (dsh.dir === null) return { ...next, dsh: false };
+  next.dsh = dshPrerequisiteProblem(true, dsh.nodeVersion) === null;
+  next.dshNode = dsh.nodeVersion;
+  if (dsh.extraPath.length > 0) next.dshPath = dsh.dir;
+  return next;
 }
 
 /**
