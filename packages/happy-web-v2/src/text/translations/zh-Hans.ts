@@ -3651,7 +3651,7 @@ export const zhHans: TranslationStructure = {
             },
             nov23a: {
                 title: 'DeepSeek Harness 可以走你自己的网关',
-                summary: 'DeepSeek Harness 账号可以填自定义 Base URL，用公司网关的 key 也能跑。',
+                summary: 'DeepSeek Harness 账号可以填自定义 Base URL，用公司网关的 key 也能跑。装在 nvm 等目录下的 dsh，恢复会话和切换账号时也能找到。',
                 baseUrl: '在「设置 → 模型与账号 → DeepSeek Harness」添加账号时填上 Base URL（任何兼容 Anthropic Messages 接口的网关）和这个网关的 key，用这个账号的会话就会把请求发到那里；不填就用 DeepSeek 官方。',
                 test: '「测试」会改为请求这个网关，并说清是哪里不对：HTTP 401 / 403 显示「key 被拒」，404 或连不上显示「地址不对或连不上」，都带 HTTP 码。终端里可用 `very-happy account add --agent dsh --base-url …` 和 `very-happy account edit <id> --base-url …`。',
             },

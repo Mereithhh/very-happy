@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import {
     agentChildEnv,
     agentSpawnPathEnv,
+    relaunchAgentPathEnv,
     rememberAgentBins,
     resetRememberedAgentBins,
     resolveAgentBins,
@@ -161,5 +162,38 @@ describe('B-956: resolveAgentBins finds CLIs outside the daemon PATH', () => {
         const src = readFileSync(new URL('./agentBinResolver.ts', import.meta.url), 'utf8');
         expect(src).not.toMatch(/\b(execSync|execFileSync|spawnSync|existsSync|readdirSync|accessSync|statSync)\b/);
         expect(src).toContain("from 'node:fs/promises'");
+    });
+});
+
+describe('B-958: relaunches (resume / restart) carry the agent CLI dir too', () => {
+    const resolvedDsh = async () => resolveAgentBins(ctx(), fakeProbes({
+        executables: ['/usr/bin/node', `${NVM}/v24.22.3/bin/node`, `${NVM}/v24.22.3/bin/dsh`],
+        dirs: { [NVM]: ['v24.22.3'] },
+        nodes: { '/usr/bin/node': 'v22.23.2', [`${NVM}/v24.22.3/bin/node`]: 'v24.22.3' },
+    }));
+
+    it('already probed → the remembered dir, no second probe', async () => {
+        rememberAgentBins(await resolvedDsh());
+        let probes = 0;
+        expect(await relaunchAgentPathEnv('dsh', async () => { probes++; })).toEqual({ VH_AGENT_PATH_PREPEND: `${NVM}/v24.22.3/bin` });
+        expect(probes).toBe(0);
+    });
+
+    it('nothing probed yet (resume right after daemon start) → probes once, then hands the dir over', async () => {
+        const resolved = await resolvedDsh();
+        let probes = 0;
+        const env = await relaunchAgentPathEnv('dsh', async () => { probes++; rememberAgentBins(resolved); });
+        expect(probes).toBe(1);
+        expect(env).toEqual({ VH_AGENT_PATH_PREPEND: `${NVM}/v24.22.3/bin` });
+    });
+
+    it('claude / codex never wait on a probe; a failing probe still spawns', async () => {
+        let probes = 0;
+        const recheck = async () => { probes++; };
+        expect(await relaunchAgentPathEnv('claude', recheck)).toEqual({});
+        expect(await relaunchAgentPathEnv('codex', recheck)).toEqual({});
+        expect(probes).toBe(0);
+        expect(await relaunchAgentPathEnv('pi', async () => { throw new Error('probe failed'); })).toEqual({});
+        expect(await relaunchAgentPathEnv('dsh', undefined)).toEqual({});
     });
 });

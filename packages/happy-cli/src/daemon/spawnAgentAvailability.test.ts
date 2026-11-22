@@ -46,4 +46,22 @@ describe('spawnAgentUnavailableError (e2e bug 1: spawn --agent pi exited 0 on a 
         // plain spawn path
         expect(run).toMatch(/\.\.\.agentSpawnPathEnv\(options\.agent\),\s*\.\.\.extraEnv/)
     })
+
+    it('B-958: resume and restart (incl. account switch) hand the wrapper the same agent PATH as a fresh spawn', () => {
+        const run = readFileSync(new URL('./run.ts', import.meta.url), 'utf8')
+        const body = (from: string, to: string) => {
+            const start = run.indexOf(from)
+            expect(start).toBeGreaterThan(-1)
+            return run.slice(start, run.indexOf(to, start))
+        }
+        const resume = body('const resumeSessionImpl = async', 'persistRestoreRecord(happySessionId')
+        expect(resume).toContain('const agentPathEnv = await relaunchAgentPathEnv(launch.args[0], apiMachineRef ? () => apiMachineRef!.recheckCliAvailability() : undefined);')
+        expect(resume).toMatch(/spawnTrackedHappyProcess\(\{[\s\S]*env: \{[\s\S]*\.\.\.agentPathEnv,[\s\S]*\}/)
+        const restart = body('const restartSessionImpl = async', 'persistRestoreRecord(happySessionId')
+        expect(restart).toContain('const agentPathEnv = await relaunchAgentPathEnv(args[0], apiMachineRef ? () => apiMachineRef!.recheckCliAvailability() : undefined);')
+        expect(restart).toMatch(/spawnTrackedHappyProcess\(\{[\s\S]*env: \{[\s\S]*\.\.\.agentPathEnv,[\s\S]*\}/)
+        // Every spawnTrackedHappyProcess call site is one of: assistant re-attach (claude only),
+        // fresh spawn, resume, restart — a new one must be added here deliberately.
+        expect(run.match(/await spawnTrackedHappyProcess\(\{|return spawnTrackedHappyProcess\(\{/g)).toHaveLength(4)
+    })
 })

@@ -3491,7 +3491,7 @@ export const en = {
             },
             nov23a: {
                 title: 'DeepSeek Harness through your own gateway',
-                summary: 'A DeepSeek Harness account can now name a custom Base URL, so a key from your company\'s model gateway works too.',
+                summary: 'A DeepSeek Harness account can now name a custom Base URL, so a key from your company\'s model gateway works too. A dsh installed under nvm and the like is now also found when you restore a session or switch its account.',
                 baseUrl: 'In Settings → Models & accounts → DeepSeek Harness, add an account with a Base URL (any Anthropic Messages compatible gateway) and that gateway\'s key. Sessions on that account send their requests there; leave it empty for DeepSeek\'s own API.',
                 test: '「Test」 now asks that gateway and says which part is wrong: 「Key rejected」 for HTTP 401 / 403, 「Wrong address or unreachable」 for a 404 or no connection, with the HTTP code. In the terminal: `very-happy account add --agent dsh --base-url …` and `very-happy account edit <id> --base-url …`.',
             },
