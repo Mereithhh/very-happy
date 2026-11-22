@@ -3644,6 +3644,13 @@ export const zhHans: TranslationStructure = {
                 shared: '别人分享给你的终端会写明是谁的哪台机器（比如「Alex 的 mac-studio」）：连接时显示正在连接，机器没连上时显示没连上，看的过程中掉线也一样。',
                 recover: '机器重新连上后，终端会自动恢复，不用刷新，也不用点重试。你自己的终端也一样。',
             },
+            nov22c: {
+                title: '/goal 和 dsh 的提示改成中文',
+                summary: 'Codex 会话的 /goal 与 DeepSeek Harness 会话的几处小修复。',
+                language: '中文界面下，/goal 的回执、停止后的「目标已暂停」提示，以及 dsh 会话开头的能力说明，都改成中文显示。',
+                visible: '/goal 查看和 /goal budget 的结果直接显示在你的消息下面，不再折叠在「耗时 0 秒」里。',
+                node: 'dsh 已安装但机器上的 Node.js 版本太低时，新建会话里的 dsh 芯片会写「Node 版本太低」，不再写「未安装」。',
+            },
             nov22b: {
                 title: 'Codex 会话支持 /goal',
                 summary: '用 /goal <目标> 给 Codex 会话设一个目标，Codex 会自己一轮接一轮地推进，直到完成、你暂停，或达到上限。以前 /goal 会被当成普通消息发给模型。',

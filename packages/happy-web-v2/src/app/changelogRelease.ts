@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-22-goal-dsh-localized',
+    cliVersion: '0.2.221',
+    date: '2026-11-22',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov22c.title',
+    summaryKey: 'changelog.releases.nov22c.summary',
+    itemKeys: ['changelog.releases.nov22c.language', 'changelog.releases.nov22c.visible', 'changelog.releases.nov22c.node'],
+  },
+  {
     id: '2026-11-22-codex-goal',
     cliVersion: '0.2.220',
     date: '2026-11-22',

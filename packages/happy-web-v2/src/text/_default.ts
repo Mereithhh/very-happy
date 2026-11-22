@@ -3484,6 +3484,13 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov22c: {
+                title: '/goal and dsh notes in your language',
+                summary: 'Small fixes to /goal in Codex sessions and to DeepSeek Harness sessions.',
+                language: 'The /goal replies, the "Goal paused" line after Stop, and the DeepSeek Harness note at the top of a dsh session now follow the interface language.',
+                visible: '/goal and /goal budget show their reply right under your message, instead of inside a collapsed "0 s" step group.',
+                node: 'When dsh is installed but the machine\'s Node.js is too old, the new-session chip now says "Node too old" instead of "not installed".',
+            },
             nov22b: {
                 title: '/goal works in Codex sessions',
                 summary: 'Give a Codex session a goal with /goal <objective> and Codex keeps working on it turn after turn by itself, until it is done, you pause it, or a limit is reached. Before, /goal was sent to the model as an ordinary message.',
