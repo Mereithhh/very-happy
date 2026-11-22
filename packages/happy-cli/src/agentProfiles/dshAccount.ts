@@ -4,6 +4,9 @@
  * under the Very Happy home, a key file, or an env variable of the daemon).
  * The key goes to the `dsh` child only, as DEEPSEEK_API_KEY; it is never
  * logged, never written to metadata and never sent to the server.
+ * B-957: an account's optional Base URL (an Anthropic Messages compatible
+ * gateway) goes the same way, as DEEPSEEK_BASE_URL — the dsh child only. An
+ * account without one leaves the variable to the machine (unchanged).
  *
  * As for Claude / Codex (Owner Q3): a binding that cannot be honoured never
  * falls back to the machine's own key — the wrapper refuses turns and says why.
@@ -12,13 +15,13 @@
  */
 import { readFileSync } from 'node:fs';
 import type { SessionAgentProfile } from '@slopus/happy-wire';
-import { DSH_API_KEY_ENV } from '@/agent/acp/dshRunner';
+import { DSH_API_KEY_ENV, DSH_BASE_URL_ENV } from '@/agent/acp/dshRunner';
 import { shouldRecordSpawnAccount, unavailableNotice } from './wrapperAccount';
 import { accountSecretPath, expandHome, readAccounts, readSessionBindings, writeSessionBinding, type AccountsFile, type SessionAccountsFile } from './store';
 
 export type DshAccountResolution =
     | { kind: 'machine' }
-    | { kind: 'active'; id: string; profile: SessionAgentProfile; key: string }
+    | { kind: 'active'; id: string; profile: SessionAgentProfile; key: string; baseUrl?: string }
     | { kind: 'unavailable'; id: string; profile: SessionAgentProfile };
 
 export type DshAccountDeps = {
@@ -53,7 +56,7 @@ export function resolveDshAccount(sessionId: string, deps: DshAccountDeps): DshA
     }
     key = key?.trim();
     if (!key) return unavailable(label, kind, 'missing-secret');
-    return { kind: 'active', id, profile: { id, label, kind, status: 'active' }, key };
+    return { kind: 'active', id, profile: { id, label, kind, status: 'active' }, key, ...(record.baseUrl ? { baseUrl: record.baseUrl } : {}) };
 }
 
 export type DshWrapperAccount = {
@@ -84,5 +87,23 @@ export function loadDshWrapperAccount(happyHome: string, sessionId: string, spaw
     if (resolution.kind === 'unavailable') {
         return { profile: resolution.profile, childEnv: {}, unavailable: true, notices: [unavailableNotice(resolution.profile)] };
     }
-    return { profile: resolution.profile, childEnv: { [DSH_API_KEY_ENV]: resolution.key }, unavailable: false, notices: [] };
+    return { profile: resolution.profile, childEnv: dshChildEnv(resolution.key, resolution.baseUrl), unavailable: false, notices: [] };
+}
+
+/** Pure: what an active dsh account adds to the dsh child's env (and nothing else). */
+export function dshChildEnv(key: string, baseUrl?: string): Record<string, string> {
+    return { [DSH_API_KEY_ENV]: key, ...(baseUrl ? { [DSH_BASE_URL_ENV]: baseUrl } : {}) };
+}
+
+/**
+ * B-957 pure: why `url` cannot be a dsh Base URL, or null. dsh itself refuses
+ * anything but an http(s) root without credentials, query or fragment.
+ */
+export function dshBaseUrlProblem(url: string): string | null {
+    let parsed: URL;
+    try { parsed = new URL(url); } catch { return 'baseUrl must be an http(s) URL'; }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return 'baseUrl must be an http(s) URL';
+    if (parsed.username || parsed.password) return 'baseUrl must not contain credentials';
+    if (parsed.search || parsed.hash) return 'baseUrl must not contain a query or fragment';
+    return null;
 }

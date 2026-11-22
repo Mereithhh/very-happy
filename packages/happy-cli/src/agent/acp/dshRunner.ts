@@ -14,6 +14,8 @@ export const DSH_PACKAGE = '@deepseek-ai/dsh';
 export const DSH_INSTALL_COMMAND = `npm install -g ${DSH_PACKAGE}`;
 export const DSH_MIN_NODE = '24.9.0';
 export const DSH_API_KEY_ENV = 'DEEPSEEK_API_KEY';
+/** B-957: dsh's Messages API root override (an account's Base URL). */
+export const DSH_BASE_URL_ENV = 'DEEPSEEK_BASE_URL';
 
 export type DshPrerequisiteProblem =
     | { kind: 'missing' }

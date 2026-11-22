@@ -14,6 +14,7 @@ import { z } from 'zod';
 import {
     AGENT_PROFILE_RPC,
     AGENT_PROFILE_SESSION_CAPABILITY,
+    AGENT_PROFILE_FEATURE_DSH_BASE_URL,
     AGENT_PROFILE_FEATURE_LAUNCH,
     AgentProfileSummarySchema,
     readSessionAgentProfile as readWireSessionAgentProfile,
@@ -340,6 +341,42 @@ export function parseModelList(text: string): string[] {
 
 export function isValidBaseUrl(text: string): boolean {
     return /^https?:\/\/\S+$/.test(text.trim()) && text.trim().length <= 512;
+}
+
+/**
+ * B-957: what dsh accepts as DEEPSEEK_BASE_URL — an http(s) root without
+ * credentials, query or fragment (the daemon checks the same).
+ */
+export function isValidDshBaseUrl(text: string): boolean {
+    if (!isValidBaseUrl(text)) return false;
+    try {
+        const url = new URL(text.trim());
+        return !url.username && !url.password && !url.search && !url.hash;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * B-957 pure: the add request of a DeepSeek account. A Base URL only when the
+ * daemon keeps it (`withBaseUrl`) and one is typed; null = not ready.
+ */
+export function dshAddFields(input: { label: string; baseUrl: string; withBaseUrl: boolean }): { label: string; baseUrl?: string } | null {
+    const label = input.label.trim();
+    if (!label) return null;
+    const baseUrl = input.withBaseUrl ? input.baseUrl.trim().replace(/\/+$/, '') : '';
+    if (baseUrl && !isValidDshBaseUrl(baseUrl)) return null;
+    return { label, ...(baseUrl ? { baseUrl } : {}) };
+}
+
+/** B-957: does this daemon keep a DeepSeek account's Base URL? (An older one silently drops it.) */
+export function machineTakesDshBaseUrl(state: Pick<AgentProfilesState, 'features'> | null): boolean {
+    return !!state && state.features.includes(AGENT_PROFILE_FEATURE_DSH_BASE_URL);
+}
+
+/** B-957: the last check failed on the account's own address (404, not an API, no connection), not the key. */
+export function accountAddressFailed(account: Pick<AgentProfileSummary, 'status' | 'statusReason'>): boolean {
+    return account.status === 'unverified' && account.statusReason === 'unreachable';
 }
 
 export function isValidEnvName(text: string): boolean {

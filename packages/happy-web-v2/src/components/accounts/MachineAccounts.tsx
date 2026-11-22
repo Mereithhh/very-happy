@@ -17,18 +17,20 @@ import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import {
     ACCOUNT_AGENTS,
     SESSION_ACCOUNT_AGENTS,
+    accountAddressFailed,
     accountDisplayStatus,
     accountKindTag,
     accountNeedsRelogin,
     accountStatusTone,
     accountsForAgent,
     machineHasAgentAccounts,
+    machineTakesDshBaseUrl,
     readMachineAgentProfiles,
     type AgentProfileSummary,
     type AgentProfilesState,
 } from '@/sync/agentProfiles';
 import { agentProfileList, agentProfileRemove, agentProfileRename, agentProfileSetDefault, agentProfileTest } from '@/sync/agentProfileOps';
-import { accountDetailText, accountErrorText, accountKindText, accountStatusText } from './accountText';
+import { accountDetailText, accountErrorText, accountKindText, accountStatusText, accountTestFailureText } from './accountText';
 import { AddAccountDialog } from './AddAccountDialog';
 import './accounts.css';
 
@@ -95,7 +97,7 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
         if (!result.ok) { toast.error(accountErrorText(result, t)); return; }
         if (account.legacy) setLegacyTests((prev) => ({ ...prev, [account.id]: result.data }));
         if (result.data.status === 'ok') toast.success(t('accounts.testOk', { label: result.data.label }));
-        else toast.error(t('accounts.testFailed', { label: result.data.label, detail: result.data.statusDetail ?? accountStatusText(accountDisplayStatus(result.data), result.data, t) }));
+        else toast.error(t('accounts.testFailed', { label: result.data.label, detail: accountTestFailureText(result.data, accountDisplayStatus(result.data), t) }));
         await refresh();
     });
 
@@ -160,7 +162,8 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
             </ItemGroup>;
         })}
         <AddAccountDialog open={!!adding || !!relogin} onOpenChange={(open) => { if (!open) { setAdding(null); setRelogin(null); void refresh(); } }}
-            machineId={machine.id} machineName={name} agent={relogin?.agent ?? adding ?? 'claude'} kinds={state.kinds} codexProviders={state.codexProviders} relogin={relogin} />
+            machineId={machine.id} machineName={name} agent={relogin?.agent ?? adding ?? 'claude'} kinds={state.kinds} codexProviders={state.codexProviders} relogin={relogin}
+            dshBaseUrl={machineTakesDshBaseUrl(state)} />
     </>;
 }
 
@@ -202,7 +205,7 @@ function AccountRow({ account, isDefault, now, online, busy, onTest, onRename, o
             <span className="acc-tag">{accountKindText(account.kind, t)}</span>
             {isDefault && <span className="acc-tag">{t('accounts.defaultBadge')}</span>}
         </span>}
-        subtitle={<Badge tone={accountStatusTone(status)}>{accountStatusText(status, account, t, now)}</Badge>}
+        subtitle={<Badge tone={accountAddressFailed(account) ? 'err' : accountStatusTone(status)} data-testid="account-status">{accountStatusText(status, account, t, now)}</Badge>}
         detail={detail || undefined}
         multiline
         right={<span className="acc-actions">

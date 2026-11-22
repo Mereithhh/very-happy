@@ -91,8 +91,11 @@ describe('B-850c accounts wiring', () => {
     it('Codex add: provider / own URL through the codex-provider variant; ChatGPT login is codex-chatgpt', () => {
         const dialog = src('components/accounts/AddAccountDialog.tsx');
         expect(dialog).toContain("? { agent: 'codex', kind: 'codex-provider', ...providerFields, key }");
-        // B-952: a DeepSeek account is its key only.
-        expect(dialog).toContain("? { agent: 'dsh', kind: 'dsh-api', label: label.trim(), key }");
+        // B-952: a DeepSeek account is its key; B-957: plus an optional Base URL (dshAddFields).
+        expect(dialog).toContain("? { agent: 'dsh', kind: 'dsh-api', ...dshFields, key }");
+        expect(dialog).toContain("const dshFields = kind === 'dsh-api' ? dshAddFields({ label, baseUrl, withBaseUrl: dshBaseUrl }) : null;");
+        expect(dialog).toContain("{keyOnly && dshBaseUrl && <label className=\"so-field\">");
+        expect(src('components/accounts/MachineAccounts.tsx')).toContain('dshBaseUrl={machineTakesDshBaseUrl(state)} />');
         expect(dialog).toContain("const which = kind === 'codex-chatgpt' ? { agent: 'codex' as const, kind: 'codex-chatgpt' as const }");
         expect(dialog).toContain("codexProviderAddFields({ label, provider: provider === CUSTOM_PROVIDER ? null : provider, baseUrl, wireApi, models })");
         // the ChatGPT name is optional (defaults to the email)

@@ -25,7 +25,8 @@ export type AccountKey =
     | { source: 'env'; name: string }
     | { source: 'stored' };
 
-export type AccountCheck = { status: string; at: number; detail?: string };
+/** `reason` (B-957): 'unreachable' = the account's own Base URL is wrong or cannot be reached (not the key). */
+export type AccountCheck = { status: string; at: number; detail?: string; reason?: string };
 
 export type AccountAgent = 'claude' | 'codex' | 'dsh';
 export type AccountKind = 'claude-subscription' | 'claude-api' | 'codex-chatgpt' | 'codex-provider' | 'dsh-api';
@@ -172,7 +173,7 @@ export function parseAccountsFile(raw: unknown): AccountsFile {
             if (a.check && typeof a.check === 'object') {
                 const c = a.check as Record<string, unknown>;
                 if (typeof c.status === 'string' && typeof c.at === 'number') {
-                    rec.check = { status: c.status, at: c.at, ...(typeof c.detail === 'string' ? { detail: c.detail } : {}) };
+                    rec.check = { status: c.status, at: c.at, ...(typeof c.detail === 'string' ? { detail: c.detail } : {}), ...(typeof c.reason === 'string' && c.reason ? { reason: c.reason } : {}) };
                 }
             }
             out.accounts[id] = rec;
@@ -327,15 +328,15 @@ export function secretPresent(home: string, id: string, a: AccountRecord, probe:
  * Pure: the status the UI shows. Live facts (missing secret, past expiry) beat
  * the last check; otherwise the last check, or 'unverified'.
  */
-export function accountStatus(home: string, id: string, a: AccountRecord, probe: SecretProbe, now: number): { status: string; detail?: string } {
+export function accountStatus(home: string, id: string, a: AccountRecord, probe: SecretProbe, now: number): { status: string; detail?: string; reason?: string } {
     if (!secretPresent(home, id, a, probe)) return { status: 'missing-secret' };
     if (a.expiresAt !== undefined && a.expiresAt <= now) return { status: 'expired' };
-    if (a.check) return { status: a.check.status, ...(a.check.detail ? { detail: a.check.detail } : {}) };
+    if (a.check) return { status: a.check.status, ...(a.check.detail ? { detail: a.check.detail } : {}), ...(a.check.reason ? { reason: a.check.reason } : {}) };
     return { status: 'unverified' };
 }
 
 export function summarizeAccount(home: string, id: string, a: AccountRecord, probe: SecretProbe, now: number): AgentProfileSummary {
-    const { status, detail } = accountStatus(home, id, a, probe, now);
+    const { status, detail, reason } = accountStatus(home, id, a, probe, now);
     const keySource = a.kind === 'claude-subscription' || a.kind === 'codex-chatgpt' ? 'stored' : a.key?.source;
     const keyRef = a.key?.source === 'file' ? a.key.path : a.key?.source === 'env' ? a.key.name : undefined;
     return {
@@ -345,6 +346,7 @@ export function summarizeAccount(home: string, id: string, a: AccountRecord, pro
         kind: a.kind,
         status,
         ...(detail ? { statusDetail: detail } : {}),
+        ...(reason ? { statusReason: reason } : {}),
         ...(a.check ? { checkedAt: a.check.at } : {}),
         ...(a.createdAt ? { createdAt: a.createdAt } : {}),
         ...(a.expiresAt !== undefined ? { expiresAt: a.expiresAt } : {}),

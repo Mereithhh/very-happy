@@ -105,17 +105,89 @@ export async function checkSubscriptionAccount(token: string, scratchDir: string
 /** B-952: DeepSeek's model list — free, no tokens; dsh asks the same endpoint at start. */
 export const DSH_CHECK_URL = 'https://api.deepseek.com/models';
 
-/** B-952 dsh-api: `GET /models` with the key (401 → invalid, network → unverified). */
-export async function checkDshAccount(key: string, now: () => number = Date.now, fetchImpl: typeof fetch = fetch): Promise<AccountCheck> {
+/**
+ * B-957: the Messages API root dsh uses for a Base URL — dsh appends `/v1`
+ * unless the URL already ends with it, then POSTs `<root>/messages`.
+ */
+export function dshMessagesRoot(baseUrl: string): string {
+    const trimmed = baseUrl.replace(/\/+$/, '');
+    return /\/v1$/.test(trimmed) ? trimmed : `${trimmed}/v1`;
+}
+
+/** The model a gateway is asked for when it has no model list (1 token). dsh's default model. */
+export const DSH_GATEWAY_CHECK_MODEL = 'deepseek-v4-flash';
+
+/**
+ * B-957 pure: a gateway's answer → check. 401/403 = the key; 404/405 or a 2xx
+ * that is not an API answer (an HTML page) = the address (`reason: 'unreachable'`).
+ */
+export function classifyDshGatewayCheck(status: number, isApiAnswer: boolean, bodySnippet: string, now: number): AccountCheck {
+    if (status >= 200 && status < 300) {
+        return isApiAnswer ? { status: 'ok', at: now } : { status: 'unverified', at: now, reason: 'unreachable', detail: `HTTP ${status}, not an API response` };
+    }
+    if (status === 404 || status === 405) return { status: 'unverified', at: now, reason: 'unreachable', detail: `HTTP ${status}` };
+    return classifyHttpCheck('dsh-api', status, bodySnippet, now);
+}
+
+type FetchResult = { status: number; json: unknown; text: string };
+
+async function fetchJson(fetchImpl: typeof fetch, url: string, init: RequestInit): Promise<FetchResult> {
+    const res = await fetchImpl(url, init);
+    // Parse the whole body: a gateway's model list easily runs to tens of KB (a cut one is not JSON).
+    const text = (await res.text().catch(() => '')).slice(0, 4_000_000);
+    let json: unknown;
+    try { json = JSON.parse(text); } catch { json = undefined; }
+    return { status: res.status, json, text: res.ok ? '' : text.slice(0, 400) };
+}
+
+/**
+ * B-952 dsh-api: `GET /models` with the key (401 → invalid, network → unverified).
+ * B-957 with a Base URL: the gateway instead — `GET <root>/models` (free; a JSON
+ * model list = ok), and only when the gateway has no such route (404/405) one
+ * 1-token `POST <root>/messages`. A connection error is `reason: 'unreachable'`.
+ */
+export async function checkDshAccount(key: string, now: () => number = Date.now, fetchImpl: typeof fetch = fetch, baseUrl?: string): Promise<AccountCheck> {
+    const check = await checkDshAccountRaw(key, now, fetchImpl, baseUrl);
+    // A gateway may echo the key in any shape (not only sk-…): never pass it on.
+    return check.detail && key && check.detail.includes(key) ? { ...check, detail: check.detail.split(key).join('…') } : check;
+}
+
+async function checkDshAccountRaw(key: string, now: () => number, fetchImpl: typeof fetch, baseUrl?: string): Promise<AccountCheck> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
     try {
-        const res = await fetchImpl(DSH_CHECK_URL, { method: 'GET', signal: controller.signal, headers: { authorization: `Bearer ${key}` } });
-        const text = res.ok ? '' : (await res.text().catch(() => '')).slice(0, 400);
-        return classifyHttpCheck('dsh-api', res.status, text, now());
+        if (!baseUrl) {
+            const res = await fetchImpl(DSH_CHECK_URL, { method: 'GET', signal: controller.signal, headers: { authorization: `Bearer ${key}` } });
+            const text = res.ok ? '' : (await res.text().catch(() => '')).slice(0, 400);
+            return classifyHttpCheck('dsh-api', res.status, text, now());
+        }
+        const root = dshMessagesRoot(baseUrl);
+        const headers = { authorization: `Bearer ${key}`, 'x-api-key': key, 'anthropic-version': '2023-06-01' };
+        const models = await fetchJson(fetchImpl, `${root}/models`, { method: 'GET', signal: controller.signal, headers });
+        if (models.status !== 404 && models.status !== 405) {
+            const listed = !!models.json && typeof models.json === 'object' && Array.isArray((models.json as { data?: unknown }).data);
+            return classifyDshGatewayCheck(models.status, listed, models.text, now());
+        }
+        const ping = await fetchJson(fetchImpl, `${root}/messages`, {
+            method: 'POST',
+            signal: controller.signal,
+            headers: { ...headers, 'content-type': 'application/json' },
+            body: JSON.stringify({ model: DSH_GATEWAY_CHECK_MODEL, max_tokens: 1, messages: [{ role: 'user', content: 'ping' }] }),
+        });
+        const answered = !!ping.json && typeof ping.json === 'object' && (ping.json as { type?: unknown }).type === 'message';
+        return classifyDshGatewayCheck(ping.status, answered, ping.text, now());
     } catch (error) {
-        return { status: 'unverified', at: now(), detail: sanitizeDetail(error instanceof Error ? error.message : String(error)) };
+        const detail = sanitizeDetail(error instanceof Error ? errorWithCause(error) : String(error));
+        return { status: 'unverified', at: now(), detail, ...(baseUrl ? { reason: 'unreachable' } : {}) };
     } finally {
         clearTimeout(timer);
     }
+}
+
+/** `fetch failed` alone says nothing; Node puts ENOTFOUND / ECONNREFUSED in `cause`. */
+function errorWithCause(error: Error): string {
+    const cause = (error as { cause?: unknown }).cause;
+    const code = cause && typeof cause === 'object' ? (cause as { code?: unknown }).code : undefined;
+    if (error.name === 'AbortError') return 'timed out';
+    return typeof code === 'string' ? `${error.message} (${code})` : error.message;
 }

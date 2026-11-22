@@ -4,6 +4,7 @@
  */
 import type { useTranslation } from '@/i18n/useTranslation';
 import {
+    accountAddressFailed,
     accountKindTag,
     baseUrlHost,
     codexAccountFacts,
@@ -22,18 +23,28 @@ export function accountKindText(kind: string, t: T): string {
     }
 }
 
-export function accountStatusText(status: AccountDisplayStatus, account: Pick<AgentProfileSummary, 'expiresAt'>, t: T, now = Date.now()): string {
+export function accountStatusText(status: AccountDisplayStatus, account: Pick<AgentProfileSummary, 'expiresAt'> & Partial<Pick<AgentProfileSummary, 'status' | 'statusReason'>>, t: T, now = Date.now()): string {
     switch (status) {
         case 'ok': return t('accounts.statusOk');
         case 'expiring': return t('accounts.statusExpiring', { days: account.expiresAt !== undefined ? daysUntil(account.expiresAt, now) : 0 });
-        case 'unverified': return t('accounts.statusUnverified');
+        // B-957: the account's own Base URL answered 404 / not an API / nothing — say so, not 「未验证」.
+        case 'unverified': return account.status !== undefined && accountAddressFailed({ status: account.status, statusReason: account.statusReason }) ? t('accounts.statusUnreachable') : t('accounts.statusUnverified');
         case 'expired': return t('accounts.statusExpired');
         case 'invalid': return t('accounts.statusInvalid');
         case 'missing-secret': return t('accounts.statusMissingSecret');
     }
 }
 
-/** 「API · llm-hub.example.com · key：文件 ~/.config/…」 — never the key. */
+/**
+ * B-957: a failed test in one line — what is wrong, then the daemon's detail:
+ * 「key 被拒 · HTTP 401」, 「地址不对或连不上 · HTTP 404」.
+ */
+export function accountTestFailureText(account: AgentProfileSummary, status: AccountDisplayStatus, t: T, now = Date.now()): string {
+    const what = accountStatusText(status, account, t, now);
+    return account.statusDetail ? `${what} · ${account.statusDetail}` : what;
+}
+
+/** 「API · example.com · key：文件 ~/.config/…」 — never the key. */
 export function accountDetailText(account: AgentProfileSummary, t: T): string {
     const parts: string[] = [];
     // B-850c2: a ChatGPT account says who signed in and on which plan; a Codex provider names its config.toml entry.

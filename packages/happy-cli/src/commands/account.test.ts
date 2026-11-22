@@ -33,3 +33,32 @@ describe('B-850a very-happy account', () => {
         expect(sub).toContain('(soon)');
     });
 });
+
+describe('B-957 account add --agent dsh / edit', () => {
+    it('parses a DeepSeek Harness account with an optional --base-url', () => {
+        expect(parseAccountArgs(['add', '--agent', 'dsh', '--label', 'DS', '--key-env', 'DEEPSEEK_API_KEY'])).toEqual({
+            action: 'add', agent: 'dsh', label: 'DS', key: { source: 'env', name: 'DEEPSEEK_API_KEY' }, models: [],
+        });
+        expect(parseAccountArgs(['add', '--agent', 'dsh', '--label', 'GW', '--base-url', 'https://your-gateway.example.com', '--key-stdin'])).toMatchObject({
+            agent: 'dsh', baseUrl: 'https://your-gateway.example.com', key: { source: 'stdin' },
+        });
+        expect(() => parseAccountArgs(['add', '--agent', 'dsh', '--key-stdin'])).toThrow(/--label/);
+        expect(() => parseAccountArgs(['add', '--agent', 'dsh', '--label', 'x', '--model', 'm', '--key-stdin'])).toThrow(/--model/);
+        expect(() => parseAccountArgs(['add', '--agent', 'dsh', '--label', 'x', '--provider', 'p', '--key-stdin'])).toThrow(/Codex/);
+        expect(() => parseAccountArgs(['login', '--agent', 'dsh'])).toThrow(/--agent/);
+    });
+
+    it('edit takes exactly one of --base-url / --no-base-url', () => {
+        expect(parseAccountArgs(['edit', 'gw', '--base-url', 'https://your-gateway.example.com'])).toEqual({ action: 'edit', accountId: 'gw', baseUrl: 'https://your-gateway.example.com' });
+        expect(parseAccountArgs(['edit', 'gw', '--no-base-url'])).toEqual({ action: 'edit', accountId: 'gw', baseUrl: null });
+        expect(() => parseAccountArgs(['edit', 'gw'])).toThrow(/exactly one/);
+        expect(() => parseAccountArgs(['edit', 'gw', '--no-base-url', '--base-url', 'https://x.example.com'])).toThrow(/exactly one/);
+        expect(() => parseAccountArgs(['edit', '--no-base-url'])).toThrow(/account id/);
+    });
+
+    it('list says when the Base URL, not the key, is the problem', () => {
+        const line = formatAccountLine({ id: 'gw', label: 'GW', agent: 'dsh', kind: 'dsh-api', status: 'unverified', statusReason: 'unreachable', statusDetail: 'HTTP 404', baseUrl: 'https://your-gateway.example.com' }, false, 0);
+        expect(line).toContain('[deepseek]');
+        expect(line).toContain('wrong Base URL or unreachable: HTTP 404');
+    });
+});
