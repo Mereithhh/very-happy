@@ -189,7 +189,7 @@ describe('B-850a local bind (QA30 P1: "this daemon session" read as not running)
 describe('B-850d account service', () => {
     it('advertises launch-accounts and reports a session\'s account (unbound = machine login)', () => {
         const { svc } = service();
-        expect(svc.state().features).toEqual(['launch-accounts']);
+        expect(svc.state().features).toEqual(['launch-accounts', 'dsh-base-url']);
         svc.storeSubscriptionToken(OAT + 'T', { label: 'Org A' });
         svc.writeBinding('s1', 'org-a');
         svc.writeBinding('s2', null);

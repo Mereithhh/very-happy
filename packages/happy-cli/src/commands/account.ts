@@ -21,6 +21,10 @@ export const ACCOUNT_HELP = `Usage:
   very-happy account add --agent codex --label <name> (--provider <config.toml id> | --base-url <url>) [--wire-api responses|chat]
                          (--key-file <path> | --key-env <VAR> | --key-stdin) [--model <id>]...
                                                    Codex API provider; the key reaches only sessions bound to it
+  very-happy account add --agent dsh --label <name> [--base-url <url>] (--key-file <path> | --key-env <VAR> | --key-stdin)
+                                                   DeepSeek Harness key; --base-url = an Anthropic Messages compatible
+                                                   gateway (default: DeepSeek's own API)
+  very-happy account edit <id> (--base-url <url> | --no-base-url)   change a DeepSeek Harness account's Base URL, then test it
   very-happy account test <id>
   very-happy account rename <id> <label>
   very-happy account rm <id> [--force]
@@ -35,8 +39,9 @@ export type AccountArgs =
     | { action: 'help' }
     | { action: 'list'; json: boolean }
     | { action: 'login'; agent: 'claude' | 'codex'; accountId?: string; label?: string; tokenStdin: boolean }
-    | { action: 'add'; agent: 'claude' | 'codex'; label: string; baseUrl?: string; provider?: string; wireApi?: 'responses' | 'chat'; key: { source: 'file'; path: string } | { source: 'env'; name: string } | { source: 'stdin' }; models: Array<string | { id: string; contextWindow: number }> }
+    | { action: 'add'; agent: 'claude' | 'codex' | 'dsh'; label: string; baseUrl?: string; provider?: string; wireApi?: 'responses' | 'chat'; key: { source: 'file'; path: string } | { source: 'env'; name: string } | { source: 'stdin' }; models: Array<string | { id: string; contextWindow: number }> }
     | { action: 'test'; accountId: string }
+    | { action: 'edit'; accountId: string; baseUrl: string | null }
     | { action: 'rename'; accountId: string; label: string }
     | { action: 'rm'; accountId: string; force: boolean }
     | { action: 'default'; accountId: string | null; agent?: 'claude' | 'codex' }
@@ -88,14 +93,16 @@ export function parseAccountArgs(args: string[]): AccountArgs {
         }
         case 'add': {
             allowed(['--label', '--base-url', '--key-file', '--key-env', '--key-stdin', '--model', '--agent', '--provider', '--wire-api']);
-            const agent = agentFlag();
+            const agent = one('--agent') === 'dsh' ? 'dsh' : agentFlag();
             const label = one('--label');
             const baseUrl = one('--base-url');
             const provider = one('--provider');
             const wireApi = one('--wire-api');
-            if (agent === 'claude' && (provider || wireApi)) throw new Error('--provider / --wire-api are for Codex accounts (--agent codex)');
+            if (agent !== 'codex' && (provider || wireApi)) throw new Error('--provider / --wire-api are for Codex accounts (--agent codex)');
+            if (agent === 'dsh' && flags.has('--model')) throw new Error('--model is not used for DeepSeek Harness accounts (dsh picks the model)');
             if (wireApi && wireApi !== 'responses' && wireApi !== 'chat') throw new Error('--wire-api must be responses or chat');
-            if (!label || (!baseUrl && !provider)) throw new Error(agent === 'codex' ? 'add --agent codex needs --label and --provider or --base-url' : 'add needs --label and --base-url');
+            if (agent === 'dsh' && !label) throw new Error('add --agent dsh needs --label');
+            if (agent !== 'dsh' && (!label || (!baseUrl && !provider))) throw new Error(agent === 'codex' ? 'add --agent codex needs --label and --provider or --base-url' : 'add needs --label and --base-url');
             const sources = [one('--key-file') !== undefined, one('--key-env') !== undefined, bools.has('--key-stdin')].filter(Boolean).length;
             if (sources !== 1) throw new Error('add needs exactly one of --key-file, --key-env, --key-stdin');
             const key = one('--key-file') !== undefined
@@ -105,7 +112,7 @@ export function parseAccountArgs(args: string[]): AccountArgs {
                 const match = m.match(/^(.+):(\d+)$/);
                 return match ? { id: match[1], contextWindow: Number(match[2]) } : m;
             });
-            return { action: 'add', agent, label, ...(baseUrl ? { baseUrl } : {}), ...(provider ? { provider } : {}), ...(wireApi ? { wireApi: wireApi as 'responses' | 'chat' } : {}), key, models };
+            return { action: 'add', agent, label: label!, ...(baseUrl ? { baseUrl } : {}), ...(provider ? { provider } : {}), ...(wireApi ? { wireApi: wireApi as 'responses' | 'chat' } : {}), key, models };
         }
         case 'test':
         case 'rm':
@@ -113,6 +120,13 @@ export function parseAccountArgs(args: string[]): AccountArgs {
             allowed(sub === 'test' ? [] : ['--force']);
             if (positional.length !== 1) throw new Error(`${sub} needs exactly one account id`);
             return sub === 'test' ? { action: 'test', accountId: positional[0] } : { action: 'rm', accountId: positional[0], force: bools.has('--force') };
+        case 'edit': {
+            allowed(['--base-url', '--no-base-url']);
+            if (positional.length !== 1) throw new Error('edit needs exactly one account id');
+            const baseUrl = one('--base-url');
+            if ((baseUrl !== undefined) === bools.has('--no-base-url')) throw new Error('edit needs exactly one of --base-url <url>, --no-base-url');
+            return { action: 'edit', accountId: positional[0], baseUrl: baseUrl ?? null };
+        }
         case 'rename':
             allowed([]);
             if (positional.length !== 2) throw new Error('rename needs <id> <label>');
@@ -132,7 +146,7 @@ export function parseAccountArgs(args: string[]): AccountArgs {
 
 /** Pure: one line per account for `account list`. */
 export function formatAccountLine(a: AgentProfileSummary, isDefault: boolean, now: number): string {
-    const kind = ({ 'claude-subscription': 'subscription', 'claude-api': 'api', 'codex-chatgpt': 'codex chatgpt', 'codex-provider': 'codex provider' } as Record<string, string>)[a.kind] ?? a.kind;
+    const kind = ({ 'claude-subscription': 'subscription', 'claude-api': 'api', 'codex-chatgpt': 'codex chatgpt', 'codex-provider': 'codex provider', 'dsh-api': 'deepseek' } as Record<string, string>)[a.kind] ?? a.kind;
     const extra: string[] = [];
     if (a.email) extra.push(a.email + (a.planType ? ` (${a.planType})` : ''));
     if (a.provider) extra.push(`provider: ${a.provider}`);
@@ -141,7 +155,7 @@ export function formatAccountLine(a: AgentProfileSummary, isDefault: boolean, no
     if (a.keySource === 'file' || a.keySource === 'env') extra.push(`key: ${a.keySource} ${a.keyRef ?? ''}`.trim());
     if (a.expiresAt) extra.push(`expires ${new Date(a.expiresAt).toISOString().slice(0, 10)}${a.expiresAt - now < 30 * 86_400_000 && a.expiresAt > now ? ' (soon)' : ''}`);
     if (a.legacy) extra.push('from providers.json (read-only)');
-    if (a.statusDetail) extra.push(a.statusDetail);
+    if (a.statusDetail) extra.push(a.statusReason === 'unreachable' ? `wrong Base URL or unreachable: ${a.statusDetail}` : a.statusDetail);
     return `${isDefault ? '*' : ' '} ${a.id}  ${a.label}  [${kind}]  ${a.status}${extra.length ? `  — ${extra.join(' · ')}` : ''}`;
 }
 
@@ -260,10 +274,18 @@ export async function handleAccountCommand(args: string[]): Promise<void> {
             }
             case 'add': {
                 const key = parsed.key.source === 'stdin' ? { source: 'paste' as const, value: await readStdin() } : parsed.key;
-                const account = parsed.agent === 'codex'
+                const account = parsed.agent === 'dsh'
+                    ? await service.add({ agent: 'dsh', kind: 'dsh-api', label: parsed.label, ...(parsed.baseUrl ? { baseUrl: parsed.baseUrl } : {}), key })
+                    : parsed.agent === 'codex'
                     ? await service.add({ agent: 'codex', kind: 'codex-provider', label: parsed.label, ...(parsed.baseUrl ? { baseUrl: parsed.baseUrl } : {}), ...(parsed.provider ? { provider: parsed.provider } : {}), ...(parsed.wireApi ? { wireApi: parsed.wireApi } : {}), key, ...(parsed.models.length ? { models: parsed.models } : {}) })
                     : await service.add({ agent: 'claude', kind: 'claude-api', label: parsed.label, baseUrl: parsed.baseUrl, key, ...(parsed.models.length ? { models: parsed.models } : {}) });
                 console.log(formatAccountLine(account, false, Date.now()));
+                return;
+            }
+            case 'edit': {
+                const account = await service.setBaseUrl(parsed.accountId, parsed.baseUrl);
+                console.log(formatAccountLine(account, false, Date.now()));
+                if (account.status !== 'ok') process.exitCode = 1;
                 return;
             }
             case 'test': {

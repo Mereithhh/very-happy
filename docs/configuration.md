@@ -366,6 +366,31 @@ environment, or add a DeepSeek account under Settings → Models & accounts — 
 key is kept 0600 under `$HAPPY_HOME_DIR/accounts/` and handed only to the dsh
 process of sessions bound to that account. dsh needs Node.js 24.9 or newer.
 
+**Base URL (gateway).** A DeepSeek account can also name an optional Base URL
+(B-957, CLI 0.2.222+): a gateway with an Anthropic Messages compatible API,
+for example your company's model gateway, used with a key that gateway issued.
+Leave it empty to use DeepSeek's own API. With a Base URL the wrapper hands the
+dsh process `DEEPSEEK_BASE_URL=<url>` next to the key (dsh appends `/v1` unless
+the URL ends with it, then calls `/v1/messages`); neither the key nor the URL
+goes into the wrapper's own environment, session metadata or logs. The URL must
+be http(s) without user name, query or fragment. 「Test」 then asks the gateway:
+`GET <url>/v1/models` (no tokens), and only if that route is missing one
+1-token `POST <url>/v1/messages` for `deepseek-v4-flash`. HTTP 401 / 403 shows
+「Key rejected」; HTTP 404, a page that is not an API answer, or no connection
+shows 「Wrong address or unreachable」 with the HTTP code or network error.
+
+```sh
+very-happy account add --agent dsh --label "Gateway" \
+  --base-url https://your-gateway.example.com --key-stdin   # paste the gateway's key, then Ctrl-D
+very-happy account edit <id> --base-url https://your-gateway.example.com   # or --no-base-url; tests again
+```
+
+Without a bound account (machine setup), a `DEEPSEEK_BASE_URL` in the daemon's
+environment still reaches dsh unchanged. A bound account without a Base URL
+also leaves that variable as it is, so on such a machine the account's key goes
+to that gateway. The Web form shows the field only when the machine's CLI keeps
+it (0.2.222+); an older daemon would silently drop it.
+
 The daemon finds `dsh`, `pi` / `pi-acp` and `gemini` even when they are not on
 its own PATH (B-956, CLI 0.2.221+): it also looks in the login shell's PATH and
 in the Node.js install dirs of nvm, fnm, volta, mise and asdf (newest Node

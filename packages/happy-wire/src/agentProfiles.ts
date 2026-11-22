@@ -66,6 +66,12 @@ export const AgentProfileSummarySchema = z.object({
     kind: z.string(),                       // AgentProfileKind (open)
     status: z.string(),                     // AgentProfileStatus (open; unknown → 'unverified')
     statusDetail: z.string().optional(),    // short human reason for the last failed check
+    /**
+     * B-957: why the last check failed when it is not the key. 'unreachable' = the
+     * account's own Base URL answered 404 / not an API, or could not be reached
+     * (the UI says 「地址不对或连不上」 instead of 「未验证」). Open string.
+     */
+    statusReason: z.string().optional(),
     checkedAt: z.number().optional(),
     createdAt: z.number().optional(),
     /** Subscription token expiry (ms). The UI derives 「即将过期」 from it. */
@@ -183,13 +189,17 @@ export const CodexProviderAddRequestSchema = z.object({
 
 /**
  * B-952: a DeepSeek API key for DeepSeek Harness. The wrapper hands it to the
- * dsh process only, as DEEPSEEK_API_KEY; dsh's own provider config decides
- * the endpoint.
+ * dsh process only, as DEEPSEEK_API_KEY.
+ * B-957: optional `baseUrl` = an Anthropic Messages compatible gateway; the
+ * wrapper hands it to the dsh process only, as DEEPSEEK_BASE_URL. Absent =
+ * DeepSeek's own endpoint. Only a daemon listing AGENT_PROFILE_FEATURE_DSH_BASE_URL
+ * keeps it (older ones strip the unknown field), so the Web offers it only there.
  */
 export const DshApiAddRequestSchema = z.object({
     agent: z.literal('dsh'),
     kind: z.literal('dsh-api'),
     label: z.string().trim().min(1).max(60),
+    baseUrl: BaseUrlSchema.optional(),
     key: AgentProfileKeyInputSchema,
 });
 
@@ -300,6 +310,8 @@ export function readSessionAgentProfile(value: unknown): SessionAgentProfile | n
 // ---- B-850d: accounts chosen on a project / team / automation ----
 
 export const AGENT_PROFILE_FEATURE_LAUNCH = 'launch-accounts';
+/** B-957: `dsh-api` accounts take an optional `baseUrl` (DEEPSEEK_BASE_URL for the dsh child). */
+export const AGENT_PROFILE_FEATURE_DSH_BASE_URL = 'dsh-base-url';
 
 /**
  * An account picked for a project / team / automation, as stored on the

@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+    AGENT_PROFILE_FEATURE_DSH_BASE_URL,
     AGENT_PROFILE_FEATURE_LAUNCH,
     AgentProfileAddRequestSchema,
     AgentProfileBindRequestSchema,
@@ -18,6 +19,7 @@ import {
     type AgentProfilesState,
 } from '@slopus/happy-wire';
 import { checkApiAccount, checkDshAccount, checkSubscriptionAccount } from './checkAccount';
+import { dshBaseUrlProblem } from './dshAccount';
 import { SetupTokenLoginManager, type SpawnPty } from './setupTokenLogin';
 import { baseCodexHome, readCodexProviders } from './codexConfig';
 import { syncCodexOverlay } from './codexHome';
@@ -119,7 +121,8 @@ export class AccountService {
         // B-850b: what a codex-provider account can be based on (no secrets: env_key is a variable name).
         const codexProviders = readCodexProviders(this.env).map((p) => ({ id: p.id, ...(p.name ? { name: p.name } : {}), ...(p.baseUrl ? { baseUrl: p.baseUrl } : {}), ...(p.envKey ? { envKey: p.envKey } : {}) }));
         // B-850d: project / team / automation / fork accounts are honoured (and refuse when unusable).
-        const withFeatures = { ...state, features: [AGENT_PROFILE_FEATURE_LAUNCH] };
+        // B-957: a dsh-api account keeps an optional baseUrl.
+        const withFeatures = { ...state, features: [AGENT_PROFILE_FEATURE_LAUNCH, AGENT_PROFILE_FEATURE_DSH_BASE_URL] };
         return codexProviders.length > 0 ? { ...withFeatures, codexProviders } : withFeatures;
     }
 
@@ -149,6 +152,10 @@ export class AccountService {
         const parsed = AgentProfileAddRequestSchema.safeParse(params);
         if (!parsed.success) throw new AccountError('invalid-params', parsed.error.issues[0]?.message ?? 'invalid params');
         const req = parsed.data;
+        if (req.agent === 'dsh' && req.baseUrl) {
+            const problem = dshBaseUrlProblem(req.baseUrl);
+            if (problem) throw new AccountError('invalid-params', problem);
+        }
         if (req.agent === 'codex' && req.provider && !readCodexProviders(this.env).some((p) => p.id === req.provider)) {
             throw new AccountError('not-found', `no [model_providers.${req.provider}] in the machine's Codex config.toml`);
         }
@@ -191,6 +198,28 @@ export class AccountService {
         writeAccountsFile(this.home, file);
         this.changed();
         return this.summary(accountId);
+    }
+
+    /**
+     * B-957: set (or, with null, clear) a DeepSeek account's Base URL, then test
+     * it. Sessions already running keep the old one until they restart.
+     */
+    async setBaseUrl(accountId: unknown, baseUrl: unknown): Promise<AgentProfileSummary> {
+        if (typeof accountId !== 'string') throw new AccountError('invalid-params', 'accountId is required');
+        if (baseUrl !== null && typeof baseUrl !== 'string') throw new AccountError('invalid-params', 'baseUrl must be a string or null');
+        const { file, record } = this.editable(accountId);
+        if (record.kind !== 'dsh-api') throw new AccountError('invalid-params', 'only DeepSeek Harness (dsh-api) accounts take a Base URL here');
+        if (baseUrl === null) delete record.baseUrl;
+        else {
+            const trimmed = baseUrl.trim().replace(/\/+$/, '');
+            const problem = dshBaseUrlProblem(trimmed);
+            if (problem) throw new AccountError('invalid-params', problem);
+            record.baseUrl = trimmed;
+        }
+        delete record.check;
+        writeAccountsFile(this.home, file);
+        this.changed();
+        return this.test(accountId);
     }
 
     /**
@@ -280,7 +309,7 @@ export class AccountService {
                     : record.kind === 'codex-provider'
                         ? await this.checkCodexProvider(record, secret)
                         : record.kind === 'dsh-api'
-                            ? await checkDshAccount(secret, this.now)
+                            ? await checkDshAccount(secret, this.now, fetch, record.baseUrl)
                             : await checkApiAccount(record, secret, this.now);
         }
         // Legacy (providers.json) accounts are read-only: report, do not persist.
@@ -293,7 +322,7 @@ export class AccountService {
             }
             return this.summary(accountId);
         }
-        return { ...this.summary(accountId), status: check.status, checkedAt: check.at, ...(check.detail ? { statusDetail: check.detail } : {}) };
+        return { ...this.summary(accountId), status: check.status, checkedAt: check.at, ...(check.detail ? { statusDetail: check.detail } : {}), ...(check.reason ? { statusReason: check.reason } : {}) };
     }
 
     private async checkCodexProvider(record: AccountRecord, secret: string): Promise<AccountCheck> {

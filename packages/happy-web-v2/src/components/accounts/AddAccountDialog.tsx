@@ -30,6 +30,8 @@ import {
     codexProviderAddFields,
     isLoginTerminal,
     isValidBaseUrl,
+    isValidDshBaseUrl,
+    dshAddFields,
     isValidEnvName,
     baseUrlHost,
     parseModelList,
@@ -58,7 +60,7 @@ export function offeredAccountKinds(agent: string, kinds: readonly string[]): Ki
     return (AGENT_ACCOUNT_KINDS[agent] ?? []).filter((k) => kinds.includes(k)) as Kind[];
 }
 
-export function AddAccountDialog({ open, onOpenChange, machineId, machineName, agent = 'claude', kinds, codexProviders = [], relogin }: {
+export function AddAccountDialog({ open, onOpenChange, machineId, machineName, agent = 'claude', kinds, codexProviders = [], relogin, dshBaseUrl = false }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     machineId: string;
@@ -71,6 +73,8 @@ export function AddAccountDialog({ open, onOpenChange, machineId, machineName, a
     codexProviders?: readonly CodexProviderOption[];
     /** re-login an existing subscription account (Claude subscription or Codex ChatGPT) */
     relogin?: { accountId: string; label: string; kind: string } | null;
+    /** B-957: the daemon keeps a DeepSeek account's Base URL (AGENT_PROFILE_FEATURE_DSH_BASE_URL). */
+    dshBaseUrl?: boolean;
 }) {
     const { t } = useTranslation();
     const titleRef = useRef<HTMLHeadingElement>(null);
@@ -173,10 +177,11 @@ export function AddAccountDialog({ open, onOpenChange, machineId, machineName, a
     const providerFields = kind === 'codex-provider'
         ? codexProviderAddFields({ label, provider: provider === CUSTOM_PROVIDER ? null : provider, baseUrl, wireApi, models })
         : null;
+    const dshFields = kind === 'dsh-api' ? dshAddFields({ label, baseUrl, withBaseUrl: dshBaseUrl }) : null;
     const apiReady = kind === 'codex-provider'
         ? !!providerFields && !!keyInput()
         : kind === 'dsh-api'
-            ? !!label.trim() && !!keyInput()
+            ? !!dshFields && !!keyInput()
             : !!label.trim() && isValidBaseUrl(baseUrl) && !!keyInput();
 
     async function addApi() {
@@ -185,9 +190,9 @@ export function AddAccountDialog({ open, onOpenChange, machineId, machineName, a
         setBusy(true); setError(null);
         const result = await agentProfileAdd(machineId, kind === 'codex-provider' && providerFields
             ? { agent: 'codex', kind: 'codex-provider', ...providerFields, key }
-            : kind === 'dsh-api'
-                // B-952: a DeepSeek key only — dsh's own config picks the endpoint and models.
-                ? { agent: 'dsh', kind: 'dsh-api', label: label.trim(), key }
+            : kind === 'dsh-api' && dshFields
+                // B-952: a DeepSeek key (dsh picks the model); B-957: plus an optional gateway Base URL.
+                ? { agent: 'dsh', kind: 'dsh-api', ...dshFields, key }
                 : { agent: 'claude', kind: 'claude-api', label: label.trim(), baseUrl: baseUrl.trim(), models: parseModelList(models), key });
         setBusy(false);
         if (!result.ok) { setError(accountErrorText(result, t)); return; }
@@ -309,6 +314,14 @@ export function AddAccountDialog({ open, onOpenChange, machineId, machineName, a
                             {chosenProvider && <span className="mce-hint">{t('accounts.providerHint', { machine: machineName })}</span>}
                         </div>}
                         {keyOnly && <span className="mce-hint" data-testid="account-dsh-hint">{t('accounts.typeDshApiHint')}</span>}
+                        {keyOnly && dshBaseUrl && <label className="so-field">
+                            <span className="so-field-label">{t('accounts.dshBaseUrlLabel')}</span>
+                            <input className="mce-input mono" value={baseUrl} spellCheck={false} autoCapitalize="off" autoCorrect="off" inputMode="url"
+                                placeholder="https://your-gateway.example.com" onChange={(e) => setBaseUrl(e.target.value)} data-testid="account-dsh-base-url" />
+                            <span className={baseUrl.trim() && !isValidDshBaseUrl(baseUrl) ? 'mce-hint mce-hint--warn' : 'mce-hint'}>
+                                {baseUrl.trim() && !isValidDshBaseUrl(baseUrl) ? t('accounts.dshBaseUrlInvalid') : t('accounts.dshBaseUrlHint')}
+                            </span>
+                        </label>}
                         {!keyOnly && <label className="so-field">
                             <span className="so-field-label">{t('accounts.baseUrlLabel')}</span>
                             <input className="mce-input mono" value={baseUrl} spellCheck={false} autoCapitalize="off" autoCorrect="off" inputMode="url"
