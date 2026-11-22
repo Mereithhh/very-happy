@@ -68,3 +68,28 @@ describe('/compact on Codex (Owner 10-30: it reached the model, which said it ca
         expect(isCodexControlText('please /compact')).toBe(false);
     });
 });
+
+describe('/goal on Codex (B-953: it reached the model as chat)', () => {
+    const mode = { permissionMode: 'default' as const };
+    const newQueue = () => ({ push: vi.fn(), pushNonUser: vi.fn(), pushIsolate: vi.fn(), pushIsolateAndClear: vi.fn() });
+
+    it('queues the canonical command as a turn of its own', () => {
+        const queue = newQueue();
+        expect(enqueueCodexUserText({ text: '／Goal　write the report', mode, queue, sourceId: 'l1' })).toBe('goal');
+        expect(queue.pushIsolate).toHaveBeenCalledWith('/goal write the report', mode, undefined, 'l1');
+        expect(queue.push).not.toHaveBeenCalled();
+    });
+
+    it('is a wrapper command, never steered into the running turn', () => {
+        expect(isCodexControlText('/goal')).toBe(true);
+        expect(isCodexControlText('/goal pause')).toBe(true);
+        expect(isCodexControlText('please /goal x')).toBe(false);
+        expect(isCodexControlText('/goals')).toBe(false);
+    });
+
+    it('leaves ordinary text alone', () => {
+        const queue = newQueue();
+        expect(enqueueCodexUserText({ text: 'what is my goal?', mode, queue })).toBe('queued');
+        expect(queue.push).toHaveBeenCalled();
+    });
+});

@@ -539,6 +539,36 @@ The composer's command list marks `/compact` as unavailable on sessions that
 cannot run it, and sending it there shows a notice instead of a message (older
 Codex wrappers included — update the CLI and restart the session).
 
+### `/goal` in Codex sessions
+
+A message that is only `/goal …` (same spellings as `/compact`) is run by the
+Codex wrapper through Codex's goal API (`thread/goal/set|get|clear`, sent as the
+user's action); it never reaches the model, is never joined with other queued
+messages and is never steered into a running turn. Subcommands follow Codex's
+own TUI, plus a budget:
+
+| Message | Effect |
+| --- | --- |
+| `/goal <objective>` | Sets the goal (replaces an existing one, keeping its budget). Codex starts working on it at once. |
+| `/goal` | Shows the goal, its state and tokens used / budget. |
+| `/goal pause` / `/goal resume` | Pauses / resumes it. |
+| `/goal clear` | Removes it. |
+| `/goal budget <tokens\|off>` | Caps the tokens the goal may spend (`50000`, `50k`, `1.5M`); `off` removes the cap. |
+
+While the goal is active Codex starts turns by itself (no user message) until it
+marks the goal complete, a limit is reached (token budget, usage limit) or it
+stalls. Those turns show like any other; Stop interrupts them and pauses the
+goal, because an interrupt alone leaves the goal active and Codex would start
+the next turn. The session shows the goal in a strip above the composer
+(`agentState.codexGoal`, wrappers that advertise `codex-goal-v1`), and each state
+change as one line in the transcript.
+
+Needs Codex 0.133 or newer (goals ship on by default there; 0.128–0.132 had them
+behind a flag). On an older Codex the session says which version it needs; with
+`[features] goals = false` in `~/.codex/config.toml` it says how to turn goals
+back on. Claude sessions pass `/goal` to Claude Code, which has its own
+condition-based `/goal`.
+
 ### A Codex thread too large to load (B-901)
 
 Codex stores every tool output whole in the thread's rollout

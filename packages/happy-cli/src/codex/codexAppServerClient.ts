@@ -1287,7 +1287,9 @@ export class CodexAppServerClient {
 
     /** A turn Codex has reported running, under an id `turn/steer` can name. */
     private turnIsOpen(): boolean {
-        return this.pendingTurnCompletion?.opened === true && this._turnId !== null;
+        if (this._turnId === null) return false;
+        // B-953: a turn Codex opened by itself (goal continuation) is open from its `turn/started`.
+        return this.pendingTurnCompletion ? this.pendingTurnCompletion.opened === true : true;
     }
 
     private releaseTurnOpenWaiters(): void {
@@ -1709,6 +1711,44 @@ export class CodexAppServerClient {
         return this.pendingInterrupt;
     }
 
+    // ─── B-953: thread goals (`/goal`) ───────────────────────────
+
+    private requireThreadId(): string {
+        if (!this._threadId) throw new Error('No active thread. Call startThread first.');
+        return this._threadId;
+    }
+
+    /** `thread/goal/get` → the goal, or null. */
+    async getGoal(): Promise<any | null> {
+        const result = await this.request('thread/goal/get', { threadId: this.requireThreadId() }) as { goal?: unknown } | null;
+        return result?.goal ?? null;
+    }
+
+    /** `thread/goal/set` with `origin: 'user'` — only a person's command calls this (schema: no origin is no authorization). */
+    async setGoal(params: { objective?: string; status?: string; tokenBudget?: number | null }): Promise<any | null> {
+        const result = await this.request('thread/goal/set', {
+            threadId: this.requireThreadId(),
+            ...(params.objective !== undefined ? { objective: params.objective } : {}),
+            ...(params.status !== undefined ? { status: params.status } : {}),
+            ...(params.tokenBudget !== undefined ? { tokenBudget: params.tokenBudget } : {}),
+            origin: 'user',
+        }) as { goal?: unknown } | null;
+        return result?.goal ?? null;
+    }
+
+    async clearGoal(): Promise<boolean> {
+        const result = await this.request('thread/goal/clear', { threadId: this.requireThreadId(), origin: 'user' }) as { cleared?: boolean } | null;
+        return result?.cleared === true;
+    }
+
+    /**
+     * B-953: a turn Codex started by itself (a goal continuation) is running —
+     * one the wrapper did not ask for, so no `sendTurnAndWait` is waiting on it.
+     */
+    hasUnrequestedTurn(): boolean {
+        return this._turnId !== null && !this.pendingTurnCompletion;
+    }
+
     // ─── State queries ──────────────────────────────────────────
 
     hasActiveThread(): boolean {
@@ -2015,6 +2055,15 @@ export class CodexAppServerClient {
         this.touchTurnWatchdog();
         for (const listener of this.rawNotificationListeners) {
             try { listener(method, params); } catch (error) { logger.debug('[CodexAppServer] raw notification listener failed', errorLogMetadata(error)); }
+        }
+
+        // B-953: the thread's goal changed (a set/clear, token accounting, Codex stopping it).
+        if (method === 'thread/goal/updated' || method === 'thread/goal/cleared') {
+            if (!this.isOwnThreadFrame(params)) return;
+            this.eventHandler?.(method === 'thread/goal/updated'
+                ? { type: 'goal_updated', goal: params?.goal ?? null, ...(params?.turnId ? { turn_id: params.turnId } : {}) }
+                : { type: 'goal_cleared' });
+            return;
         }
 
         // codex/event notifications: either `codex/event` or `codex/event/<type>`

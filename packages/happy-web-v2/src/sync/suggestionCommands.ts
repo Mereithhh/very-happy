@@ -7,6 +7,7 @@ import Fuse from 'fuse.js';
 import { storage } from './storage';
 import { buildCommandItems, type CommandItem } from './suggestionCommandItems';
 import { compactSupport } from '@/screens/session/compactCommand';
+import { goalSupport } from './codexGoal';
 export { buildCommandItems, IGNORED_COMMANDS } from './suggestionCommandItems';
 export type { CommandItem } from './suggestionCommandItems';
 
@@ -24,6 +25,7 @@ function getCommandsFromSession(sessionId: string): CommandItem[] {
 
     return buildCommandItems(session.metadata.slashCommands, session.metadata.skills, {
         compactUnavailable: compactSupport(session) === 'unsupported',
+        ...(goalSupport(session) === 'supported' ? { goal: 'available' as const } : goalSupport(session) === 'unsupported' ? { goal: 'unavailable' as const } : {}),
     });
 }
 

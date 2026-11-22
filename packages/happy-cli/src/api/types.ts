@@ -893,6 +893,8 @@ export type AgentState = {
   backgroundTasks?: { updatedAt: number; tasks: import('@/claude/backgroundTasks').BackgroundTaskInfo[] } | null
   /** B-913: the last turn ended on a model / upstream API error; cleared when the next turn starts or succeeds. */
   turnFailure?: import('@slopus/happy-wire').TurnFailure | null
+  /** B-953: the Codex thread's goal (`/goal`); null once cleared. */
+  codexGoal?: import('@slopus/happy-wire').CodexGoal | null
   requests?: {
     [id: string]: {
       tool: string,

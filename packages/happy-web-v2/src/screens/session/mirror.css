@@ -224,6 +224,23 @@
   }
 }
 .mrb[data-kind="turn-failure"] .mrb-term-btn:disabled { opacity: 0.6; cursor: default; }
+/* B-953: a Codex goal — the quiet strip while Codex works it; --warn when it waits on you
+ * (paused, stalled, a limit reached); objective wraps, actions drop under it on a phone. */
+.mrb[data-kind="codex-goal"] .mrb-note { flex-wrap: wrap; color: var(--text); }
+.mrb[data-kind="codex-goal"] .mrb-note > svg:first-child { flex: none; color: var(--text-dim); }
+.mrb[data-kind="codex-goal"][data-tone="attention"] .mrb-note { background: var(--warn-dim); }
+.mrb[data-kind="codex-goal"][data-tone="attention"] .mrb-note > svg:first-child { color: var(--warn); }
+.mrb[data-kind="codex-goal"] .mrb-note-text { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.mrb-goal-usage { color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 600px) {
+  .mrb[data-kind="codex-goal"] .mrb-note-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+}
 .mrb-note--decision .mrb-note-text { display: inline; overflow-wrap: anywhere; }
 .mrb-inline-link {
   border: none;
