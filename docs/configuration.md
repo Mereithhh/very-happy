@@ -364,8 +364,17 @@ configured for the daemon OS user. Provider credentials stay local by default.
 DeepSeek Harness (`dsh`) reads `DEEPSEEK_API_KEY`: set it in the daemon's
 environment, or add a DeepSeek account under Settings → Models & accounts — the
 key is kept 0600 under `$HAPPY_HOME_DIR/accounts/` and handed only to the dsh
-process of sessions bound to that account. dsh needs Node.js 24.9 or newer on
-the daemon's PATH.
+process of sessions bound to that account. dsh needs Node.js 24.9 or newer.
+
+The daemon finds `dsh`, `pi` / `pi-acp` and `gemini` even when they are not on
+its own PATH (B-956, CLI 0.2.221+): it also looks in the login shell's PATH and
+in the Node.js install dirs of nvm, fnm, volta, mise and asdf (newest Node
+first). A CLI found there runs with that dir in front of its PATH, so an npm
+CLI installed under nvm's Node 24 runs on that Node even when the daemon
+itself was started on another one. The keep-alive re-checks every 5 minutes,
+and a spawn that would be refused re-checks once first, so a fresh install
+works without a daemon restart. Anything installed elsewhere: add its dir to
+the login shell's PATH (`~/.zshrc`, `~/.bashrc`).
 Running `very-happy connect codex|claude|gemini` is an explicit
 exception: it uploads that OAuth credential to, and retains it on, the configured
 trusted relay. This storage is not end-to-end encrypted and is currently used

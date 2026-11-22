@@ -235,9 +235,11 @@ with the account content key, which `dataKey` CLI credentials do not hold.
 - `--agent <name>` — `claude` (default), `codex`, `gemini`, `openclaw` or
   `pi`. `pi` runs through the [pi-acp](https://www.npmjs.com/package/pi-acp)
   adapter (`very-happy pi` = the generic ACP runner with `pi-acp`), so the
-  daemon machine needs both `pi` and `pi-acp` on the daemon's PATH
+  daemon machine needs both `pi` and `pi-acp`
   (`npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33`; the
-  keep-alive re-probes PATH every 5 minutes, no restart needed). A terminal
+  keep-alive re-probes every 5 minutes, no restart needed — the daemon's PATH,
+  the login shell's PATH and the nvm / fnm / volta / mise / asdf Node dirs,
+  see [configuration](configuration.md); B-956). A terminal
   `very-happy pi` checks both on PATH before creating a session and prints the
   command for what is missing (B-596; `PI_ACP_PI_COMMAND` exempts `pi`). The daemon
   reports that as `cliAvailability.pi`; the Web launcher offers pi only when a

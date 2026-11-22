@@ -18,6 +18,7 @@ import { sanitizeSpawnModel } from '@/daemon/spawnModel';
  */
 import { normalizeAcpPermissionMode, type AcpPermissionMode } from './sessionModeFile';
 import { sanitizeAgentSessionId } from './acpSessionResume';
+import { AGENT_SEARCH_LOCATIONS } from '@/utils/agentSearchLocations';
 
 export type PiRunnerArgs = {
   model?: string;
@@ -85,7 +86,8 @@ export function piSetupMessage(missing: readonly PiPrerequisite[]): string {
 }
 
 /** Daemon `/spawn-session` refusal: the advertised availability cannot say which of the two is missing. */
-export const PI_ADAPTER_INSTALL_HINT = `pi is not available on this machine: very-happy needs both pi and the pi-acp adapter on the daemon's PATH. Install with: ${piInstallCommand()} (picked up within 5 minutes, no daemon restart needed)`;
+// B-956: the daemon also finds pi / pi-acp outside its own PATH (login shell, nvm/fnm/volta/mise/asdf).
+export const PI_ADAPTER_INSTALL_HINT = `pi is not available on this machine: very-happy needs both pi and the pi-acp adapter, and did not find both in ${AGENT_SEARCH_LOCATIONS}. Install with: ${piInstallCommand()} (picked up within 5 minutes, no daemon restart needed; if they live somewhere else, add that dir to your login shell's PATH)`;
 
 /**
  * The install message when a backend failure means an executable is missing,

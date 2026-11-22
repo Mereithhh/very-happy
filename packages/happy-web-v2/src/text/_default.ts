@@ -1641,7 +1641,8 @@ export const en = {
         agentNodePrompt: ({ agents }: { agents: string }) => `Installed, but Node.js is too old: ${agents}. Select it to see how to upgrade.`,
         agentInstallHelp: ({ agent }: { agent: string }) => `${agent} is not installed on this machine. Run this on it — it is picked up within 5 minutes, no daemon restart needed:`,
         dshInstallHelp: 'DeepSeek Harness is not installed on this machine (it needs Node.js 24.9 or newer). Run this on it — it is picked up within 5 minutes, no daemon restart needed:',
-        dshNodeHelp: ({ node, minimum }: { node: string; minimum: string }) => `DeepSeek Harness is installed, but it needs Node.js ${minimum} or newer and the daemon's node is ${node}. Upgrade Node.js on this machine (for example \`nvm install 24\`) so that \`node --version\` on the daemon's PATH reports it, then restart the daemon.`,
+        dshNodeHelp: ({ node, minimum, path }: { node: string; minimum: string; path?: string | null }) => `DeepSeek Harness is installed${path ? ` (in ${path})` : ''}, but it needs Node.js ${minimum} or newer and the node it runs on is ${node}. Install Node.js ${minimum}+ on this machine (for example \`nvm install 24\`) and install dsh under it with \`npm install -g @deepseek-ai/dsh\`. CLI 0.2.221 and later pick it up within 5 minutes, no daemon restart needed; older ones need a daemon restart from that shell.`,
+        agentSearchedNote: "Where the daemon looked: its own PATH, your login shell's PATH, and the Node.js dirs of nvm, fnm, volta, mise and asdf. If it is installed somewhere else, add that dir to your login shell's PATH (for example in ~/.zshrc or ~/.bashrc).",
         dshNodeMissing: 'not found',
         dshHelp: 'DeepSeek Harness: replies appear one message at a time, not word by word; resuming a session keeps the transcript here, but dsh does not replay it; plan mode, slash commands and images are not supported. It needs a DeepSeek API key —',
         dshKeyLink: 'add one as an account',
@@ -3483,6 +3484,12 @@ export const en = {
                 summary: 'When an agent tries to preview a file that does not exist (or a folder), it is told so instead of being told the preview went out, so it stops saying "preview opened" for nothing.',
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
+            },
+            nov22d: {
+                title: 'dsh, pi and gemini found without a daemon restart',
+                summary: 'A coding agent installed under another Node.js (nvm, fnm, volta, mise, asdf) or only on your login shell\'s PATH is now picked up by the daemon.',
+                found: 'Installed dsh with nvm\'s Node 24 while the daemon started on another Node? New chat now offers it within 5 minutes, no daemon restart, and dsh runs on the Node it was installed with. The same goes for pi and gemini.',
+                where: 'When an agent still is not found, the new-session hint lists where the daemon looked and what to do if it lives somewhere else.',
             },
             nov22c: {
                 title: '/goal and dsh notes in your language',

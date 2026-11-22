@@ -76,7 +76,7 @@ export type AgentSetupInstruction =
     | { kind: 'command'; command: string }
     | { kind: 'gateway' }
     /** B-952: dsh is installed but the daemon's `node` is older than dsh needs. */
-    | { kind: 'node-upgrade'; nodeVersion: string | null; minimum: string };
+    | { kind: 'node-upgrade'; nodeVersion: string | null; minimum: string; path: string | null };
 
 /** B-952: DeepSeek Harness's `engines.node` floor. */
 export const DSH_MIN_NODE = '24.9.0';
@@ -89,7 +89,7 @@ export function agentSetupInstruction(agent: Exclude<SessionAgent, 'claude'>, me
             const node = metadata?.cliAvailability?.dshNode;
             return node === undefined
                 ? { kind: 'command', command: DSH_INSTALL_COMMAND }
-                : { kind: 'node-upgrade', nodeVersion: node, minimum: DSH_MIN_NODE };
+                : { kind: 'node-upgrade', nodeVersion: node, minimum: DSH_MIN_NODE, path: metadata?.cliAvailability?.dshPath ?? null };
         }
         case 'codex': return { kind: 'command', command: 'npm install -g @openai/codex' };
         case 'gemini': return { kind: 'command', command: 'npm install -g @google/gemini-cli' };
@@ -97,6 +97,18 @@ export function agentSetupInstruction(agent: Exclude<SessionAgent, 'claude'>, me
         // pi itself plus the ACP adapter very-happy drives it through.
         case 'pi': return { kind: 'command', command: 'npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33' };
     }
+}
+
+/**
+ * B-956: the daemon also looks in the login shell's PATH and the nvm / fnm /
+ * volta / mise / asdf Node dirs for these agents (CLI 0.2.221+, which says so
+ * with `binSearch`), so the setup row can say where it looked.
+ */
+export function agentSearchedBeyondPath(
+    agent: Exclude<SessionAgent, 'claude'>,
+    metadata: MachineMetadata | null | undefined,
+): boolean {
+    return (agent === 'dsh' || agent === 'pi' || agent === 'gemini') && metadata?.cliAvailability?.binSearch === 1;
 }
 
 /**

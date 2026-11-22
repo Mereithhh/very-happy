@@ -1823,7 +1823,8 @@ export const zhHans: TranslationStructure = {
         agentNodePrompt: ({ agents }: { agents: string }) => `已安装但 Node.js 版本太低：${agents}。点一下查看怎么升级。`,
         agentInstallHelp: ({ agent }: { agent: string }) => `这台机器没有安装 ${agent}。在这台机器上运行下面的命令，5 分钟内自动识别，无需重启 daemon：`,
         dshInstallHelp: '这台机器没有安装 DeepSeek Harness（需要 Node.js 24.9 或更新版本）。在这台机器上运行下面的命令，5 分钟内自动识别，无需重启 daemon：',
-        dshNodeHelp: ({ node, minimum }: { node: string; minimum: string }) => `DeepSeek Harness 已安装，但它需要 Node.js ${minimum} 或更新版本，daemon 用的 node 是 ${node}。请在这台机器上升级 Node.js（例如 \`nvm install 24\`），让 daemon PATH 上的 \`node --version\` 显示新版本，然后重启 daemon。`,
+        dshNodeHelp: ({ node, minimum, path }: { node: string; minimum: string; path?: string | null }) => `DeepSeek Harness 已安装${path ? `（在 ${path}）` : ''}，但它需要 Node.js ${minimum} 或更新版本，它用的 node 是 ${node}。请在这台机器上装 Node.js ${minimum}+（例如 \`nvm install 24\`），再在这个 Node 下运行 \`npm install -g @deepseek-ai/dsh\`。CLI 0.2.221 及以后 5 分钟内自动识别，无需重启 daemon；更早的版本要在那个终端里重启 daemon。`,
+        agentSearchedNote: 'daemon 找过这些地方：它自己的 PATH、登录 shell 的 PATH，以及 nvm、fnm、volta、mise、asdf 的 Node 安装目录。如果装在别处，把那个目录加进登录 shell 的 PATH（例如 ~/.zshrc 或 ~/.bashrc）。',
         dshNodeMissing: '未找到',
         dshHelp: 'DeepSeek Harness：回复按条显示，不逐字流式；恢复会话时这里的记录保留，但 dsh 不回放历史；不支持计划模式、斜杠命令和图片。需要 DeepSeek API key —',
         dshKeyLink: '添加为账号',
@@ -3643,6 +3644,12 @@ export const zhHans: TranslationStructure = {
                 summary: '终端所在的机器没连上时，打开终端只有黑屏，别人分享给你的终端尤其如此。现在终端里会写明这台机器没连上，以及是哪台机器。',
                 shared: '别人分享给你的终端会写明是谁的哪台机器（比如「Alex 的 mac-studio」）：连接时显示正在连接，机器没连上时显示没连上，看的过程中掉线也一样。',
                 recover: '机器重新连上后，终端会自动恢复，不用刷新，也不用点重试。你自己的终端也一样。',
+            },
+            nov22d: {
+                title: 'dsh、pi、gemini 装好就能用，不用重启 daemon',
+                summary: '在另一个 Node.js（nvm、fnm、volta、mise、asdf）下装的，或只在登录 shell 的 PATH 上的 agent，daemon 现在也能找到。',
+                found: '用 nvm 的 Node 24 装了 dsh，daemon 却跑在另一个 Node 上？现在 5 分钟内新建会话里就能选 dsh，不用重启 daemon，dsh 也会用装它的那个 Node 运行。pi 和 gemini 同理。',
+                where: '仍然找不到时，新建会话的提示会列出 daemon 找过哪些地方，以及装在别处时该怎么办。',
             },
             nov22c: {
                 title: '/goal 和 dsh 的提示改成中文',

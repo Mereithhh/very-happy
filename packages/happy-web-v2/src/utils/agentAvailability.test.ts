@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agentSetupInstruction, agentsNeedingSetup, agentUnavailableReason, isAgentOffered, resolveAgentAvailability } from './agentAvailability';
+import { agentSearchedBeyondPath, agentSetupInstruction, agentsNeedingSetup, agentUnavailableReason, isAgentOffered, resolveAgentAvailability } from './agentAvailability';
 
 describe('new-session agent availability', () => {
     it('keeps bundled structured Claude available without an external claude CLI', () => {
@@ -106,8 +106,10 @@ describe('B-952 DeepSeek Harness availability', () => {
 
     it('says install dsh when it is missing, and upgrade Node when dsh is there but Node is too old', () => {
         expect(agentSetupInstruction('dsh', { cliAvailability: { ...base, dsh: false } } as any)).toEqual({ kind: 'command', command: 'npm install -g @deepseek-ai/dsh' });
-        expect(agentSetupInstruction('dsh', { cliAvailability: { ...base, dsh: false, dshNode: 'v22.23.2' } } as any)).toEqual({ kind: 'node-upgrade', nodeVersion: 'v22.23.2', minimum: '24.9.0' });
-        expect(agentSetupInstruction('dsh', { cliAvailability: { ...base, dsh: false, dshNode: null } } as any)).toEqual({ kind: 'node-upgrade', nodeVersion: null, minimum: '24.9.0' });
+        expect(agentSetupInstruction('dsh', { cliAvailability: { ...base, dsh: false, dshNode: 'v22.23.2' } } as any)).toEqual({ kind: 'node-upgrade', nodeVersion: 'v22.23.2', minimum: '24.9.0', path: null });
+        expect(agentSetupInstruction('dsh', { cliAvailability: { ...base, dsh: false, dshNode: null } } as any)).toEqual({ kind: 'node-upgrade', nodeVersion: null, minimum: '24.9.0', path: null });
+        // B-956: a copy found outside the daemon's PATH says where it is.
+        expect(agentSetupInstruction('dsh', { cliAvailability: { ...base, dsh: false, dshNode: 'v22.1.0', dshPath: '/n/v22/bin' } } as any)).toEqual({ kind: 'node-upgrade', nodeVersion: 'v22.1.0', minimum: '24.9.0', path: '/n/v22/bin' });
         expect(agentSetupInstruction('dsh')).toEqual({ kind: 'command', command: 'npm install -g @deepseek-ai/dsh' });
     });
 
@@ -116,5 +118,18 @@ describe('B-952 DeepSeek Harness availability', () => {
         expect(agentUnavailableReason('dsh', { cliAvailability: { ...base, dsh: false, dshNode: 'v22.23.2' } } as any)).toBe('node-too-old');
         expect(agentUnavailableReason('dsh', { cliAvailability: { ...base, dsh: false, dshNode: null } } as any)).toBe('node-too-old');
         expect(agentUnavailableReason('codex', { cliAvailability: { ...base, codex: false } } as any)).toBe('not-installed');
+    });
+});
+
+describe('B-956: where the daemon looked', () => {
+    const base = { claude: true, codex: true, gemini: false, openclaw: true, pi: false, dsh: false, detectedAt: 1 };
+    it('is said for dsh, pi and gemini only on daemons that search beyond their PATH', () => {
+        const searched = { cliAvailability: { ...base, binSearch: 1 } } as any;
+        for (const agent of ['dsh', 'pi', 'gemini'] as const) {
+            expect(agentSearchedBeyondPath(agent, searched)).toBe(true);
+            expect(agentSearchedBeyondPath(agent, { cliAvailability: base } as any)).toBe(false);
+        }
+        expect(agentSearchedBeyondPath('codex', searched)).toBe(false);
+        expect(agentSearchedBeyondPath('openclaw', searched)).toBe(false);
     });
 });

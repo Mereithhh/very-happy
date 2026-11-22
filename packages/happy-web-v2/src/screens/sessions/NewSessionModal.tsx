@@ -31,6 +31,7 @@ import { useImeGuard } from '@/utils/ime';
 import { Command } from '@/screens/onboarding/ConnectMachineGuide';
 import {
   agentSetupInstruction,
+  agentSearchedBeyondPath,
   agentUnavailableReason,
   agentsNeedingSetup,
   isAgentOffered,
@@ -481,10 +482,14 @@ export function NewSessionModal({
                           : t('newSessionModal.agentInstallHelp', { agent: shownSetupAgent })}
                     </div>
                     <Command value={shownSetupInstruction.command} />
+                    {/* B-956: where the daemon looked, and what to do if it lives elsewhere. */}
+                    {agentSearchedBeyondPath(shownSetupAgent, selectedMachine?.metadata) && (
+                      <div className="ns-agent-help" data-testid="ns-agent-searched">{t('newSessionModal.agentSearchedNote')}</div>
+                    )}
                   </>
                 ) : shownSetupInstruction?.kind === 'node-upgrade' ? (
                   <div className="ns-agent-help" data-testid="ns-dsh-node">
-                    {t('newSessionModal.dshNodeHelp', { node: shownSetupInstruction.nodeVersion ?? t('newSessionModal.dshNodeMissing'), minimum: shownSetupInstruction.minimum })}
+                    {t('newSessionModal.dshNodeHelp', { node: shownSetupInstruction.nodeVersion ?? t('newSessionModal.dshNodeMissing'), minimum: shownSetupInstruction.minimum, path: shownSetupInstruction.path })}
                   </div>
                 ) : (
                   <div className="ns-agent-help">{t('newSessionModal.openClawSetupHelp')}</div>
