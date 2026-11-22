@@ -98,3 +98,14 @@ export function agentSetupInstruction(agent: Exclude<SessionAgent, 'claude'>, me
         case 'pi': return { kind: 'command', command: 'npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33' };
     }
 }
+
+/**
+ * B-954: why an unavailable agent cannot start, for its short chip — dsh on the
+ * PATH with a too-old (or missing) `node` is not 「未安装」.
+ */
+export function agentUnavailableReason(
+    agent: Exclude<SessionAgent, 'claude'>,
+    metadata: MachineMetadata | null | undefined,
+): 'not-installed' | 'node-too-old' {
+    return agentSetupInstruction(agent, metadata).kind === 'node-upgrade' ? 'node-too-old' : 'not-installed';
+}

@@ -31,6 +31,7 @@ import { useImeGuard } from '@/utils/ime';
 import { Command } from '@/screens/onboarding/ConnectMachineGuide';
 import {
   agentSetupInstruction,
+  agentUnavailableReason,
   agentsNeedingSetup,
   isAgentOffered,
   resolveAgentAvailability,
@@ -167,6 +168,8 @@ export function NewSessionModal({
   useEffect(() => { setAccountChoice(undefined); }, [machineId, agent]);
   const accountBlocked = resolveSpawnAccount(readMachineAgentProfiles(selectedMachine), agent, accountChoice, Date.now(), accountLaunch).kind === 'blocked';
   const agentsToSetUp = agentsNeedingSetup(selectedMachine?.metadata);
+  const oldNodeAgents = agentsToSetUp.filter((candidate) => agentUnavailableReason(candidate, selectedMachine?.metadata) === 'node-too-old');
+  const missingAgents = agentsToSetUp.filter((candidate) => !oldNodeAgents.includes(candidate));
   // Derived, not stored: switching machines or the agent becoming available hides the row.
   const shownSetupAgent = setupAgent && agentsToSetUp.includes(setupAgent) ? setupAgent : null;
   const shownSetupInstruction = shownSetupAgent ? agentSetupInstruction(shownSetupAgent, selectedMachine?.metadata) : null;
@@ -409,7 +412,7 @@ export function NewSessionModal({
                 const suffix = a === 'claude'
                   ? t('newSessionModal.bundledStructured')
                   : unavailable
-                    ? t('newSessionModal.notInstalled')
+                    ? (agentUnavailableReason(a, selectedMachine?.metadata) === 'node-too-old' ? t('newSessionModal.nodeTooOld') : t('newSessionModal.notInstalled'))
                     // B-719: an installed but outdated harness says so (Update is on the machine page).
                     : outdatedAgents.has(a) ? t('harnessInstall.outdated') : null;
                 const showingSetup = unavailable && shownSetupAgent === a;
@@ -489,7 +492,11 @@ export function NewSessionModal({
               </div>
             ) : (
               <div className="ns-agent-help">
-                {t('newSessionModal.agentSetupPrompt', { agents: agentsToSetUp.join(', ') })}
+                {/* B-954: dsh with a too-old node is installed — said apart from the missing ones. */}
+                {[
+                  missingAgents.length > 0 ? t('newSessionModal.agentSetupPrompt', { agents: missingAgents.join(', ') }) : null,
+                  oldNodeAgents.length > 0 ? t('newSessionModal.agentNodePrompt', { agents: oldNodeAgents.join(', ') }) : null,
+                ].filter(Boolean).join(lang.startsWith('zh') ? '' : ' ')}
               </div>
             ))}
 

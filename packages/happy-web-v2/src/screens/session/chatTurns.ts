@@ -9,6 +9,7 @@ import { summarizeCompactionTurn, type CompactionSummary } from './compaction';
 import { turnDiffSummary, type TurnDiff } from './turnDiffs';
 import { continueOfferStopId, isUserStopEvent } from './continueOffer';
 import { userAbortedAt } from './subagentAbort';
+import { parseGoalNotice } from './goalNotice';
 import { LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_INTERRUPTED_EVENT_KIND, LONG_CONTEXT_REFUSED_EVENT_KIND } from '@slopus/happy-wire';
 
 export type LeafRow =
@@ -194,8 +195,10 @@ const OUTBOX_REJECTED_EVENT_KIND = 'outbox-rejected';
 const PINNED_NOTICE_KINDS: ReadonlySet<string> = new Set([LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_INTERRUPTED_EVENT_KIND, LONG_CONTEXT_REFUSED_EVENT_KIND, OUTBOX_REJECTED_EVENT_KIND]);
 
 function isPinnedNotice(message: Message): boolean {
-    return message.kind === 'agent-event' && message.event.type === 'message'
-        && message.event.kind !== undefined && PINNED_NOTICE_KINDS.has(message.event.kind);
+    if (message.kind !== 'agent-event' || message.event.type !== 'message') return false;
+    // B-954: a /goal receipt answers what the person just asked (show, budget, Stop's pause).
+    if (message.event.kind === undefined) return parseGoalNotice(message.event.message) !== null;
+    return PINNED_NOTICE_KINDS.has(message.event.kind);
 }
 
 function isTurnFailure(message: Message): boolean {
