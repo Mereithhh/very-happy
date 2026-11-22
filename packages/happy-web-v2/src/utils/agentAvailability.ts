@@ -1,6 +1,6 @@
 import type { MachineMetadata } from '@/sync/storageTypes';
 
-export const SESSION_AGENTS = ['claude', 'codex', 'gemini', 'openclaw', 'pi'] as const;
+export const SESSION_AGENTS = ['claude', 'codex', 'gemini', 'openclaw', 'pi', 'dsh'] as const;
 export type SessionAgent = (typeof SESSION_AGENTS)[number];
 
 export type AgentAvailability = {
@@ -32,7 +32,8 @@ export function resolveAgentAvailability(
     if (agent === 'claude') {
         return { available: true, bundled: true, externallyDetected };
     }
-    if (agent === 'pi') {
+    // B-952: dsh shipped with its field too — absence means a daemon that cannot spawn it.
+    if (agent === 'pi' || agent === 'dsh') {
         return { available: externallyDetected === true, bundled: false, externallyDetected };
     }
     return {
@@ -52,8 +53,8 @@ export function isAgentOffered(
     metadata: MachineMetadata | null | undefined,
     agent: SessionAgent,
 ): boolean {
-    if (agent !== 'pi') return true;
-    return metadata?.cliAvailability?.pi !== undefined;
+    if (agent !== 'pi' && agent !== 'dsh') return true;
+    return metadata?.cliAvailability?.[agent] !== undefined;
 }
 
 /**
@@ -73,10 +74,23 @@ export function agentsNeedingSetup(
 
 export type AgentSetupInstruction =
     | { kind: 'command'; command: string }
-    | { kind: 'gateway' };
+    | { kind: 'gateway' }
+    /** B-952: dsh is installed but the daemon's `node` is older than dsh needs. */
+    | { kind: 'node-upgrade'; nodeVersion: string | null; minimum: string };
 
-export function agentSetupInstruction(agent: Exclude<SessionAgent, 'claude'>): AgentSetupInstruction {
+/** B-952: DeepSeek Harness's `engines.node` floor. */
+export const DSH_MIN_NODE = '24.9.0';
+export const DSH_INSTALL_COMMAND = 'npm install -g @deepseek-ai/dsh';
+
+export function agentSetupInstruction(agent: Exclude<SessionAgent, 'claude'>, metadata?: MachineMetadata | null): AgentSetupInstruction {
     switch (agent) {
+        // The daemon reports `dshNode` only when `dsh` is on its PATH.
+        case 'dsh': {
+            const node = metadata?.cliAvailability?.dshNode;
+            return node === undefined
+                ? { kind: 'command', command: DSH_INSTALL_COMMAND }
+                : { kind: 'node-upgrade', nodeVersion: node, minimum: DSH_MIN_NODE };
+        }
         case 'codex': return { kind: 'command', command: 'npm install -g @openai/codex' };
         case 'gemini': return { kind: 'command', command: 'npm install -g @google/gemini-cli' };
         case 'openclaw': return { kind: 'gateway' };

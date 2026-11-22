@@ -58,7 +58,7 @@ describe('B-850b Codex wrapper', () => {
 
 describe('B-850b daemon', () => {
     it('resolves the spawn account for Codex sessions as for Claude', () => {
-        expect(daemon).toContain("const accountAgent = (options.agent ?? 'claude') === 'claude' ? 'claude' : options.agent === 'codex' ? 'codex' : null;");
+        expect(daemon).toContain("const accountAgent = (options.agent ?? 'claude') === 'claude' ? 'claude' : options.agent === 'codex' ? 'codex' : options.agent === 'dsh' ? 'dsh' : null;");
         expect(daemon).toContain("return flavor === 'codex' ? 'codex' : flavor === 'claude' ? 'claude' : flavor;");
     });
 });

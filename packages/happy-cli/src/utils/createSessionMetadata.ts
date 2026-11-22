@@ -20,7 +20,7 @@ import { sessionWorktreeMetadata } from '@/worktree/sessionWorktree';
 /**
  * Backend flavor identifier for session metadata.
  */
-export type BackendFlavor = 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw' | 'acp';
+export type BackendFlavor = 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw' | 'dsh' | 'acp';
 
 /**
  * Options for creating session metadata.

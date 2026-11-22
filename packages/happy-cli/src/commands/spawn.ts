@@ -235,14 +235,15 @@ ${chalk.bold('Options:')}
                             un-allowlisted tool until someone approves it (see
                             \`sessions approve\`).
   --agent <name>         Backend to run: claude (default), codex, gemini,
-                            openclaw, pi (needs pi-acp on the daemon's PATH).
+                            openclaw, pi (needs pi-acp on the daemon's PATH),
+                            dsh (DeepSeek Harness; needs Node.js 24.9+).
   --model, -m <id>       Model for the session, sent with the first message
                             (needs --prompt). Default = the web launcher's
                             'latest': the newest model of the agent's tier this
                             machine runs (claude: newest Opus; codex: newest
                             sol its Codex lists; gemini: newest pro), else the
                             machine default. 'default' = the machine default.
-  --account <id>         Claude / Codex account on this machine (\`very-happy account
+  --account <id>         Claude / Codex / DeepSeek account on this machine (\`very-happy account
                             list\`); 'machine' = the machine's own login.
                             Default = the machine's default account, if set. A
                             missing or expired account fails the spawn.

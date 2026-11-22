@@ -51,6 +51,8 @@ workspace for a single conversation or a coordinated team.
 
 pi conversations (`very-happy pi`, or pi in the Web's new-session dialog) run pi through the [pi-acp](https://www.npmjs.com/package/pi-acp) adapter, so the machine needs both: `npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33`. The daemon picks them up within five minutes; `very-happy pi` and the dialog both show the exact command when either is missing. With CLI 0.2.181+ you can instead click **Install pi on this machine** in the dialog (or Install / Update on the machine page for Claude Code, Codex, Gemini CLI and pi): the daemon installs that fixed package list into the same user-level npm directory as Very Happy, never with sudo, and only when you click.
 
+DeepSeek Harness conversations (`very-happy dsh`, or dsh in the new-session dialog) run DeepSeek's `dsh` through its built-in ACP server: `npm install -g @deepseek-ai/dsh` on a machine whose `node` is 24.9 or newer. Add the DeepSeek API key under **Settings → Models & accounts** (it stays on that machine and only the dsh process receives it as `DEEPSEEK_API_KEY`), or set `DEEPSEEK_API_KEY` in the daemon's environment. Replies appear one message at a time, and a resumed dsh session restores dsh's context without replaying it.
+
 In a pi conversation, **Steer** sends a queued message into the turn that is running, questions a pi extension asks (`select`) appear as answerable question cards, and pi sub-agent runs (the `subagent` tool) get the same sub-agent cards as Claude. When the agent crashes or the wrapper restarts, a pi session reopens its conversation, and an archived or offline pi session can be restored from the Web like a Claude or Codex one (sessions started with a CLI that records the pi session id).
 
 Run `very-happy install-pi-tools` once, then launch `pi` directly inside a Very Happy terminal to load terminal naming, clipboard and file preview tools. `very-happy pi --terminal` remains available for temporary loading. Each conversation and terminal has a **Copy and preview history** disclosure for reopening files and copying earlier content. [Tool setup and retention limits](docs/channels.md#native-pi-terminal-tools).
@@ -397,6 +399,7 @@ platform delivers them to an installed PWA; normal tabs use the explicit
 | Custom ACP command | Beta · implemented | Generic runner for a compatible Agent Client Protocol stdio endpoint |
 | OpenClaw | Shipped | Its own local gateway adapter—not ACP |
 | pi | Shipped · via pi-acp | ACP runner over the external pi-acp adapter: structured chat, Steer into the running turn, question cards, sub-agent cards, permission modes enforced by the Very Happy pi extension, resume after a crash or restart; also Teams and native terminal tools |
+| DeepSeek Harness (dsh) | Beta · implemented | dsh's own ACP server (`dsh --profile acp`): structured chat, tool cards, stop, resume (dsh context restored, no replay), model and reasoning-effort picker, DeepSeek API key accounts. Replies arrive per message, not word by word; no plan mode, slash commands or images. Needs Node.js 24.9+ |
 | Provider-aware routing | Roadmap | Cross-provider subtask coordination, not a shipped claim |
 
 Agent Client Protocol is distinct from the older Agent Communication Protocol
@@ -606,7 +609,7 @@ Very Happy is built by [Mereithhh (JoJo)](https://github.com/Mereithhh). Bugs an
 Very Happy is a friendly, deeply modified fork of
 [slopus/happy](https://github.com/slopus/happy) and retains upstream copyright
 and MIT terms. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Claude Code, Codex,
-Gemini, OpenCode, OpenClaw, and other named agents are products or projects of
+Gemini, OpenCode, OpenClaw, DeepSeek Harness, and other named agents are products or projects of
 their respective owners. Very Happy is independent and is not affiliated with
 them.
 

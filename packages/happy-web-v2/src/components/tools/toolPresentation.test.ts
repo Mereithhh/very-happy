@@ -42,6 +42,11 @@ describe('reads', () => {
         expect(readInfo(fx('Read'))).toEqual({ path: '/home/me/code/app/src/session/title.ts', range: '10-14' });
         expect(readInfo(fx('Gemini read'))).toEqual({ path: '/home/me/code/app/package.json', range: null });
     });
+    it('reads the path and range from a generic ACP rawInput (dsh titles the call with the bare tool name)', () => {
+        const dshRead = call('other', { acpTitle: 'read', acpKind: 'read', rawInput: { file_path: 'notes/hello.txt', offset: 3, limit: 2 } });
+        expect(readInfo(dshRead)).toEqual({ path: 'notes/hello.txt', range: '3-4' });
+        expect(readInfo(call('other', { acpTitle: 'read', acpKind: 'read', rawInput: {} }))).toEqual({ path: 'read', range: null });
+    });
     it('strips cat -n prefixes and keeps the first line number', () => {
         expect(stripReadLineNumbers('10\tconst a = 1;\n11\tconst b = 2;')).toEqual({ code: 'const a = 1;\nconst b = 2;', startLine: 10 });
         expect(stripReadLineNumbers('     1→# Title\n     2→')).toEqual({ code: '# Title\n', startLine: 1 });

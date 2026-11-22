@@ -101,3 +101,21 @@ export async function checkSubscriptionAccount(token: string, scratchDir: string
         });
     });
 }
+
+/** B-952: DeepSeek's model list — free, no tokens; dsh asks the same endpoint at start. */
+export const DSH_CHECK_URL = 'https://api.deepseek.com/models';
+
+/** B-952 dsh-api: `GET /models` with the key (401 → invalid, network → unverified). */
+export async function checkDshAccount(key: string, now: () => number = Date.now, fetchImpl: typeof fetch = fetch): Promise<AccountCheck> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
+    try {
+        const res = await fetchImpl(DSH_CHECK_URL, { method: 'GET', signal: controller.signal, headers: { authorization: `Bearer ${key}` } });
+        const text = res.ok ? '' : (await res.text().catch(() => '')).slice(0, 400);
+        return classifyHttpCheck('dsh-api', res.status, text, now());
+    } catch (error) {
+        return { status: 'unverified', at: now(), detail: sanitizeDetail(error instanceof Error ? error.message : String(error)) };
+    } finally {
+        clearTimeout(timer);
+    }
+}

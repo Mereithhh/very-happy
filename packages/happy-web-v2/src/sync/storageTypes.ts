@@ -64,6 +64,7 @@ export const MetadataSchema = z.object({
      *  kept here so a Web metadata write does not strip it. No default (铁律 1). */
     codexResumeCrash: z.object({ threadId: z.string(), count: z.number(), at: z.number() }).passthrough().optional().catch(undefined),
     piSessionId: z.string().optional(), // B-633: pi session id (resume reopens it via pi-acp session/load)
+    dshSessionId: z.string().optional(), // B-952: DeepSeek Harness session id (resume reopens it via ACP session/resume)
     tools: z.array(z.string()).optional(),
     slashCommands: z.array(z.string()).optional(),
     mcpServers: z.array(z.object({ name: z.string(), status: z.string() })).optional(),
@@ -377,6 +378,8 @@ export const MachineMetadataSchema = z.object({
         gemini: z.boolean(),
         openclaw: z.boolean(),
         pi: z.boolean().optional(), // absent on daemons that predate the pi runner
+        dsh: z.boolean().optional(), // B-952: absent on daemons that predate the dsh runner
+        dshNode: z.string().nullable().optional(), // B-952: `node --version` on the daemon's PATH, only when dsh is installed
         detectedAt: z.number(),
     }).optional(),
     resumeSupport: z.object({

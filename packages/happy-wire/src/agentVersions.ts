@@ -20,6 +20,8 @@ export const AGENT_VERSION_SOURCES = [
     // so comparing against it reported every newer pi as current.
     { id:'pi', label:'Pi', command:'pi', package:'@earendil-works/pi-coding-agent', docs:'https://github.com/earendil-works/pi' },
     { id:'gemini', label:'Gemini CLI', command:'gemini', package:'@google/gemini-cli', docs:'https://github.com/google-gemini/gemini-cli#installation' },
+    // B-952: DeepSeek Harness (needs Node.js >= 24.9).
+    { id:'dsh', label:'DeepSeek Harness', command:'dsh', package:'@deepseek-ai/dsh', docs:'https://github.com/deepseek-ai/deepseek-harness' },
     { id:'opencode', label:'OpenCode', command:'opencode', package:'opencode-ai', docs:'https://opencode.ai/docs/' },
     { id:'openclaw', label:'OpenClaw', command:'openclaw', package:'openclaw', docs:'https://docs.openclaw.ai/install/updating' },
     { id:'claude-sdk', label:'Claude Agent SDK', command:null, package:'@anthropic-ai/claude-agent-sdk', docs:'https://github.com/anthropics/claude-agent-sdk-typescript' },

@@ -68,7 +68,9 @@ export const agentProfileList = (machineId: string) =>
 /** Wire v1 claude-api, or wire v3 codex-provider (`provider` and/or `baseUrl`; a provider's settings are inherited). */
 export type AgentProfileAddInput =
     | { agent: 'claude'; kind: 'claude-api'; label: string; baseUrl: string; models: string[]; key: AgentProfileKeyInput }
-    | { agent: 'codex'; kind: 'codex-provider'; label: string; provider?: string; baseUrl?: string; wireApi?: 'responses' | 'chat'; models: string[]; key: AgentProfileKeyInput };
+    | { agent: 'codex'; kind: 'codex-provider'; label: string; provider?: string; baseUrl?: string; wireApi?: 'responses' | 'chat'; models: string[]; key: AgentProfileKeyInput }
+    // B-952: a DeepSeek key for DeepSeek Harness (no URL, no models).
+    | { agent: 'dsh'; kind: 'dsh-api'; label: string; key: AgentProfileKeyInput };
 
 export const agentProfileAdd = (machineId: string, input: AgentProfileAddInput) =>
     call<AgentProfileSummary>(machineId, AGENT_PROFILE_RPC.add, input, readAccount, isAccountReply);

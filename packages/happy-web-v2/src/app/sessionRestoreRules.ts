@@ -66,6 +66,8 @@ export type EligibilityMachine = Pick<Machine, 'id' | 'active'>;
 function resumableBackend(session: EligibilitySession): string | null | 'unsupported-flavor' {
   const flavor = session.metadata?.flavor ?? 'claude';
   if (flavor === 'acp') return session.metadata?.piSessionId ?? 'unsupported-flavor';
+  // B-952: a dsh session reopens its recorded DeepSeek Harness session; without one the daemon refuses (no-backend-id).
+  if (flavor === 'dsh') return session.metadata?.dshSessionId ?? 'unsupported-flavor';
   if (flavor !== 'claude' && flavor !== 'codex') return 'unsupported-flavor';
   // B-680: a session that never ran a turn has no backend id yet; restoring it
   // starts its first conversation (daemon `resumeStartsFreshConversation`), so

@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { fileURLToPath } from 'node:url';
-import { AcpBackend, isAgentExitError } from './AcpBackend';
+import { AcpBackend, isAgentExitError, pickSessionReopenMethod } from './AcpBackend';
 
 const fixture = fileURLToPath(new URL('./__fixtures__/fakeAcpAgent.mjs', import.meta.url));
 
@@ -120,5 +120,32 @@ describe('AcpBackend session/load (B-633)', () => {
         const started = await backend.startSession();
         expect(started.agentSessionId).toBe('fake-session');
         expect(started.resumed).toBeUndefined();
+    });
+});
+
+describe('AcpBackend session/resume (B-952, DeepSeek Harness)', () => {
+    it('picks session/load when advertised, else session/resume, else nothing', () => {
+        expect(pickSessionReopenMethod({ loadSession: true, sessionCapabilities: { resume: {} } })).toBe('load');
+        expect(pickSessionReopenMethod({ loadSession: false, sessionCapabilities: { resume: {}, close: {} } })).toBe('resume');
+        expect(pickSessionReopenMethod({ sessionCapabilities: { close: {}, list: {} } })).toBeNull();
+        expect(pickSessionReopenMethod({ sessionCapabilities: { resume: null } })).toBeNull();
+        expect(pickSessionReopenMethod(undefined)).toBeNull();
+    });
+
+    it('reopens a known session through session/resume, and live updates flow right away', async () => {
+        const { backend, messages } = backendFor('resumable');
+        backends.push(backend);
+        const started = await backend.startSession(undefined, { loadSessionId: 'known-session' });
+        expect(started).toMatchObject({ agentSessionId: 'known-session', resumed: 'loaded' });
+        await backend.sendPrompt(started.sessionId, 'go');
+        expect(messages.some((m) => m.type === 'model-output' && m.textDelta === 'working on it')).toBe(true);
+    });
+
+    it('falls back to a new session with the reason when resume is refused', async () => {
+        const { backend } = backendFor('resumable');
+        backends.push(backend);
+        const started = await backend.startSession(undefined, { loadSessionId: 'gone-session' });
+        expect(started).toMatchObject({ agentSessionId: 'fake-session', resumed: 'fresh' });
+        expect(started.loadFailure).toMatch(/Unknown sessionId: gone-session/);
     });
 });

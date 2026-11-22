@@ -3,6 +3,11 @@ vi.mock('@/claude/utils/attachmentContent', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/claude/utils/attachmentContent')>(),
   stageClaudeAttachments: async (files: any[]) => files.map((file) => ({ path: `/test/uploads/${file.name}`, name: file.name, mimeType: file.mimeType, size: file.data.length })),
 }));
+const dshAccountMock = vi.hoisted(() => ({ next: null as null | Record<string, unknown>, calls: [] as unknown[][] }));
+vi.mock('@/agentProfiles/dshAccount', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/agentProfiles/dshAccount')>();
+  return { ...actual, loadDshWrapperAccount: (...args: unknown[]) => { dshAccountMock.calls.push(args); return dshAccountMock.next ?? actual.MACHINE_DSH_ACCOUNT; } };
+});
 vi.mock('@/teams/piRuntime', () => ({ preparePiTeamsRuntime: async () => ({ PI_ACP_PI_COMMAND: 'official-pi-wrapper' }) }));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -28,6 +33,7 @@ const mocks = vi.hoisted(() => {
     sendSessionProtocolMessage: vi.fn(),
     sendStreamFrame: vi.fn(),
     sendSessionEvent: vi.fn(),
+    sendQueueCancelReason: vi.fn(),
     sendAgentUsageSnapshot: vi.fn(),
     updateMetadata: vi.fn(),
     sendSessionDeath: vi.fn(),
@@ -1415,6 +1421,92 @@ it('keeps the session usable after cancelling an in-flight turn', async () => {
       await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(2));
       expect(mocks.backendState.startSessionOptions[1]).toEqual({ loadSessionId: 'pi-sess-1' });
       expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: 'pi was restarted after its process exited and reopened the earlier conversation.' });
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
+  it('B-952: dsh records its flavor and session id, and bypass mode answers its permission asks', async () => {
+    mocks.backendState.startSessionResults = [{ sessionId: 'acp-session-1', agentSessionId: 'dsh-sess-1' }];
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'dsh', command: 'dsh', args: ['--profile', 'acp'], permissionMode: 'bypassPermissions' });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      expect((mocks.mockGetOrCreateSession.mock.calls[0] as any[])[0].metadata.flavor).toBe('dsh');
+      expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: expect.stringContaining('replies appear one message at a time') });
+      const stored = mocks.mockSession.updateMetadata.mock.calls.map(([apply]) => apply({ path: '/p' })).find((m: any) => m.dshSessionId);
+      expect(stored).toMatchObject({ dshSessionId: 'dsh-sess-1' });
+      expect(stored?.piSessionId).toBeUndefined();
+      const handler = mocks.backendState.constructorArgs.permissionHandler;
+      await expect(handler.handleToolCall('call-1', 'execute', { command: 'ls' })).resolves.toEqual({ decision: 'approved' });
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
+  it('B-952: a bound DeepSeek account reaches the dsh child env only; an unusable one refuses turns', async () => {
+    const KEY = ['sk', 'test', 'only'].join('-');
+    process.env.VH_AGENT_PROFILE_ID = 'deepseek';
+    dshAccountMock.next = { profile: { id: 'deepseek', label: 'DeepSeek', kind: 'dsh-api', status: 'active' }, childEnv: { DEEPSEEK_API_KEY: KEY }, unavailable: false, notices: [] };
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'dsh', command: 'dsh', args: ['--profile', 'acp'] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      expect(dshAccountMock.calls.at(-1)?.[2]).toBe('deepseek');
+      expect(process.env.VH_AGENT_PROFILE_ID).toBeUndefined();
+      expect(process.env.DEEPSEEK_API_KEY).toBeUndefined();
+      expect(mocks.backendState.constructorArgs.env.DEEPSEEK_API_KEY).toBe(KEY);
+      const metas = mocks.mockSession.updateMetadata.mock.calls.map(([apply]) => apply({}));
+      expect(metas.find((m: any) => m.agentProfile)?.agentProfile).toMatchObject({ id: 'deepseek', status: 'active' });
+      expect(JSON.stringify(metas)).not.toContain(KEY);
+    } finally {
+      dshAccountMock.next = null;
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
+  it('B-952: a bound DeepSeek account that cannot run refuses every turn (never the machine key)', async () => {
+    dshAccountMock.next = { profile: { id: 'deepseek', label: 'DeepSeek', kind: 'dsh-api', status: 'unavailable', reason: 'missing-secret' }, childEnv: {}, unavailable: true, notices: ['Account "DeepSeek" is unavailable.'] };
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'dsh', command: 'dsh', args: ['--profile', 'acp'] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      const before = mocks.backendState.prompts.length;
+      mocks.getUserMessageHandler()!({ role: 'user', localKey: 'lk-1', content: { type: 'text', text: 'hi' } });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(mocks.backendState.prompts.length).toBe(before);
+      expect(mocks.mockSession.sendQueueCancelReason).toHaveBeenCalledWith(['lk-1'], 'failed');
+      expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: 'Account "DeepSeek" is unavailable.', kind: 'agent-profile-unavailable' });
+    } finally {
+      dshAccountMock.next = null;
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
+  it('B-952: a dsh turn that fails for a missing key says how to add one', async () => {
+    mocks.backendState.sendPromptScript = async () => { throw Object.assign(new Error('Internal error: turn failed: llm-deepseek: no API key for provider route "deepseek-official"'), { code: -32603 }); };
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'dsh', command: 'dsh', args: ['--profile', 'acp'] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'hi' } });
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: expect.stringContaining('Add a DeepSeek account under Settings') }));
+    } finally {
+      mocks.backendState.sendPromptScript = null;
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
+  it('B-952: dsh outside bypass mode still asks the user', async () => {
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'dsh', command: 'dsh', args: ['--profile', 'acp'] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      const handler = mocks.backendState.constructorArgs.permissionHandler;
+      let settled = false;
+      void handler.handleToolCall('call-2', 'execute', { command: 'ls' }).then(() => { settled = true; }, () => { settled = true; });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(settled).toBe(false);
     } finally {
       await mocks.getKillHandler()!();
       await runPromise;

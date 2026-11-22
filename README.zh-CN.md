@@ -47,6 +47,8 @@ Very Happy 是一个开源 coding agent 中心，把工作站、笔记本和服�
 
 pi 对话（`very-happy pi`，或网页新建会话弹窗里选 pi）通过 [pi-acp](https://www.npmjs.com/package/pi-acp) 适配器运行 pi，所以机器上两者都要装：`npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33`。daemon 会在五分钟内识别到；缺任何一个时，`very-happy pi` 和新建会话弹窗都会给出要运行的命令。CLI 0.2.181 起也可以直接在弹窗里点 **在这台机器上安装 pi**（机器页也可以对 Claude Code、Codex、Gemini CLI、pi 点「安装 / 更新」）：daemon 只在你点击后，把固定的包装到与 Very Happy 相同的用户级 npm 目录，不会用 sudo。
 
+DeepSeek Harness 对话（`very-happy dsh`，或网页新建会话弹窗里选 dsh）通过 DeepSeek `dsh` 自带的 ACP 服务端运行：在 `node` 版本 24.9 及以上的机器上运行 `npm install -g @deepseek-ai/dsh`。DeepSeek API key 在 **设置 → 模型与账号** 添加（只留在那台机器上，只以 `DEEPSEEK_API_KEY` 交给 dsh 进程），也可以设置在 daemon 的环境变量里。回复按条显示；恢复 dsh 会话时会恢复 dsh 的上下文，但不回放历史。
+
 pi 对话里，「插话（Steer）」可把排队的消息送进正在运行的回合；pi 扩展弹出的选择题（`select`）显示为可直接作答的问题卡片；pi 的子代理运行（`subagent` 工具）与 Claude 一样显示子代理卡片。agent 崩溃或 wrapper 重启后，pi 会话会接回原来的对话；已归档或离线的 pi 会话也能像 Claude / Codex 一样在网页上恢复（限于 CLI 已记录 pi 会话 id 的会话）。
 
 执行一次 `very-happy install-pi-tools`，之后在 Very Happy 终端中直接运行 `pi`，即可加载终端改名、剪贴板复制和文件预览工具；也可用 `very-happy pi --terminal` 临时加载。对话与终端内的「复制与预览记录」可以重开文件、再次复制之前的内容。[工具用法与历史保留范围](docs/channels.md#native-pi-terminal-tools)。
@@ -327,6 +329,7 @@ Very Happy 保留终端肌肉记忆：在 macOS 上，`Ctrl+K/J/N/R` 仍交给 r
 | 自定义 ACP 命令 | Beta · 已实现 | 面向兼容 Agent Client Protocol stdio 端点的通用运行器 |
 | OpenClaw | 已交付 | 使用自己的本地网关适配器，而非 ACP |
 | pi | 已交付 · 经 pi-acp | 基于外部 pi-acp 适配器的 ACP runner：结构化对话、插话进正在运行的回合、问题卡片、子代理卡片、由 Very Happy pi 扩展执行的权限模式、崩溃或重启后接回对话；也支持 Teams 与原生终端工具 |
+| DeepSeek Harness（dsh） | Beta · 已实现 | 使用 dsh 自带的 ACP 服务端（`dsh --profile acp`）：结构化对话、工具卡片、停止、恢复（恢复 dsh 上下文，不回放）、模型与推理强度选择、DeepSeek API key 账号。回复按条显示，不逐字流式；不支持计划模式、斜杠命令和图片。需要 Node.js 24.9+ |
 | 提供商感知路由 | 路线图 | 跨提供商子任务协作，并非已交付功能 |
 
 Agent Client Protocol 与同样缩写为 ACP 的旧 Agent Communication Protocol 并不相同。
@@ -467,7 +470,7 @@ Very Happy 由 [Mereithhh（JoJo）](https://github.com/Mereithhh) 开发。Bug 
 
 Very Happy 是 [slopus/happy](https://github.com/slopus/happy) 的友好型深度修改分支，并保留
 上游版权与 MIT 条款。详见 [LICENSE](LICENSE) 和 [NOTICE](NOTICE)。Claude Code、Codex、
-Gemini、OpenCode、OpenClaw 及其他具名 Agent 均是各自所有者的产品或项目；Very Happy 与
+Gemini、OpenCode、OpenClaw、DeepSeek Harness 及其他具名 Agent 均是各自所有者的产品或项目；Very Happy 与
 它们相互独立，不存在关联关系。
 
 ### 新手引导与 Agent skills

@@ -1,4 +1,5 @@
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
+import { dshPrerequisiteProblem } from '@/agent/acp/dshRunner';
 import os from 'os';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -15,7 +16,31 @@ export interface CLIAvailability {
    * agents), because such a daemon cannot spawn pi at all.
    */
   pi: boolean;
+  /**
+   * B-952: DeepSeek Harness can start — `dsh` on PATH and the `node` it runs on
+   * is >= 24.9 (dsh's engines floor). Absent on older daemons, which cannot
+   * spawn dsh at all; the Web treats absence as unavailable, like pi.
+   */
+  dsh: boolean;
+  /** B-952: `node --version` on PATH, reported only when `dsh` is installed (null: no node answered), so the Web can say why dsh is off. */
+  dshNode?: string | null;
   detectedAt: number;
+}
+
+/** The `node` that `dsh` (a `#!/usr/bin/env node` script) will run on; null when there is none or it does not answer. */
+export function nodeVersionOnPath(): string | null {
+  try {
+    const out = execFileSync('node', ['--version'], { encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+    return out.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function detectDsh(onPath: (command: string) => boolean): Pick<CLIAvailability, 'dsh' | 'dshNode'> {
+  if (!onPath('dsh')) return { dsh: false };
+  const node = nodeVersionOnPath();
+  return { dsh: dshPrerequisiteProblem(true, node) === null, dshNode: node };
 }
 
 /**
@@ -75,7 +100,7 @@ function detectPosix(): CLIAvailability {
   const openclaw = openclawCommand || openclawConfig || openclawEnv;
   const pi = commandExists('pi') && commandExists('pi-acp');
 
-  return { claude, codex, gemini, openclaw, pi, detectedAt: Date.now() };
+  return { claude, codex, gemini, openclaw, pi, ...detectDsh(commandExists), detectedAt: Date.now() };
 }
 
 function detectWindows(): CLIAvailability {
@@ -92,5 +117,5 @@ function detectWindows(): CLIAvailability {
   const openclaw = openclawCommand || openclawConfig || openclawEnv;
   const pi = checkCommand('pi') && checkCommand('pi-acp');
 
-  return { claude, codex, gemini, openclaw, pi, detectedAt: Date.now() };
+  return { claude, codex, gemini, openclaw, pi, ...detectDsh(checkCommand), detectedAt: Date.now() };
 }

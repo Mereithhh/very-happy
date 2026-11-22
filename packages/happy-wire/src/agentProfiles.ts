@@ -44,8 +44,9 @@ export const AGENT_PROFILE_RPC = {
  *   codex-chatgpt  — B-850b: a ChatGPT sign-in (device code) in its own CODEX_HOME overlay
  *   codex-provider — B-850b: an API provider (a `[model_providers.X]` of the machine's
  *                    ~/.codex/config.toml, or an own URL) with a per-session key
+ *   dsh-api        — B-952: a DeepSeek API key for DeepSeek Harness sessions (DEEPSEEK_API_KEY)
  */
-export const AGENT_PROFILE_KINDS = ['claude-subscription', 'claude-api', 'codex-chatgpt', 'codex-provider'] as const;
+export const AGENT_PROFILE_KINDS = ['claude-subscription', 'claude-api', 'codex-chatgpt', 'codex-provider', 'dsh-api'] as const;
 export type AgentProfileKind = (typeof AGENT_PROFILE_KINDS)[number];
 
 /**
@@ -61,7 +62,7 @@ export type AgentProfileStatus = (typeof AGENT_PROFILE_STATUSES)[number];
 export const AgentProfileSummarySchema = z.object({
     id: z.string(),
     label: z.string(),
-    agent: z.string(),                      // 'claude' | 'codex' (pi/gemini later)
+    agent: z.string(),                      // 'claude' | 'codex' | 'dsh' (pi/gemini later)
     kind: z.string(),                       // AgentProfileKind (open)
     status: z.string(),                     // AgentProfileStatus (open; unknown → 'unverified')
     statusDetail: z.string().optional(),    // short human reason for the last failed check
@@ -180,7 +181,19 @@ export const CodexProviderAddRequestSchema = z.object({
     key: AgentProfileKeyInputSchema,
 }).refine((r) => !!r.provider || !!r.baseUrl, { message: 'provider or baseUrl is required' });
 
-export const AgentProfileAddRequestSchema = z.union([ClaudeApiAddRequestSchema, CodexProviderAddRequestSchema]);
+/**
+ * B-952: a DeepSeek API key for DeepSeek Harness. The wrapper hands it to the
+ * dsh process only, as DEEPSEEK_API_KEY; dsh's own provider config decides
+ * the endpoint.
+ */
+export const DshApiAddRequestSchema = z.object({
+    agent: z.literal('dsh'),
+    kind: z.literal('dsh-api'),
+    label: z.string().trim().min(1).max(60),
+    key: AgentProfileKeyInputSchema,
+});
+
+export const AgentProfileAddRequestSchema = z.union([ClaudeApiAddRequestSchema, CodexProviderAddRequestSchema, DshApiAddRequestSchema]);
 export type AgentProfileAddRequest = z.infer<typeof AgentProfileAddRequestSchema>;
 
 /**

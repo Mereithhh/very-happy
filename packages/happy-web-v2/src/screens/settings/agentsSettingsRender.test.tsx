@@ -66,7 +66,11 @@ describe('Settings → Agents (B-370)', () => {
         const html = renderAgents();
         const groups = [...html.matchAll(/<div class="vh-itemgroup__title eyebrow">([^<]+)<\/div>/g)].map((m) => m[1]);
         // B-850c: one page — the account-level defaults, then the per-machine part (accounts + machine config).
-        expect(groups).toEqual(['New chat creation', 'claude', 'codex', 'gemini', 'openclaw', 'pi', 'Machine']);
+        expect(groups).toEqual(['New chat creation', 'claude', 'codex', 'gemini', 'openclaw', 'pi', 'dsh', 'Machine']);
+        // B-952: dsh's group offers its own two permission modes; the model comes from dsh's config.
+        const dshGroup = html.slice(html.indexOf('eyebrow">dsh<'), html.indexOf('eyebrow">Machine<'));
+        expect(dshGroup).toContain('<span class="vh-item__title">Permission</span></span><span class="vh-item__right"><span class="set-value">default permissions (default)</span>');
+        expect(dshGroup).toContain('<span class="vh-item__title">Model</span></span><span class="vh-item__right"><span class="set-value">Machine config (default)</span>');
         const piGroup = html.slice(html.indexOf('eyebrow">pi<'));
         // 「先审阅改动」 is on by default: the row says what a new pi session starts with.
         expect(piGroup).toContain('<span class="vh-item__title">Permission</span></span><span class="vh-item__right"><span class="set-value">default permissions (review changes first)</span>');

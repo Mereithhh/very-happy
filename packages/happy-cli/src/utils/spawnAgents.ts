@@ -7,7 +7,7 @@
  * carried its own copy and adding a backend meant finding all of them (B-306
  * found the CLI one missing). Import from here; do not re-list.
  */
-export const SPAWN_AGENTS = ['claude', 'codex', 'gemini', 'openclaw', 'pi'] as const
+export const SPAWN_AGENTS = ['claude', 'codex', 'gemini', 'openclaw', 'pi', 'dsh'] as const
 
 export type SpawnAgent = (typeof SPAWN_AGENTS)[number]
 

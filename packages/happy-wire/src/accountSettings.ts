@@ -31,6 +31,8 @@ export const AgentDefaultOverridesSchema = z.object({
     // `.optional()`, never `.default()` (rule 1). Old web bundles don't know the
     // key but `.passthrough()` keeps it when they re-POST the object.
     pi: AgentDefaultOverrideSchema.optional(),
+    // B-952: same rule — `.optional()` only.
+    dsh: AgentDefaultOverrideSchema.optional(),
 }).passthrough().default({});
 
 export type AgentDefaultOverride = z.infer<typeof AgentDefaultOverrideSchema>;
