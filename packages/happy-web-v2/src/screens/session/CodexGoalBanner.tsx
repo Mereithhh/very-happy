@@ -63,13 +63,14 @@ export function CodexGoalBanner({ sessionId }: { sessionId: string }) {
                 <span className="mrb-note-text" title={goal.objective}>
                     <strong>{t(STATUS_KEY[goal.status])}</strong>
                     <span className="mrb-note-sep" aria-hidden> · </span>
-                    <span className="mrb-goal-objective" data-testid="codex-goal-objective">{goal.objective}</span>
+                    {/* usage before the objective: on a phone the objective is clamped, the numbers must stay */}
                     {usage && (
                         <>
-                            <span className="mrb-note-sep" aria-hidden> · </span>
                             <span className="mrb-goal-usage" data-testid="codex-goal-usage">{t('session.chat.goalTokens', { usage })}</span>
+                            <span className="mrb-note-sep" aria-hidden> · </span>
                         </>
                     )}
+                    <span className="mrb-goal-objective" data-testid="codex-goal-objective">{goal.objective}</span>
                 </span>
                 <span className="mrb-note-actions">
                     <button type="button" className="mrb-term-btn" onClick={() => void send(action.text)} disabled={sending}>
