@@ -133,7 +133,8 @@ type FetchResult = { status: number; json: unknown; text: string };
 
 async function fetchJson(fetchImpl: typeof fetch, url: string, init: RequestInit): Promise<FetchResult> {
     const res = await fetchImpl(url, init);
-    const text = (await res.text().catch(() => '')).slice(0, 4000);
+    // Parse the whole body: a gateway's model list easily runs to tens of KB (a cut one is not JSON).
+    const text = (await res.text().catch(() => '')).slice(0, 4_000_000);
     let json: unknown;
     try { json = JSON.parse(text); } catch { json = undefined; }
     return { status: res.status, json, text: res.ok ? '' : text.slice(0, 400) };

@@ -141,6 +141,9 @@ describe('B-957 dsh-api Base URL', () => {
             const rejected = async () => json({ error: { message: `invalid key ${KEY}` } }, status);
             expect(await checkDshAccount(KEY, () => 3, rejected as unknown as typeof fetch, GW)).toEqual({ status: 'invalid', at: 3, detail: `HTTP ${status}` });
         }
+        // A long list (real gateways: tens of KB) is still read as one.
+        const long = async () => json({ object: 'list', data: Array.from({ length: 400 }, (_, i) => ({ id: `model-${i}-${'x'.repeat(40)}`, object: 'model' })) });
+        expect(await checkDshAccount(KEY, () => 3, long as unknown as typeof fetch, GW)).toEqual({ status: 'ok', at: 3 });
         // No Base URL: DeepSeek's own model list, as before.
         const official = vi.fn(async () => new Response('{}', { status: 200 }));
         await checkDshAccount(KEY, () => 3, official as unknown as typeof fetch);
