@@ -237,6 +237,29 @@ export function agentSpawnPathEnv(agent: string | undefined): Record<string, str
     return extra.length > 0 ? { [AGENT_PATH_PREPEND_ENV]: extra.join(delimiter) } : {};
 }
 
+/** Agents whose CLI may live outside the daemon's PATH (see agentExtraPath). */
+const PATH_RESOLVED_AGENTS = new Set(['dsh', 'pi', 'gemini']);
+
+/**
+ * B-958: agentSpawnPathEnv for a relaunch (resume / restart). Those run without
+ * the fresh-spawn availability gate, and the first probe only runs on the
+ * daemon's first keep-alive tick — so when nothing has been probed yet, probe
+ * once (`recheck`) before reading the remembered dirs.
+ */
+export async function relaunchAgentPathEnv(
+    agent: string | undefined,
+    recheck: (() => Promise<void>) | undefined,
+): Promise<Record<string, string>> {
+    if (!lastResolved && recheck && agent && PATH_RESOLVED_AGENTS.has(agent)) {
+        try {
+            await recheck();
+        } catch {
+            // Best effort: spawn with what we have (the wrapper reports ENOENT).
+        }
+    }
+    return agentSpawnPathEnv(agent);
+}
+
 /**
  * Wrapper side: the env for the agent CLI child process — the daemon's dirs in
  * front of PATH (Node resolves the command with the child env's PATH), the

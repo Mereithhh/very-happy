@@ -64,7 +64,7 @@ import { WORKTREE_CAPABILITY_VERSION } from '@/worktree/worktreeRpc';
 import { ModelConfigService } from '@/modules/modelConfig/service';
 import { MODEL_CONFIG_CAPABILITY_VERSION } from '@/modules/modelConfig/types';
 import { commandOnPath } from '@/utils/detectCLI';
-import { agentSpawnPathEnv } from '@/utils/agentBinResolver';
+import { agentSpawnPathEnv, relaunchAgentPathEnv } from '@/utils/agentBinResolver';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { startWebPanelsSync } from '@/webPanels/webPanelsSync';
 import { readSettings, updateSettings, readCredentials, rewriteCredentialsForRelay } from '@/persistence';
@@ -1456,6 +1456,8 @@ export async function startDaemon(): Promise<void> {
 
         // B-730: a team member/lead relaunches inside its team (scope env + file).
         const teamEnv = await teamRelaunchEnvFor(happySessionId, metadata);
+        // B-958: the agent CLI dir (nvm/fnm/… or login shell) rides relaunches too.
+        const agentPathEnv = await relaunchAgentPathEnv(launch.args[0], apiMachineRef ? () => apiMachineRef!.recheckCliAvailability() : undefined);
         const result = await spawnTrackedHappyProcess({
           args: launch.args,
           cwd: launch.cwd,
@@ -1470,6 +1472,7 @@ export async function startDaemon(): Promise<void> {
             // B-478: if the transcript lives in a Claude/Codex home other than
             // the resolved one, this spawn is pointed there.
             ...(freshConversation ? {} : agentHomeSpawnEnv({ workingDirectory: launch.cwd, claudeSessionId: metadata.claudeSessionId, codexThreadId: metadata.codexThreadId })),
+            ...agentPathEnv,
             HAPPY_RECONNECT_SESSION_ID: happySessionId,
             HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(tracked.encryption.encryptionKey),
             HAPPY_RECONNECT_ENCRYPTION_VARIANT: tracked.encryption.encryptionVariant,
@@ -1679,6 +1682,8 @@ export async function startDaemon(): Promise<void> {
 
         // B-730: see resumeSessionImpl.
         const teamEnv = await teamRelaunchEnvFor(happySessionId, metadata);
+        // B-958: see resumeSessionImpl.
+        const agentPathEnv = await relaunchAgentPathEnv(args[0], apiMachineRef ? () => apiMachineRef!.recheckCliAvailability() : undefined);
         const result = await spawnTrackedHappyProcess({
           args,
           cwd,
@@ -1692,6 +1697,7 @@ export async function startDaemon(): Promise<void> {
             ...(claudeAuthServiceRef?.claudeProcessEnvOverrides() ?? {}),
             // B-478: see resumeSession.
             ...(precheck.ok ? agentHomeSpawnEnv({ workingDirectory: cwd, claudeSessionId: metadata.claudeSessionId, codexThreadId: metadata.codexThreadId }) : {}),
+            ...agentPathEnv,
             HAPPY_RECONNECT_SESSION_ID: happySessionId,
             HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(tracked.encryption.encryptionKey),
             HAPPY_RECONNECT_ENCRYPTION_VARIANT: tracked.encryption.encryptionVariant,
