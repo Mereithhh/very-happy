@@ -2333,3 +2333,74 @@ describe('compactThreadAndWait (/compact, Owner 10-30)', () => {
         expect(request).not.toHaveBeenCalledWith('thread/compact/start', expect.anything());
     });
 });
+
+describe('thread goals (/goal, B-953)', () => {
+    async function goalClient() {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        (client as any)._threadId = 'goal-thread';
+        (client as any).connected = true;
+        const events: any[] = [];
+        client.setEventHandler((msg) => events.push(msg));
+        const notify = (method: string, params: unknown) => (client as any).handleNotification(method, params);
+        const goal = { threadId: 'goal-thread', objective: 'ship it', status: 'active', tokenBudget: 5000, tokensUsed: 0, timeUsedSeconds: 0, createdAt: 1, updatedAt: 1 };
+        const request = vi.spyOn(client as any, 'request').mockImplementation(async (method: unknown) => {
+            if (method === 'thread/goal/clear') return { cleared: true };
+            if (method === 'thread/goal/get') return { goal: null };
+            return { goal };
+        });
+        return { client, request, events, notify, goal };
+    }
+
+    it('sends set / get / clear on the own thread with origin user', async () => {
+        const { client, request, goal } = await goalClient();
+        await expect(client.setGoal({ objective: 'ship it', status: 'active', tokenBudget: 5000 })).resolves.toEqual(goal);
+        expect(request).toHaveBeenLastCalledWith('thread/goal/set', { threadId: 'goal-thread', objective: 'ship it', status: 'active', tokenBudget: 5000, origin: 'user' });
+        await client.setGoal({ status: 'paused' });
+        // only the fields the command names: Codex keeps the objective and budget
+        expect(request).toHaveBeenLastCalledWith('thread/goal/set', { threadId: 'goal-thread', status: 'paused', origin: 'user' });
+        await client.setGoal({ tokenBudget: null });
+        expect(request).toHaveBeenLastCalledWith('thread/goal/set', { threadId: 'goal-thread', tokenBudget: null, origin: 'user' });
+        await expect(client.getGoal()).resolves.toBeNull();
+        expect(request).toHaveBeenLastCalledWith('thread/goal/get', { threadId: 'goal-thread' });
+        await expect(client.clearGoal()).resolves.toBe(true);
+        expect(request).toHaveBeenLastCalledWith('thread/goal/clear', { threadId: 'goal-thread', origin: 'user' });
+    });
+
+    it('refuses without a thread', async () => {
+        const { client, request } = await goalClient();
+        (client as any)._threadId = null;
+        await expect(client.setGoal({ objective: 'x' })).rejects.toThrow('No active thread');
+        expect(request).not.toHaveBeenCalled();
+    });
+
+    it('forwards the own thread\'s goal notifications, not a child thread\'s', async () => {
+        const { events, notify, goal } = await goalClient();
+        notify('thread/goal/updated', { threadId: 'goal-thread', turnId: 't1', goal });
+        notify('thread/goal/updated', { threadId: 'child-thread', turnId: null, goal: { ...goal, threadId: 'child-thread' } });
+        notify('thread/goal/cleared', { threadId: 'goal-thread' });
+        notify('thread/goal/cleared', { threadId: 'child-thread' });
+        expect(events).toEqual([
+            { type: 'goal_updated', goal, turn_id: 't1' },
+            { type: 'goal_cleared' },
+        ]);
+    });
+
+    it('tells a turn Codex started by itself from one the wrapper waits on', async () => {
+        const { client, notify } = await goalClient();
+        expect(client.hasUnrequestedTurn()).toBe(false);
+        notify('turn/started', { threadId: 'goal-thread', turn: { id: 'goal-turn', status: 'inProgress' } });
+        expect(client.hasUnrequestedTurn()).toBe(true);
+        notify('turn/completed', { threadId: 'goal-thread', turn: { id: 'goal-turn', status: 'completed' } });
+        expect(client.hasUnrequestedTurn()).toBe(false);
+    });
+
+    it('steers a message into a goal turn (no pending turn of the wrapper)', async () => {
+        const { client, request, notify } = await goalClient();
+        (client as any).proc = {};
+        notify('turn/started', { threadId: 'goal-thread', turn: { id: 'goal-turn', status: 'inProgress' } });
+        request.mockImplementation(async (method: unknown) => (method === 'turn/steer' ? { turnId: 'goal-turn' } : {}));
+        await expect(client.steerTurn({ text: 'also do y' }, { waitForTurnMs: 0 })).resolves.toBe('steered');
+        expect(request).toHaveBeenCalledWith('turn/steer', expect.objectContaining({ threadId: 'goal-thread', expectedTurnId: 'goal-turn' }));
+    });
+});

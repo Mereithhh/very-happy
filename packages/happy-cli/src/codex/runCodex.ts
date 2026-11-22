@@ -1,4 +1,4 @@
-import { AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_LIVE_PERMISSION_CAPABILITY, CODEX_STEER_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, TURN_FAILURE_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort, type TurnFailure } from '@slopus/happy-wire';
+import { AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_GOAL_CAPABILITY, parseCodexGoalCommand, CODEX_LIVE_PERMISSION_CAPABILITY, CODEX_STEER_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, TURN_FAILURE_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort, type TurnFailure } from '@slopus/happy-wire';
 import { isSessionPeerPrompt } from '@/claude/nonUserPrompt';
 import { codexTurnFailure } from './codexTurnFailure';
 import { issueSessionMetadata } from '@/issues/sessionMetadata';
@@ -66,8 +66,9 @@ import { resumeExistingThread } from './resumeExistingThread';
 import { importCodexThread, IMPORT_CODEX_THREAD_ENV } from './importCodexThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
 import { CODEX_IDLE_RELEASE_ENV, CodexIdleReleaseTimer, resolveCodexIdleReleaseMs, shouldReleaseIdleCodex } from './codexIdleRelease';
-import { codexCompactCommand, enqueueCodexUserText, isCodexClearText, isCodexControlText } from './codexClearCommand';
+import { codexCompactCommand, codexGoalText, enqueueCodexUserText, isCodexClearText, isCodexControlText } from './codexClearCommand';
 import { runCodexCompact } from './codexCompact';
+import { describeGoalTransition, GOAL_PAUSED_ON_STOP, restoreCodexGoal, runCodexGoal, toAgentStateGoal, type CodexThreadGoal } from './codexGoal';
 import { steerIntoRunningTurn } from './codexSteer';
 import { runCodexSideQuestion } from './codexSideQuestion';
 import { registerSideQuestionHandler } from '@/claude/registerSideQuestionHandler';
@@ -190,6 +191,8 @@ export async function runCodex(opts: {
     metadata.capabilities = [...(metadata.capabilities ?? []), ISSUE_SESSION_CAPABILITY];
     // B-913: this wrapper records model / API turn failures (agentState.turnFailure).
     metadata.capabilities = [...metadata.capabilities, TURN_FAILURE_CAPABILITY];
+    // B-953: `/goal` runs through thread/goal/*; the goal is mirrored in agentState.codexGoal.
+    metadata.capabilities = [...metadata.capabilities, CODEX_GOAL_CAPABILITY];
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
     // B-844c: no sticky model yet (DEFAULT_CODEX_MODEL is undefined); the
@@ -614,7 +617,7 @@ export async function runCodex(opts: {
                 sourceId: message.localKey,
                 ...(fromPeer ? { nonUser: true } : {}),
             });
-            if (enqueueResult === 'clear' || enqueueResult === 'compact') {
+            if (enqueueResult === 'clear' || enqueueResult === 'compact' || enqueueResult === 'goal') {
                 logger.debug(`[Codex] /${enqueueResult} command pushed to isolated queue`);
             }
         }).catch((error) => {
@@ -645,6 +648,43 @@ export async function runCodex(opts: {
         if (!next) return;
         turnFailure = next;
         session.setTurnFailure(next);
+    };
+
+    // B-953: the thread's goal as Codex last reported it. Lines only for changes a
+    // person acts on (describeGoalTransition); agentState follows every change of
+    // status/objective/budget at once, token counts at most every 15 s.
+    let codexGoal: CodexThreadGoal | null = null;
+    let goalTokensWrittenAt = 0;
+    /** An unrequested (goal) turn ran since the last ready; its end owes one. */
+    let goalReadyOwed = false;
+    const applyGoal = (goal: CodexThreadGoal | null, opts: { silent?: boolean } = {}) => {
+        const line = opts.silent ? null : describeGoalTransition(codexGoal, goal);
+        const structural = !goal || !codexGoal || goal.status !== codexGoal.status
+            || goal.objective !== codexGoal.objective || (goal.tokenBudget ?? null) !== (codexGoal.tokenBudget ?? null);
+        codexGoal = goal;
+        if (line) {
+            messageBuffer.addMessage(line, 'status');
+            session.sendSessionEvent({ type: 'message', message: line });
+        }
+        const now = Date.now();
+        if (structural || now - goalTokensWrittenAt >= 15_000) {
+            goalTokensWrittenAt = now;
+            session.setCodexGoal(toAgentStateGoal(goal, now));
+        }
+        settleGoalTurn();
+    };
+    const readThreadGoal = (raw: unknown): CodexThreadGoal | null => {
+        const goal = raw as CodexThreadGoal | null;
+        return goal && typeof goal.objective === 'string' && typeof goal.status === 'string' ? goal : null;
+    };
+    const goalRunning = () => client.hasUnrequestedTurn() || codexGoal?.status === 'active';
+    /** After Codex's own turns stop (goal no longer active, nothing running), one ready + push. */
+    const settleGoalTurn = () => {
+        if (!goalReadyOwed || turnActive || goalRunning()) return;
+        goalReadyOwed = false;
+        // The main loop is waiting for input (turnActive false): nothing is held over.
+        if (!shouldExit && messageQueue.size() === 0 && !session.promptQueueHasPending()) sendReady();
+        idleRelease.arm();
     };
 
     const sendReady = () => {
@@ -740,6 +780,24 @@ export async function runCodex(opts: {
                 // Request interruption, then force-restart Codex app-server if
                 // it doesn't settle quickly (long-running shell commands).
                 if (client) {
+                    // B-953: an active goal would start the next turn as soon as this one
+                    // stops — `turn/interrupt` leaves it active. Codex's TUI pauses it first.
+                    if (source === 'user' && codexGoal?.status === 'active' && client.hasActiveThread()) {
+                        try {
+                            const paused = readThreadGoal(await client.setGoal({ status: 'paused' }));
+                            if (paused) {
+                                applyGoal(paused, { silent: true });
+                                session.sendSessionEvent({ type: 'message', message: GOAL_PAUSED_ON_STOP });
+                            }
+                        } catch (error) {
+                            logger.debug('[Codex] Could not pause the goal on stop', safeCodexErrorMetadata(error));
+                        }
+                    }
+                    // A goal continuation is not a turn the wrapper waits on: interrupt it directly.
+                    if (client.hasUnrequestedTurn()) {
+                        await client.interruptTurn();
+                        if (source === 'user') session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
+                    }
                     const abortResult = await client.abortTurnWithFallback({
                         gracePeriodMs: 3000,
                         forceRestartOnTimeout: true,
@@ -938,6 +996,7 @@ export async function runCodex(opts: {
             queueSize: messageQueue.size(),
             shouldExit,
             abortInProgress: abortInProgress !== null,
+            goalRunning: goalRunning(),
         }),
         release: async () => {
             const released = await client.releaseIdleProcess();
@@ -1088,11 +1147,24 @@ export async function runCodex(opts: {
             }
         }
 
+        if (msg.type === 'goal_updated') {
+            const goal = readThreadGoal(msg.goal);
+            if (goal) applyGoal(goal);
+        } else if (msg.type === 'goal_cleared') {
+            applyGoal(null);
+        }
         if (msg.type === 'task_started') {
             if (!thinking) {
                 logger.debug('thinking started');
                 thinking = true;
                 session.keepAlive(thinking, 'remote');
+            }
+            // B-953: Codex started this turn itself (goal continuation): keep the
+            // app-server, and owe a ready when Codex stops.
+            if (!turnActive) {
+                goalReadyOwed = true;
+                idleRelease.cancel();
+                session.clearTurnFailure();
             }
         }
         if (msg.type === 'task_complete' || msg.type === 'turn_aborted') {
@@ -1103,6 +1175,7 @@ export async function runCodex(opts: {
             }
             // Reset diff processor on task end or abort
             diffProcessor.reset();
+            if (!turnActive) settleGoalTurn();
         }
         if (msg.type === 'agent_reasoning_section_break') {
             reasoningProcessor.handleSectionBreak();
@@ -1261,6 +1334,8 @@ export async function runCodex(opts: {
             }
             first = false;
             appendSystemPromptInjected = true;
+            // B-953: a restarted / resumed session gets its goal strip back (or loses a stale one).
+            await restoreCodexGoal({ client, apply: (goal) => applyGoal(readThreadGoal(goal), { silent: true }), log: (m) => logger.debug(m) });
         }
 
         // B-464: fork the source thread into this session and replay its history.
@@ -1458,6 +1533,7 @@ export async function runCodex(opts: {
             messageBuffer.addMessage(message.message, 'user');
 
             const compactCommand = codexCompactCommand(message.message);
+            const goalCommand = codexGoalText(message.message) !== null ? parseCodexGoalCommand(message.message) : null;
             try {
                 if (crashLoopBlocked()) {
                     // B-901: respawning would load the same thread and die again.
@@ -1478,6 +1554,34 @@ export async function runCodex(opts: {
                         },
                     });
                     logger.debug(`[Codex] /compact ${outcome}`);
+                    continue;
+                }
+                if (goalCommand !== null) {
+                    // B-953: Codex keeps the goal (thread/goal/*); the text never reaches the model.
+                    await client.ensureConnected();
+                    heldInput.delivered();
+                    const outcome = await runCodexGoal(goalCommand, {
+                        client,
+                        ensureThread: async () => {
+                            const policy = resolveCodexExecutionPolicy(message.mode.permissionMode, client.sandboxEnabled);
+                            const turnModel = resolveCodexTurnModel(message.mode, machineDefaultModel);
+                            const startedThread = await client.startThread({
+                                model: turnModel ?? (codexAccount.profile && !codexAccount.unavailable ? machineDefaultModel : undefined),
+                                cwd: process.cwd(),
+                                approvalPolicy: policy.approvalPolicy,
+                                sandbox: policy.sandbox,
+                                mcpServers,
+                            });
+                            session.updateMetadata((currentMetadata) => ({ ...currentMetadata, codexThreadId: startedThread.threadId }));
+                            reportModeFacts();
+                        },
+                        notify: (text) => {
+                            messageBuffer.addMessage(text, 'status');
+                            session.sendSessionEvent({ type: 'message', message: text });
+                        },
+                        onGoal: (goal) => applyGoal(goal ? readThreadGoal(goal) : null),
+                    });
+                    logger.debug(`[Codex] /goal ${goalCommand.kind} ${outcome}`);
                     continue;
                 }
 
@@ -1603,15 +1707,23 @@ export async function runCodex(opts: {
                 permissionHandler.reset();
                 reasoningProcessor.abort();  // Use abort to properly finish any in-progress tool calls
                 diffProcessor.reset();
-                thinking = false;
+                // B-953: a goal turn Codex started (by `/goal`, or right after this turn)
+                // is still running: the session is busy and its end owes the ready.
+                const goalTurn = client.hasUnrequestedTurn();
+                thinking = goalTurn;
                 session.keepAlive(thinking, 'remote');
-                emitReadyIfIdle({
-                    pending,
-                    // B-509: server-queued prompts count as pending input (no ready/push per item).
-                    queueSize: () => messageQueue.size() + (session.promptQueueHasPending() ? 1 : 0),
-                    shouldExit,
-                    sendReady,
-                });
+                if (goalTurn) {
+                    goalReadyOwed = true;
+                } else {
+                    emitReadyIfIdle({
+                        pending,
+                        // B-509: server-queued prompts count as pending input (no ready/push per item).
+                        queueSize: () => messageQueue.size() + (session.promptQueueHasPending() ? 1 : 0),
+                        shouldExit,
+                        sendReady,
+                    });
+                }
+                // Harmless during a goal turn: the release re-checks goalRunning when it fires.
                 turnActive = false;
                 idleRelease.arm();
                 logActiveHandles('after-turn');

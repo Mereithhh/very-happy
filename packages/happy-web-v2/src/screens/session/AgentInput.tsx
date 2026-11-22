@@ -149,6 +149,7 @@ import { getAllCommands } from '@/sync/suggestionCommands';
 import { filterSlashSuggestions, slashCommandText } from './slashSuggestions';
 import { BTW_COMMAND, canOfferBtw, parseBtwCommand } from './btwCommand';
 import { compactSupport, parseCompactCommand } from './compactCommand';
+import { goalSupport, isGoalCommand } from '@/sync/codexGoal';
 import { builtinActionSuggestions, canOfferBuiltinActions, parseBuiltinActionCommand } from './wrapupCommand';
 import { openBtwPanel } from './btwPanelState';
 import {
@@ -956,12 +957,19 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         // Owner 10-30: `/compact` goes as the bare command (canonical, without the
         // edited-drafts block) — anything around it turns it into chat — and a
         // session that cannot compact is told so here instead of by the model.
-        const compactCommand = parseCompactCommand(value);
+        // B-953: a Codex `/goal …` is a command the wrapper runs — sent bare like /compact
+        // (a wrapper with codex-goal-v1 also has codex-compact-v1, so the guard below never refuses it).
+        const compactCommand = parseCompactCommand(value) ?? (isGoalCommand(value) && goalSupport(session) === 'supported' ? value.trim() : null);
         // `/compact` stays the bare command; the comments wait for the next message.
         const attachedNotes = compactCommand !== null ? [] : notes;
         if (!value && !sendFiles && attachedNotes.length === 0) return;
         if (compactCommand !== null && compactSupport(session) === 'unsupported') {
             toast.show(t('session.chat.compactUnsupported'), 'info');
+            return;
+        }
+        // B-953: on an older Codex wrapper `/goal` would reach the model as chat.
+        if (isGoalCommand(value) && goalSupport(session) === 'unsupported') {
+            toast.show(t('session.chat.goalUnsupported'), 'info');
             return;
         }
         // Captured BEFORE the async send: did the textarea own focus (⇒ the

@@ -23,6 +23,8 @@ const DEFAULT_COMMANDS: CommandItem[] = [
     { command: 'skills', description: 'Show available skills' },
 ];
 
+export const GOAL_DESCRIPTION = 'Set a goal Codex keeps working on (pause · resume · clear · budget)';
+
 const COMMAND_DESCRIPTIONS: Record<string, string> = {
     compact: 'Compact the conversation history',
     help: 'Show available commands',
@@ -39,10 +41,13 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
 export function buildCommandItems(
     slashCommands: readonly string[] = [],
     skills: readonly string[] = [],
-    opts: { compactUnavailable?: boolean } = {},
+    opts: { compactUnavailable?: boolean; goal?: 'available' | 'unavailable' } = {},
 ): CommandItem[] {
     const commands: CommandItem[] = DEFAULT_COMMANDS.map((item) =>
         item.command === 'compact' && opts.compactUnavailable ? { ...item, unavailable: true } : item);
+    // B-953: Codex sessions — the wrapper runs `/goal` (thread/goal/*); listed as
+    // unavailable on wrappers without codex-goal-v1. Claude lists its own `/goal`.
+    if (opts.goal) commands.push({ command: 'goal', description: GOAL_DESCRIPTION, ...(opts.goal === 'unavailable' ? { unavailable: true } : {}) });
     const seen = new Set(commands.map((item) => item.command));
     const skillNames = new Set(skills.map((raw) => raw.trim().replace(/^\/+/, '')).filter(Boolean));
 

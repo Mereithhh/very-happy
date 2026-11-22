@@ -45,6 +45,8 @@ export type CodexIdleState = {
     shouldExit: boolean;
     /** An abort is being processed; it may restart the app-server itself. */
     abortInProgress: boolean;
+    /** B-953: Codex is working a goal on its own (a continuation turn, or an active goal between them). */
+    goalRunning?: boolean;
 };
 
 /** True only when nothing is running, queued, aborting or exiting. */
@@ -52,6 +54,7 @@ export function shouldReleaseIdleCodex(state: CodexIdleState): boolean {
     if (state.shouldExit) return false;
     if (state.turnActive) return false;
     if (state.abortInProgress) return false;
+    if (state.goalRunning) return false;
     if (state.queueSize > 0) return false;
     return true;
 }

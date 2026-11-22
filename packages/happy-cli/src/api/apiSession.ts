@@ -1582,6 +1582,18 @@ export class ApiSessionClient extends EventEmitter {
 
     private turnFailureSet = false;
 
+    /**
+     * B-953: the Codex thread's goal (`/goal`), null once cleared. Written only
+     * when it changed — token accounting notifies many times a turn.
+     */
+    setCodexGoal(goal: import('@slopus/happy-wire').CodexGoal | null): void {
+        const current = this.agentState?.codexGoal ?? null;
+        if (!goal && !current) return;
+        if (goal && current && goal.objective === current.objective && goal.status === current.status
+            && goal.tokenBudget === current.tokenBudget && goal.tokensUsed === current.tokensUsed) return;
+        this.updateAgentState((state) => ({ ...state, codexGoal: goal }));
+    }
+
     keepAlive(thinking: boolean, mode: 'local' | 'remote', backgroundTasks?: readonly BackgroundTaskInfo[]) {
         // B-587: a hibernating wrapper stops beating, so no beat can be
         // flushed by the server's presence batch after it went offline.

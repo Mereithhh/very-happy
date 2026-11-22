@@ -34,6 +34,8 @@ describe('shouldReleaseIdleCodex (B-461)', () => {
         expect(shouldReleaseIdleCodex({ ...idle, queueSize: 1 })).toBe(false);
         expect(shouldReleaseIdleCodex({ ...idle, abortInProgress: true })).toBe(false);
         expect(shouldReleaseIdleCodex({ ...idle, shouldExit: true })).toBe(false);
+        // B-953: Codex working a goal by itself is not idle.
+        expect(shouldReleaseIdleCodex({ ...idle, goalRunning: true })).toBe(false);
     });
 });
 

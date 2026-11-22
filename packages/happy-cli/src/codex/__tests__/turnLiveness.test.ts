@@ -34,7 +34,8 @@ describe('Codex turn liveness', () => {
         // …and the loop's finally, which also covers a thrown turn/start.
         const finallyAt = source.indexOf('} finally {\n                permissionHandler.reset();');
         expect(finallyAt).toBeGreaterThan(0);
-        expect(source.slice(finallyAt, finallyAt + 500)).toContain("thinking = false;\n                session.keepAlive(thinking, 'remote');");
+        // B-953: false unless a goal turn Codex started by itself is still running.
+        expect(source.slice(finallyAt, finallyAt + 600)).toContain("const goalTurn = client.hasUnrequestedTurn();\n                thinking = goalTurn;\n                session.keepAlive(thinking, 'remote');");
     });
 
     it('shows Codex retry notices as they happen', () => {
