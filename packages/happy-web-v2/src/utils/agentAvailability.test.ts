@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agentSetupInstruction, agentsNeedingSetup, isAgentOffered, resolveAgentAvailability } from './agentAvailability';
+import { agentSetupInstruction, agentsNeedingSetup, agentUnavailableReason, isAgentOffered, resolveAgentAvailability } from './agentAvailability';
 
 describe('new-session agent availability', () => {
     it('keeps bundled structured Claude available without an external claude CLI', () => {
@@ -109,5 +109,12 @@ describe('B-952 DeepSeek Harness availability', () => {
         expect(agentSetupInstruction('dsh', { cliAvailability: { ...base, dsh: false, dshNode: 'v22.23.2' } } as any)).toEqual({ kind: 'node-upgrade', nodeVersion: 'v22.23.2', minimum: '24.9.0' });
         expect(agentSetupInstruction('dsh', { cliAvailability: { ...base, dsh: false, dshNode: null } } as any)).toEqual({ kind: 'node-upgrade', nodeVersion: null, minimum: '24.9.0' });
         expect(agentSetupInstruction('dsh')).toEqual({ kind: 'command', command: 'npm install -g @deepseek-ai/dsh' });
+    });
+
+    it('B-954: the chip says 「Node 版本太低」, not 「未安装」, when dsh is on the PATH with an old or missing node', () => {
+        expect(agentUnavailableReason('dsh', { cliAvailability: { ...base, dsh: false } } as any)).toBe('not-installed');
+        expect(agentUnavailableReason('dsh', { cliAvailability: { ...base, dsh: false, dshNode: 'v22.23.2' } } as any)).toBe('node-too-old');
+        expect(agentUnavailableReason('dsh', { cliAvailability: { ...base, dsh: false, dshNode: null } } as any)).toBe('node-too-old');
+        expect(agentUnavailableReason('codex', { cliAvailability: { ...base, codex: false } } as any)).toBe('not-installed');
     });
 });
