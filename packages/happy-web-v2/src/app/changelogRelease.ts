@@ -140,7 +140,6 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
     id: '2026-11-22-goal-dsh-localized',
-    cliVersion: '0.2.221',
     date: '2026-11-22',
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.nov22c.title',
