@@ -22,6 +22,7 @@ import { stripHarnessBlocks, parseLocalCommandMessage, parseTaskNotification } f
 import { estimateWrappedLines, shouldCollapseBubble } from './codeCollapse';
 import { stripThinkingWrapper, formatThoughtFor, thinkingPreview, isLiveThinking } from './thinking';
 import { presentServiceEvent } from './serviceEvent';
+import { goalNoticeText, isDshSessionNotice, parseGoalNotice } from './goalNotice';
 import { runCodexHandoff } from './codexHandoffRun';
 import { isSharedWithMe } from '@/app/sessionAccess';
 import { toast } from '@/ui/Toast';
@@ -467,6 +468,20 @@ function AgentEventBlock({ message, sessionId, continueOffer = false }: { messag
                         : t('autoRestart.updatedLine', { version: autoUpdated.version });
                     subtle = true;
                     break;
+                }
+                // B-954: the wrappers' fixed-English /goal receipts and dsh note, in the interface language.
+                if (!ev.kind) {
+                    const goalNotice = parseGoalNotice(ev.message);
+                    if (goalNotice) {
+                        label = goalNoticeText(goalNotice, t);
+                        subtle = true;
+                        break;
+                    }
+                    if (isDshSessionNotice(ev.message)) {
+                        label = t('session.chat.dshSessionNotice');
+                        subtle = true;
+                        break;
+                    }
                 }
                 const presentation = presentServiceEvent(ev.message);
                 if (presentation.kind === 'hidden') return null;

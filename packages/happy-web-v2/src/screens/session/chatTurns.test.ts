@@ -60,6 +60,23 @@ describe('buildChatRows', () => {
         expect(answerless[2]).toMatchObject({ type: 'message', message: { id: 'rejected' } });
     });
 
+    it('B-954: /goal show and budget receipts stay visible instead of folding into a 0 s activity group', () => {
+        const event = (id: string, createdAt: number, message: string): Message => ({
+            kind: 'agent-event', id, createdAt, event: { type: 'message', message },
+        } as Message);
+        const shown = buildChatRows([user('/goal', 1), event('show', 2, 'Goal paused: write three files · 1.9k tokens')], false);
+        expect(shown.map((row) => row.type)).toEqual(['message', 'message']);
+        expect(shown[1]).toMatchObject({ type: 'message', message: { id: 'show' } });
+        const budget = buildChatRows([user('/goal budget 5000', 1), event('budget', 2, 'Goal token budget set to 5k')], false);
+        expect(budget.map((row) => row.type)).toEqual(['message', 'message']);
+        const stopped = buildChatRows([user('u3', 1), tool('read', 2), event('paused', 3, 'Goal paused — send /goal resume to continue')], false);
+        expect(stopped.map((row) => row.type)).toEqual(['message', 'activity', 'message']);
+        expect(stopped[2]).toMatchObject({ type: 'message', message: { id: 'paused' } });
+        // An ordinary wrapper note still folds.
+        const other = buildChatRows([user('u4', 1), event('note', 2, 'Codex is reconnecting')], false);
+        expect(other.map((row) => row.type)).toEqual(['message', 'activity']);
+    });
+
     it('keeps the failure of an answerless turn visible and drops the reason-less duplicate (B-487)', () => {
         const event = (id: string, createdAt: number, message: string): Message => ({
             kind: 'agent-event', id, createdAt, event: { type: 'message', message },

@@ -15,7 +15,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import type { PendingAgent, PendingSessionRecord } from '@/sync/pendingSessions';
 import { pendingSessions, useAdoptableSession } from '@/sync/pendingSessionsRuntime';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { isAgentOffered, resolveAgentAvailability, SESSION_AGENTS } from '@/utils/agentAvailability';
+import { agentUnavailableReason, isAgentOffered, resolveAgentAvailability, SESSION_AGENTS } from '@/utils/agentAvailability';
 import { resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
 import { launcherReportsRunFacts } from '@/sync/followLatestDisplay';
 import { machineCliVersion } from '@/app/staleWrapperPolicy';
@@ -191,7 +191,7 @@ function DraftTarget({ record }: { record: PendingSessionRecord }) {
         .filter((a) => a === record.agent || isAgentOffered(machine?.metadata, a))
         .map((a) => {
             const available = resolveAgentAvailability(machine?.metadata, a).available;
-            return { value: a, label: a, ...(available ? {} : { disabled: true, meta: t('newSessionModal.notInstalled') }) };
+            return { value: a, label: a, ...(available ? {} : { disabled: true, meta: a !== 'claude' && agentUnavailableReason(a, machine?.metadata) === 'node-too-old' ? t('newSessionModal.nodeTooOld') : t('newSessionModal.notInstalled') }) };
         });
     const suggestions = useMemo(
         () => draftDirectorySuggestions(record.machineId, recents ?? [], presets ?? []),
