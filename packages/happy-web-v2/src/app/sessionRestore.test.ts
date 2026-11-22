@@ -14,6 +14,7 @@ import {
   type RestoreState,
 } from './sessionRestoreRules';
 import { canReleaseQueuedMessage } from '@/screens/session/queuedMessages';
+import { MetadataSchema } from '@/sync/storageTypes';
 
 const machines = { m1: { id: 'm1', active: true }, m2: { id: 'm2', active: false } };
 const base = { active: false, archivedAt: 1000, metadata: { machineId: 'm1', flavor: 'claude', claudeSessionId: 'c1' } as any };
@@ -49,6 +50,17 @@ describe('B-265 restoreEligibility', () => {
     const old = { ...base, metadata: { machineId: 'm1', flavor: 'acp' } as any };
     expect(restoreEligibility(old, machines)).toEqual({ ok: false, reason: 'unsupported-flavor' });
     expect(canOfferRestore(old, machines.m1)).toBe(false);
+  });
+  it('B-952: a dsh session is restorable once its wrapper recorded the dsh session id', () => {
+    const dsh = { ...base, metadata: { machineId: 'm1', flavor: 'dsh', dshSessionId: 'dsh-1' } as any };
+    expect(restoreEligibility(dsh, machines)).toEqual({ ok: true, machineId: 'm1' });
+    expect(canOfferRestore(dsh, machines.m1)).toBe(true);
+    expect(composerGate(dsh)).toBe('restore-first');
+    const noId = { ...base, metadata: { machineId: 'm1', flavor: 'dsh' } as any };
+    expect(restoreEligibility(noId, machines)).toEqual({ ok: false, reason: 'unsupported-flavor' });
+  });
+  it('B-952: the metadata schema keeps dshSessionId (a Web metadata write must not strip it)', () => {
+    expect(MetadataSchema.parse({ path: '/p', host: 'h', flavor: 'dsh', dshSessionId: 'dsh-1' }).dshSessionId).toBe('dsh-1');
   });
 });
 

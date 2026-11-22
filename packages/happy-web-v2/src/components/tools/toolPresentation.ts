@@ -132,9 +132,12 @@ export interface ReadInfo { path: string | null; range: string | null }
 export function readInfo(tool: Pick<ToolCall, 'name' | 'input'>): ReadInfo {
     const input = obj(tool.input);
     const loc = Array.isArray(input.locations) ? obj(input.locations[0]) : {};
-    const path = str(input.file_path) ?? str(input.notebook_path) ?? str(input.path) ?? str(loc.path) ?? str(acpInfo(tool)?.title);
-    const offset = num(input.offset) ?? num(loc.line);
-    const limit = num(input.limit);
+    const acp = acpInfo(tool);
+    // B-952: a generic ACP read (dsh) carries its arguments only in rawInput, titled with the bare tool name.
+    const raw = acp?.raw ?? {};
+    const path = str(input.file_path) ?? str(input.notebook_path) ?? str(input.path) ?? str(raw.file_path) ?? str(raw.path) ?? str(loc.path) ?? str(acp?.title);
+    const offset = num(input.offset) ?? num(raw.offset) ?? num(loc.line);
+    const limit = num(input.limit) ?? num(raw.limit);
     const range = offset !== null && limit !== null ? `${offset}-${offset + limit - 1}` : offset !== null ? `${offset}` : null;
     return { path, range };
 }
