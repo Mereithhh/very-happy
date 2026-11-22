@@ -553,7 +553,7 @@ own TUI, plus a budget:
 | `/goal` | Shows the goal, its state and tokens used / budget. |
 | `/goal pause` / `/goal resume` | Pauses / resumes it. |
 | `/goal clear` | Removes it. |
-| `/goal budget <tokens\|off>` | Caps the tokens the goal may spend (`50000`, `50k`, `1.5M`); `off` removes the cap. |
+| `/goal budget <tokens\|off>` | Caps the tokens the goal may spend (a positive integer, e.g. `50000`); `off` removes the cap. Subcommands count only as the whole line: `/goal pause the build` sets that goal. |
 
 While the goal is active Codex starts turns by itself (no user message) until it
 marks the goal complete, a limit is reached (token budget, usage limit) or it

@@ -43,7 +43,7 @@ export type CodexGoalClient = {
     clearGoal(): Promise<boolean>;
 };
 
-export type CodexGoalOutcome = 'shown' | 'set' | 'updated' | 'cleared' | 'none' | 'unsupported' | 'failed' | 'invalid';
+export type CodexGoalOutcome = 'shown' | 'set' | 'updated' | 'cleared' | 'none' | 'unsupported' | 'failed';
 
 /** `/goal …` (any spelling the composer sends) → the command, else null. */
 export function codexGoalCommand(text: string): CodexGoalCommand | null {
@@ -119,7 +119,29 @@ function unsupportedText(serverVersion: string | null): string {
     return `/goal needs Codex ${CODEX_GOAL_MIN_VERSION} or newer (this machine runs ${serverVersion ?? 'an unknown version'}). Update Codex on that machine (npm install -g @openai/codex), then send /goal again. The message was not sent to the model.`;
 }
 
-const USAGE = 'Usage: /goal <objective> · /goal (show) · /goal pause · /goal resume · /goal clear · /goal budget <tokens|off>';
+/** The line Stop leaves when it paused an active goal (Lead 11-22). */
+export const GOAL_PAUSED_ON_STOP = 'Goal paused — send /goal resume to continue';
+
+/**
+ * After a restart / resume: read the thread's goal once so the session shows it
+ * again (null clears a stale one). Quiet on a Codex without goals or any error.
+ */
+export async function restoreCodexGoal(deps: {
+    client: Pick<CodexGoalClient, 'hasActiveThread' | 'serverVersion' | 'getGoal'>;
+    apply: (goal: CodexThreadGoal | null) => void;
+    log?: (message: string) => void;
+}): Promise<boolean> {
+    if (!deps.client.hasActiveThread() || !codexVersionAtLeast(deps.client.serverVersion)) return false;
+    try {
+        deps.apply(await deps.client.getGoal());
+        return true;
+    } catch (error) {
+        deps.log?.(`[Codex] Could not read the goal after resume: ${error instanceof Error ? error.message : String(error)}`);
+        return false;
+    }
+}
+
+const USAGE = 'Usage: /goal <objective> · /goal (show) · /goal pause · /goal resume · /goal clear · /goal budget <tokens|off> (e.g. /goal budget 50000)';
 
 /**
  * Runs one `/goal` command. `ensureThread` opens the conversation when the
@@ -134,10 +156,6 @@ export async function runCodexGoal(command: CodexGoalCommand, deps: {
     onGoal: (goal: CodexThreadGoal | null) => void;
 }): Promise<CodexGoalOutcome> {
     const { client, notify } = deps;
-    if (command.kind === 'invalid') {
-        notify(`Could not read the token budget. ${USAGE}`);
-        return 'invalid';
-    }
     if (!codexVersionAtLeast(client.serverVersion)) {
         notify(unsupportedText(client.serverVersion));
         return 'unsupported';

@@ -43,27 +43,15 @@ export type CodexGoalCommand =
     | { kind: 'resume' }
     | { kind: 'clear' }
     /** VH extension: Codex's TUI has no budget command, the app-server takes `tokenBudget`. */
-    | { kind: 'budget'; tokens: number | null }
-    | { kind: 'invalid'; reason: 'budget' };
+    | { kind: 'budget'; tokens: number | null };
 
 const GOAL_RE = /^[/／]goal(?![A-Za-z0-9_:-])([\s\S]*)$/i;
 const LEADING_SPACE_RE = /^[\s　﻿​]+/;
-const BUDGET_RE = /^(\d+(?:\.\d+)?)\s*([kKmM万]?)$/;
-
-function parseBudget(raw: string): number | null | undefined {
-    const value = raw.replace(/[,_]/g, '').trim();
-    if (/^(off|none|clear|unlimited|0)$/i.test(value)) return null;
-    const match = value.match(BUDGET_RE);
-    if (!match) return undefined;
-    const unit = match[2].toLowerCase();
-    const multiplier = unit === 'k' ? 1_000 : unit === 'm' ? 1_000_000 : unit === '万' ? 10_000 : 1;
-    const tokens = Math.round(Number(match[1]) * multiplier);
-    return Number.isSafeInteger(tokens) && tokens > 0 ? tokens : undefined;
-}
-
 /**
  * A standalone `/goal …` → the command, else null. Same subcommands as Codex's
- * TUI (`/goal [<objective>|clear|pause|resume]`) plus `budget <N|off>`. Accepts
+ * TUI (`/goal [<objective>|clear|pause|resume]`) plus `budget <N|off>`. Strict:
+ * a subcommand is the whole rest of the line (`/goal pause the build` sets that
+ * goal) and a budget is a positive integer or `off`. Accepts
  * what a phone keyboard types (／goal, /Goal, a full-width space); "please
  * /goal" and "/goals" stay chat.
  */
@@ -72,15 +60,12 @@ export function parseCodexGoalCommand(text: string): CodexGoalCommand | null {
     if (!match) return null;
     const rest = match[1].replace(/　/g, ' ').trim();
     if (!rest) return { kind: 'show' };
-    const lower = rest.toLowerCase();
-    if (lower === 'pause') return { kind: 'pause' };
-    if (lower === 'resume') return { kind: 'resume' };
-    if (lower === 'clear') return { kind: 'clear' };
-    const budget = rest.match(/^budget(?:\s+([\s\S]*))?$/i);
-    if (budget) {
-        const tokens = parseBudget(budget[1] ?? '');
-        return tokens === undefined ? { kind: 'invalid', reason: 'budget' } : { kind: 'budget', tokens };
-    }
+    if (rest === 'pause') return { kind: 'pause' };
+    if (rest === 'resume') return { kind: 'resume' };
+    if (rest === 'clear') return { kind: 'clear' };
+    if (rest === 'budget off') return { kind: 'budget', tokens: null };
+    const budget = rest.match(/^budget ([1-9]\d{0,15})$/);
+    if (budget && Number.isSafeInteger(Number(budget[1]))) return { kind: 'budget', tokens: Number(budget[1]) };
     return { kind: 'set', objective: rest };
 }
 
@@ -90,7 +75,6 @@ export function codexGoalCommandText(command: CodexGoalCommand): string {
         case 'show': return '/goal';
         case 'set': return `/goal ${command.objective}`;
         case 'budget': return `/goal budget ${command.tokens ?? 'off'}`;
-        case 'invalid': return '/goal budget';
         default: return `/goal ${command.kind}`;
     }
 }

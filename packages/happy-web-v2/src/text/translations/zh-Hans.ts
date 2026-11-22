@@ -3621,7 +3621,7 @@ export const zhHans: TranslationStructure = {
             nov22b: {
                 title: 'Codex 会话支持 /goal',
                 summary: '用 /goal <目标> 给 Codex 会话设一个目标，Codex 会自己一轮接一轮地推进，直到完成、你暂停，或达到上限。以前 /goal 会被当成普通消息发给模型。',
-                commands: '/goal 查看当前目标；/goal pause、/goal resume、/goal clear 分别暂停、继续、清除；/goal budget 50k 限定最多花多少 token（/goal budget off 取消限制）。输入框的 / 命令列表里能找到 /goal。',
+                commands: '/goal 查看当前目标；/goal pause、/goal resume、/goal clear 分别暂停、继续、清除；/goal budget 50000 限定最多花多少 token（/goal budget off 取消限制）。输入框的 / 命令列表里能找到 /goal。',
                 strip: '有目标时，输入框上方常显一条提示：目标内容、状态、已用 token / 预算；目标完成、暂停、卡住或达到上限时，提示会跟着变。暂停、继续、清除在提示条上一点即可。',
                 stop: '点停止时，Codex 为目标自动起的回合也会停下，并且目标会被暂停，不会马上又起下一轮；点继续即可接着做。',
                 upgrade: '需要机器上的 Codex 0.133 及以上、CLI 0.2.220（自动升级后重启会话）。Codex 版本太旧时，/goal 会提示需要的版本，不会发给模型。',

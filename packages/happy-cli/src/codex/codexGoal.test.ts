@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parseCodexGoalCommand } from '@slopus/happy-wire';
-import { describeGoal, describeGoalError, describeGoalTransition, runCodexGoal, toAgentStateGoal, type CodexThreadGoal } from './codexGoal';
+import { describeGoal, describeGoalError, describeGoalTransition, restoreCodexGoal, runCodexGoal, toAgentStateGoal, type CodexThreadGoal } from './codexGoal';
 
 const active: CodexThreadGoal = { objective: 'ship it', status: 'active', tokenBudget: 50_000, tokensUsed: 12_345, timeUsedSeconds: 4 };
 
@@ -54,7 +54,7 @@ describe('runCodexGoal (B-953)', () => {
 
     it('sets and removes the budget', async () => {
         const deps = fakeClient({ existing: active });
-        await run('/goal budget 20k', deps);
+        await run('/goal budget 20000', deps);
         expect(deps.client.setGoal).toHaveBeenLastCalledWith({ tokenBudget: 20_000 });
         await run('/goal budget off', deps);
         expect(deps.client.setGoal).toHaveBeenLastCalledWith({ tokenBudget: null });
@@ -96,11 +96,6 @@ describe('runCodexGoal (B-953)', () => {
         expect(deps.notify.mock.calls[0][0]).toMatch(/Goals are turned off in this machine's Codex config/);
     });
 
-    it('refuses a budget it cannot read without calling Codex', async () => {
-        const deps = fakeClient({ existing: active });
-        await expect(run('/goal budget lots', deps)).resolves.toBe('invalid');
-        expect(deps.client.getGoal).not.toHaveBeenCalled();
-    });
 });
 
 describe('goal lines', () => {
@@ -125,5 +120,27 @@ describe('goal lines', () => {
     it('mirrors a goal into agentState', () => {
         expect(toAgentStateGoal(active, 7)).toEqual({ objective: 'ship it', status: 'active', tokenBudget: 50_000, tokensUsed: 12_345, timeUsedSeconds: 4, updatedAt: 7 });
         expect(toAgentStateGoal(null)).toBeNull();
+    });
+});
+
+describe('restoreCodexGoal (resume / restart, Lead 11-22)', () => {
+    it('reads the goal once and hands it on — null clears a stale strip', async () => {
+        const apply = vi.fn();
+        const client = { hasActiveThread: () => true, serverVersion: '0.171.0', getGoal: vi.fn(async () => active) };
+        await expect(restoreCodexGoal({ client, apply })).resolves.toBe(true);
+        expect(apply).toHaveBeenCalledWith(active);
+        client.getGoal.mockResolvedValueOnce(null as any);
+        await restoreCodexGoal({ client, apply });
+        expect(apply).toHaveBeenLastCalledWith(null);
+    });
+
+    it('stays quiet without a thread, on an old Codex, or when Codex refuses', async () => {
+        const apply = vi.fn();
+        const getGoal = vi.fn(async () => { throw new Error('goals feature is disabled'); });
+        await expect(restoreCodexGoal({ client: { hasActiveThread: () => false, serverVersion: '0.171.0', getGoal }, apply })).resolves.toBe(false);
+        await expect(restoreCodexGoal({ client: { hasActiveThread: () => true, serverVersion: '0.120.0', getGoal }, apply })).resolves.toBe(false);
+        expect(getGoal).not.toHaveBeenCalled();
+        await expect(restoreCodexGoal({ client: { hasActiveThread: () => true, serverVersion: '0.171.0', getGoal }, apply })).resolves.toBe(false);
+        expect(apply).not.toHaveBeenCalled();
     });
 });

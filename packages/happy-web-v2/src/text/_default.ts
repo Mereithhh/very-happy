@@ -3461,7 +3461,7 @@ export const en = {
             nov22b: {
                 title: '/goal works in Codex sessions',
                 summary: 'Give a Codex session a goal with /goal <objective> and Codex keeps working on it turn after turn by itself, until it is done, you pause it, or a limit is reached. Before, /goal was sent to the model as an ordinary message.',
-                commands: '/goal shows the current goal; /goal pause, /goal resume and /goal clear do what they say; /goal budget 50k caps the tokens it may spend (/goal budget off removes the cap). /goal is in the composer\'s / command list.',
+                commands: '/goal shows the current goal; /goal pause, /goal resume and /goal clear do what they say; /goal budget 50000 caps the tokens it may spend (/goal budget off removes the cap). /goal is in the composer\'s / command list.',
                 strip: 'While a goal exists, a strip above the composer shows it with its state and tokens used / budget, and says so when the goal is complete, paused, stalled or stopped on a limit. Pause, Resume and Clear are one tap there.',
                 stop: 'Stop now also stops a turn Codex started for the goal, and pauses the goal so it does not start the next one; Resume picks it up again.',
                 upgrade: 'Needs Codex 0.133 or newer on the machine and CLI 0.2.220 (automatic update, then restart the session). On an older Codex, /goal says which version it needs instead of reaching the model.',

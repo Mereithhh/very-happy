@@ -957,12 +957,13 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         // Owner 10-30: `/compact` goes as the bare command (canonical, without the
         // edited-drafts block) — anything around it turns it into chat — and a
         // session that cannot compact is told so here instead of by the model.
-        // B-953: a Codex `/goal …` is a command the wrapper runs — sent bare like /compact.
+        // B-953: a Codex `/goal …` is a command the wrapper runs — sent bare like /compact
+        // (a wrapper with codex-goal-v1 also has codex-compact-v1, so the guard below never refuses it).
         const compactCommand = parseCompactCommand(value) ?? (isGoalCommand(value) && goalSupport(session) === 'supported' ? value.trim() : null);
         // `/compact` stays the bare command; the comments wait for the next message.
         const attachedNotes = compactCommand !== null ? [] : notes;
         if (!value && !sendFiles && attachedNotes.length === 0) return;
-        if (compactCommand !== null && !isGoalCommand(compactCommand) && compactSupport(session) === 'unsupported') {
+        if (compactCommand !== null && compactSupport(session) === 'unsupported') {
             toast.show(t('session.chat.compactUnsupported'), 'info');
             return;
         }

@@ -68,7 +68,7 @@ import { emitReadyIfIdle } from './emitReadyIfIdle';
 import { CODEX_IDLE_RELEASE_ENV, CodexIdleReleaseTimer, resolveCodexIdleReleaseMs, shouldReleaseIdleCodex } from './codexIdleRelease';
 import { codexCompactCommand, codexGoalText, enqueueCodexUserText, isCodexClearText, isCodexControlText } from './codexClearCommand';
 import { runCodexCompact } from './codexCompact';
-import { describeGoalTransition, runCodexGoal, toAgentStateGoal, type CodexThreadGoal } from './codexGoal';
+import { describeGoalTransition, GOAL_PAUSED_ON_STOP, restoreCodexGoal, runCodexGoal, toAgentStateGoal, type CodexThreadGoal } from './codexGoal';
 import { steerIntoRunningTurn } from './codexSteer';
 import { runCodexSideQuestion } from './codexSideQuestion';
 import { registerSideQuestionHandler } from '@/claude/registerSideQuestionHandler';
@@ -657,8 +657,8 @@ export async function runCodex(opts: {
     let goalTokensWrittenAt = 0;
     /** An unrequested (goal) turn ran since the last ready; its end owes one. */
     let goalReadyOwed = false;
-    const applyGoal = (goal: CodexThreadGoal | null) => {
-        const line = describeGoalTransition(codexGoal, goal);
+    const applyGoal = (goal: CodexThreadGoal | null, opts: { silent?: boolean } = {}) => {
+        const line = opts.silent ? null : describeGoalTransition(codexGoal, goal);
         const structural = !goal || !codexGoal || goal.status !== codexGoal.status
             || goal.objective !== codexGoal.objective || (goal.tokenBudget ?? null) !== (codexGoal.tokenBudget ?? null);
         codexGoal = goal;
@@ -785,7 +785,10 @@ export async function runCodex(opts: {
                     if (source === 'user' && codexGoal?.status === 'active' && client.hasActiveThread()) {
                         try {
                             const paused = readThreadGoal(await client.setGoal({ status: 'paused' }));
-                            if (paused) applyGoal(paused);
+                            if (paused) {
+                                applyGoal(paused, { silent: true });
+                                session.sendSessionEvent({ type: 'message', message: GOAL_PAUSED_ON_STOP });
+                            }
                         } catch (error) {
                             logger.debug('[Codex] Could not pause the goal on stop', safeCodexErrorMetadata(error));
                         }
@@ -1331,6 +1334,8 @@ export async function runCodex(opts: {
             }
             first = false;
             appendSystemPromptInjected = true;
+            // B-953: a restarted / resumed session gets its goal strip back (or loses a stale one).
+            await restoreCodexGoal({ client, apply: (goal) => applyGoal(readThreadGoal(goal), { silent: true }), log: (m) => logger.debug(m) });
         }
 
         // B-464: fork the source thread into this session and replay its history.

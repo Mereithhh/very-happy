@@ -6,7 +6,7 @@ describe('parseCodexGoalCommand (B-953)', () => {
         expect(parseCodexGoalCommand('/goal')).toEqual({ kind: 'show' });
         expect(parseCodexGoalCommand('  /goal  ')).toEqual({ kind: 'show' });
         expect(parseCodexGoalCommand('/goal pause')).toEqual({ kind: 'pause' });
-        expect(parseCodexGoalCommand('/goal Resume')).toEqual({ kind: 'resume' });
+        expect(parseCodexGoalCommand('/goal resume')).toEqual({ kind: 'resume' });
         expect(parseCodexGoalCommand('/goal clear')).toEqual({ kind: 'clear' });
         expect(parseCodexGoalCommand('/goal make the tests pass\nthen open a PR')).toEqual({ kind: 'set', objective: 'make the tests pass\nthen open a PR' });
     });
@@ -23,14 +23,20 @@ describe('parseCodexGoalCommand (B-953)', () => {
         expect(parseCodexGoalCommand('goal x')).toBeNull();
     });
 
-    it('reads a token budget (VH extension) and refuses a bad one', () => {
+    it('reads a token budget (VH extension): a positive integer or off, nothing else', () => {
         expect(parseCodexGoalCommand('/goal budget 50000')).toEqual({ kind: 'budget', tokens: 50000 });
-        expect(parseCodexGoalCommand('/goal budget 50k')).toEqual({ kind: 'budget', tokens: 50000 });
-        expect(parseCodexGoalCommand('/goal budget 1.5M')).toEqual({ kind: 'budget', tokens: 1500000 });
-        expect(parseCodexGoalCommand('/goal budget 2万')).toEqual({ kind: 'budget', tokens: 20000 });
         expect(parseCodexGoalCommand('/goal budget off')).toEqual({ kind: 'budget', tokens: null });
-        expect(parseCodexGoalCommand('/goal budget lots')).toEqual({ kind: 'invalid', reason: 'budget' });
-        expect(parseCodexGoalCommand('/goal budget')).toEqual({ kind: 'invalid', reason: 'budget' });
+        for (const text of ['/goal budget 50k', '/goal budget lots', '/goal budget', '/goal budget 0', '/goal budget -5', '/goal budget 5000 tokens']) {
+            expect(parseCodexGoalCommand(text)).toEqual({ kind: 'set', objective: text.slice('/goal '.length) });
+        }
+    });
+
+    it('takes a subcommand only when it is the whole rest of the line (Lead 11-22)', () => {
+        expect(parseCodexGoalCommand('/goal pause the build')).toEqual({ kind: 'set', objective: 'pause the build' });
+        expect(parseCodexGoalCommand('/goal clear the cache')).toEqual({ kind: 'set', objective: 'clear the cache' });
+        expect(parseCodexGoalCommand('/goal resume work on the parser')).toEqual({ kind: 'set', objective: 'resume work on the parser' });
+        expect(parseCodexGoalCommand('/goal Pause')).toEqual({ kind: 'set', objective: 'Pause' });
+        expect(parseCodexGoalCommand('/goal  pause ')).toEqual({ kind: 'pause' });
     });
 
     it('canonicalises for the queue, round-tripping', () => {
