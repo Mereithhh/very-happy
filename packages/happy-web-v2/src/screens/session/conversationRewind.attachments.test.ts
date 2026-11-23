@@ -43,7 +43,7 @@ function transcript() {
         recordDrop: vi.fn(async (_s, drop) => { drops.push({ ...drop, toSeq: drop.toSeq ?? ++seq }); }),
         send: vi.fn(async (_s, text, attachments) => {
             sent.push(attachments ?? []);
-            send(text, (attachments ?? []).map((a) => a.ref));
+            send(text, (attachments ?? []).map((a: ReusableAttachment) => a.ref));
             return 'receipt';
         }),
         userSeqs: () => [...userTurnStarts(newestFirst()).values()],
