@@ -46,13 +46,13 @@ const teamLabel = (marker: TeamExitMarker) => `"${(marker.teamName || marker.tea
 
 /** What every team tool answers in a session that left its team. Never suggests retrying. */
 export function teamExitedMessage(marker: TeamExitMarker): string {
-    return `Team ${teamLabel(marker)} is archived and this session has left team mode; it is an ordinary session now. This is final, not a temporary failure or a missing permission: do not retry team tools, inspect or delegate to that team, or ask the user to restore team access. Do what the user asks yourself, in this session. Start a new team (team_create) only if the user explicitly asks for one. ${teamLanguageReminder(marker.language ?? null)}`;
+    return `Team ${teamLabel(marker)} is archived and this session has left team mode; it is an ordinary session now. This is final, not a temporary failure or a missing permission: do not retry team tools or inspect or delegate to that team. If the user wants the team back, they can restore it on its team page (「恢复团队」, within 7 days of the archive); you cannot. Do what the user asks yourself, in this session. Start a new team (team_create) only if the user explicitly asks for one. ${teamLanguageReminder(marker.language ?? null)}`;
 }
 
 /** The one-time note before the first user turn after the exit. */
 export function teamExitNoticeText(marker: TeamExitMarker, language: TeamUserLanguage | null): string {
     const how = marker.reason === 'archived' ? 'was archived while this session was stopped' : 'was archived when the user exited team mode';
-    return `[Very Happy: team mode ended] Team ${teamLabel(marker)} ${how}. This session is now an ordinary session: its members were stopped and their unfinished tasks cancelled, and team tools no longer work here. Do not delegate to or inspect the team, and do not wait for or ask the user to restore team access. If the user asks about the team or to continue its work, say plainly that team mode has ended and carry on with the work yourself (or ask whether they want you to). ${teamLanguageReminder(language)}`;
+    return `[Very Happy: team mode ended] Team ${teamLabel(marker)} ${how}. This session is now an ordinary session: its members were stopped and their unfinished tasks cancelled, and team tools no longer work here. Do not delegate to or inspect the team, and do not wait for team access to come back. If the user wants the team back, tell them they can restore it on its team page (「恢复团队」, within 7 days). If the user asks about the team or to continue its work, say plainly that team mode has ended and carry on with the work yourself (or ask whether they want you to). ${teamLanguageReminder(language)}`;
 }
 
 /** The language of the turn itself; a short or code-only message falls back to the owner's at exit. */

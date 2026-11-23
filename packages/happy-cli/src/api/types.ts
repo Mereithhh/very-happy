@@ -155,6 +155,8 @@ export type Session = {
 export const MachineMetadataSchema = z.object({
   teamsVersion: z.number().int().positive().optional(),
   teamLaunchVersion: z.number().int().positive().optional(),
+  /** B-962: daemon continues members' own sessions on a team restore (`resumeSessionId` launches). Absent on old daemons. */
+  teamRestoreVersion: z.number().int().positive().optional(),
   /** B-689: daemon acts on the owner's team `retry-operation`. Absent on old daemons. */
   teamRetryVersion: z.number().int().positive().optional(),
   /** B-586: daemon serves the `worktree-*` RPCs. Absent on old daemons. */

@@ -67,9 +67,9 @@ export const en = {
 
         archive: "Archive team",
         archived: "This team is archived and read-only",
-        archiveDescription: "Archiving cancels unfinished tasks and schedules and stops team-managed sessions. Attached sessions, working directories and history are retained. Offline machines finish cleanup when they reconnect.",
+        archiveDescription: "Archiving cancels unfinished tasks and schedules and stops team-managed sessions. Attached sessions, working directories and history are retained. Offline machines finish cleanup when they reconnect. Within 7 days, “Restore team” on the team page brings it back.",
         exitTeamMode: "Exit team mode",
-        exitTeamModeDescription: "The lead goes on as an ordinary session with its history. The team is archived: unfinished tasks and schedules are cancelled and member sessions stop; working directories are kept. The lead gets no more team messages or team instructions. This cannot be undone: an archived team cannot be reopened and its members do not start again. To work as a team again, start a new team.",
+        exitTeamModeDescription: "The lead goes on as an ordinary session with its history. The team is archived: unfinished tasks and schedules are cancelled and member sessions stop; working directories are kept. The lead gets no more team messages or team instructions. Changed your mind? Within 7 days, “Restore team” on the team page brings the cancelled work back and members continue their own conversations.",
         exitTeamModeDone: "Left team mode. The lead session restarted as an ordinary session.",
         exitTeamModeDoneNoRestart: "Left team mode. This session is now an ordinary session.",
         exitTeamModeLeadStopped: "The team is archived, but this server stopped the lead session. Resume it to continue as an ordinary session.",
@@ -3510,6 +3510,13 @@ export const en = {
                 subagents: 'A sub-agent’s details show “Context used / window” for that sub-agent alone, for Claude and Codex. It replaces the unlabeled token count.',
                 restart: 'Both need the session restarted on CLI 0.2.225. Until then Codex sessions show no figure, and Claude sub-agents keep the old count. Right after you rewind a Codex conversation the figure is blank until the next reply.',
                 fixes: 'In Claude sessions the meter no longer drops to 0 after a local command such as /context. The token count on a Codex goal now says it is a total, not context.',
+            },
+            nov24a: {
+                title: 'Restore a team you archived by mistake',
+                summary: 'An archived team, including one that left team mode, can be restored from its team page within 7 days, and agents can no longer archive a team or leave team mode on their own.',
+                restore: 'Open the team from “Recently archived” on the Teams page and choose Restore team: the tasks, schedules and undelivered messages the archive cancelled come back, each member continues its own conversation in its own working directory, and the lead rejoins the team. A member whose conversation is in another team now starts a new session instead; its original conversation is left alone.',
+                agents: 'Leaving team mode and archiving now always need you: choose ⋯ → Exit team mode or Archive on the Web and confirm. If you ask an agent to restart the team, it asks you to do this instead of doing it itself. The team page shows whether a team was archived from the Web or the command line.',
+                cli: 'Restoring members into their own conversations needs CLI 0.2.225 on the team’s computer.',
             },
             nov23c: {
                 title: 'Edit, delete and retry messages in Codex sessions',

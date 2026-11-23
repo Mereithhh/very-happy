@@ -17,6 +17,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ProjectDefaults, TeamAction } from '@slopus/happy-wire';
 import { log, warn } from '@/utils/log';
 import { OWNER_LOGIN_REQUIRED, requestTokenKind } from './tokenKind';
+import { TEAM_ARCHIVE_HUMAN_HINT } from '@/app/teams/reducer';
 
 export type OwnerGuardMode = 'enforce' | 'observe' | 'off';
 type Caller = Pick<FastifyRequest, 'authLoginSessionId'> & { userId?: string };
@@ -47,14 +48,14 @@ export function projectPermsGuardMode(env: NodeJS.ProcessEnv = process.env): Own
  * Returns true when the caller may continue. For a machine token: `enforce` sends
  * `403 { error: 'owner_login_required' }` (the caller returns the reply), `observe` logs and continues.
  */
-export function guardOwnerAction(request: Caller, reply: FastifyReply, route: string, mode: OwnerGuardMode = ownerGuardMode()): boolean {
+export function guardOwnerAction(request: Caller, reply: FastifyReply, route: string, mode: OwnerGuardMode = ownerGuardMode(), details?: Record<string, unknown>): boolean {
     if (mode === 'off') return true;
     const kind = requestTokenKind(request);
     if (kind === 'human') return true;
     (mode === 'enforce' ? warn : log)({ module: 'owner-guard', mode, kind, operation: route, accountId: request.userId },
         `owner guard ${mode === 'enforce' ? 'refused' : 'observed'} a machine token on ${route}`);
     if (mode === 'observe') return true;
-    void reply.code(403).send({ error: OWNER_LOGIN_REQUIRED });
+    void reply.code(403).send({ error: OWNER_LOGIN_REQUIRED, ...details });
     return false;
 }
 
@@ -70,7 +71,8 @@ export function humanOnly(route: string) {
  * Lead and members act through `/agent` with their team token, and the Web signs in as a person.
  *  - daemon bookkeeping: claim / complete / fail-operation, session-event, message-delivered
  *  - join (a seat takeover by another session is refused in the store, see `machineJoinRefusal`)
- *  - `archive` that keeps the Lead session (leaving team mode)
+ *  - (B-962: no `archive` any more — an agent ran `very-happy teams exit` and the daemon's machine token archived a
+ *    16-member team. Archiving / leaving team mode / restoring is the signed-in person's, on the Web.)
  *  - set-permission-mode to `default` (tightening)
  */
 export function machineMayAct(action: TeamAction): boolean {
@@ -78,7 +80,6 @@ export function machineMayAct(action: TeamAction): boolean {
         case 'claim-operation': case 'complete-operation': case 'fail-operation':
         case 'session-event': case 'message-delivered': case 'join':
             return true;
-        case 'archive': return action.keepLeadSession === true;
         case 'set-permission-mode': return action.permissionMode === 'default';
         default: return false;
     }
@@ -86,7 +87,8 @@ export function machineMayAct(action: TeamAction): boolean {
 
 export function guardTeamAction(request: Caller, reply: FastifyReply, action: TeamAction): boolean {
     if (requestTokenKind(request) === 'human' || machineMayAct(action)) return true;
-    return guardOwnerAction(request, reply, `teams.actions.${action.type}`);
+    // B-962: the refusal of an archive tells the caller (an agent, the CLI) that the person confirms it on the Web.
+    return guardOwnerAction(request, reply, `teams.actions.${action.type}`, ownerGuardMode(), action.type === 'archive' || action.type === 'restore' ? { hint: TEAM_ARCHIVE_HUMAN_HINT } : undefined);
 }
 
 /** Creating a team with `launch` starts agents on a machine, so it is the owner's; a plain create stays open. */

@@ -360,6 +360,8 @@ export const MachineMetadataSchema = z.object({
   teamLaunchVersion: z.number().int().positive().optional(),
   /** B-689: daemon acts on the owner's team `retry-operation`. Absent on old daemons. */
   teamRetryVersion: z.number().int().positive().optional(),
+  /** B-962: the daemon continues members' own sessions on 「恢复团队」. Absent on old daemons. */
+  teamRestoreVersion: z.number().int().positive().optional(),
   /** B-586: daemon serves the `worktree-*` RPCs (absent on old daemons). */
   worktreeVersion: z.number().int().positive().optional(),
   /** B-755: daemon serves `fs-mkdir` (「新建工作目录」). */

@@ -2788,6 +2788,10 @@ export async function startDaemon(): Promise<void> {
         if (remaining.some(isPidAlive)) throw new Error('Worker still running; cleanup retained');
       },
       live: id => [...pidToTrackedSession.values()].some(s => s.happySessionId === id && isPidAlive(s.pid)),
+      // B-962: 「恢复团队」 continues a member in place — a live session (a lead that left team mode) restarts with its team env, a stopped one resumes.
+      relaunch: async id => [...pidToTrackedSession.values()].some(s => s.happySessionId === id && isPidAlive(s.pid))
+        ? restartSession(id, { keepPublishedPermissionMode: true })
+        : resumeSession(id, { keepPublishedPermissionMode: true }),
       ...(accountServiceRef ? { resolveAccount: (agent: 'claude' | 'codex', requested: string | null | undefined) => accountServiceRef!.resolveSpawnAccount(agent, requested) } : {}),
       log: message => logger.debug(`[DAEMON RUN] ${message}`),
     });
@@ -2906,7 +2910,7 @@ export async function startDaemon(): Promise<void> {
     // Publish the executing daemon's capability after the worker is installed.
     void apiMachine.updateMachineMetadata(current => ({
       // B-718: the running CLI version, not the one that first registered the row.
-      ...withRunningCliFacts(current, initialMachineMetadata), teamsVersion: 1, teamLaunchVersion: 1,
+      ...withRunningCliFacts(current, initialMachineMetadata), teamsVersion: 1, teamLaunchVersion: 1, teamRestoreVersion: 1, // B-962
       // B-689: this daemon acts on the owner's retry-operation (web gates「重试启动」).
       teamRetryVersion: TEAM_RETRY_CAPABILITY_VERSION,
       // B-586: this daemon serves the worktree-* RPCs (web gates 「在新 worktree 中」 on it).

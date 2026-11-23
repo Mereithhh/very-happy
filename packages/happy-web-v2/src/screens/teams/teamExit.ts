@@ -6,6 +6,7 @@ import { t } from "@/text";
 import { refreshTeamNavigation } from "@/screens/sessions/useTeamNavigation";
 import { storage } from "@/sync/storage";
 import { daemonRpcFlagSupported } from "@/sync/closedTerminals";
+import { actOnTeam } from "@/sync/teams";
 
 /**
  * B-877 「退出团队模式」: a lead session goes on as an ordinary one. The lead's daemon
@@ -62,8 +63,11 @@ export function teamExitOutcome(reply: TeamExitReply | undefined, thrown?: unkno
   return { ok: true, message: done?.restarted ? "teams.exitTeamModeDone" : "teams.exitTeamModeDoneNoRestart" };
 }
 
-/** Confirm, run on the lead's machine, report. Resolves true when the session left team mode. */
-export async function confirmExitTeamMode(machineId: string | null | undefined, sessionId: string): Promise<boolean> {
+/**
+ * Confirm, archive as the signed-in person (B-962: the server refuses the daemon's machine token), then
+ * let the lead's machine finish (scope, marker, restart). Resolves true when the session left team mode.
+ */
+export async function confirmExitTeamMode(teamId: string, machineId: string | null | undefined, sessionId: string): Promise<boolean> {
   const daemonState = machineId ? storage.getState().machines[machineId]?.daemonState : undefined;
   const supported = teamExitSupported(daemonState);
   // A known daemon without the flag is an older CLI: say so now, before the confirm (no 15 s wait, no raw error).
@@ -73,6 +77,13 @@ export async function confirmExitTeamMode(machineId: string | null | undefined, 
   }
   if (!await Modal.confirm(t("teams.exitTeamMode"), t("teams.exitTeamModeDescription"), { confirmText: t("teams.exitTeamMode"), destructive: true })) return false;
   let outcome: TeamExitOutcome;
+  try {
+    await actOnTeam(teamId, { type: "archive", keepLeadSession: true, source: "web" }, crypto.randomUUID());
+  } catch (error) {
+    toast.error(`${t("teams.exitTeamMode")}: ${error instanceof Error ? error.message : String(error)}`);
+    void refreshTeamNavigation();
+    return false;
+  }
   if (!machineId) outcome = { ok: false, message: "teams.exitTeamModeOffline", detail: "no machine" };
   else {
     try {

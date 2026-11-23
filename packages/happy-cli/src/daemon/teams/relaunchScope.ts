@@ -1,10 +1,10 @@
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { TeamState } from '@slopus/happy-wire';
 import { teamExitMarkerPath, type TeamExitMarker } from '@/teams/exitNotice';
 import { detectTeamUserLanguage, teamOwnerText } from '@/teams/language';
 import { ensurePrivateDirectorySync, writePrivateFileSync } from '@/utils/secureFiles';
-import { readReceipt, receiptPath } from './journal';
+import { readReceipt, receiptPath, type TeamEffectReceipt } from './journal';
 
 export { teamExitMarkerPath };
 
@@ -27,8 +27,48 @@ export function teamScopeFilePath(home: string, operationId: string): string {
     return join(home, 'teams', 'scopes', `${operationId}.json`);
 }
 
-/** The team launch behind this session: its metadata, else this machine's newest spawn receipt for it. */
+/** B-962: 「恢复团队」 continued this session under a new launch; its relaunches use that launch (the session metadata still names the first one). */
+export function teamRestorePointerPath(home: string, sessionId: string): string {
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(sessionId)) throw new Error('Invalid session id');
+    return join(home, 'teams', 'restored', `${sessionId}.json`);
+}
+export function writeTeamRestorePointer(home: string, sessionId: string, operationId: string): void {
+    ensurePrivateDirectorySync(join(home, 'teams', 'restored'));
+    writePrivateFileSync(teamRestorePointerPath(home, sessionId), JSON.stringify({ operationId, at: Date.now() }));
+}
+function restoredOperationId(home: string, sessionId: string): string | null {
+    try {
+        const value = JSON.parse(readFileSync(teamRestorePointerPath(home, sessionId), 'utf8'))?.operationId;
+        return typeof value === 'string' && OPERATION_ID.test(value) ? value : null;
+    } catch { return null; }
+}
+
+/**
+ * B-962: the newest spawn receipt of this machine that ran `sessionId` with a worktree — where a restored
+ * member continues (the original launch's worktree, repository and branch; its cleanup finds them here).
+ */
+export function sessionLaunchReceipt(home: string, sessionId: string): TeamEffectReceipt | null {
+    let names: string[];
+    try { names = readdirSync(join(home, 'teams', 'effects')); } catch { return null; }
+    let newest: { receipt: TeamEffectReceipt; at: number } | null = null;
+    for (const name of names) {
+        if (!name.endsWith('.json')) continue;
+        const id = name.slice(0, -'.json'.length);
+        if (!OPERATION_ID.test(id)) continue;
+        try {
+            const receipt = readReceipt(home, id);
+            if (receipt?.sessionId !== sessionId || !receipt.directory || !receipt.repository || !receipt.branch) continue;
+            const at = statSync(receiptPath(home, id)).mtimeMs;
+            if (!newest || at > newest.at) newest = { receipt, at };
+        } catch { /* a corrupt receipt is never evidence */ }
+    }
+    return newest?.receipt ?? null;
+}
+
+/** The team launch behind this session: a restore's (B-962), its metadata, else this machine's newest spawn receipt for it. */
 export function relaunchTeamOperationId(home: string, sessionId: string, metadata: { teamOperationId?: unknown } | undefined): string | null {
+    const restored = restoredOperationId(home, sessionId);
+    if (restored) return restored;
     const fromMetadata = metadata?.teamOperationId;
     if (typeof fromMetadata === 'string' && OPERATION_ID.test(fromMetadata)) return fromMetadata;
     let names: string[];

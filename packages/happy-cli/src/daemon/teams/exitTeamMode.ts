@@ -12,6 +12,8 @@ import { launchTeamId, relaunchTeamOperationId, teamExitMarker, teamExitMarkerPa
  * scope file goes and a marker makes every later relaunch an ordinary one (B-730
  * would otherwise rebuild the team env from the session metadata).
  */
+/** B-962: what `teams exit` answers in an agent's environment (and what the server's refusal says too). */
+export const TEAMS_EXIT_REFUSAL = 'Exiting team mode stops every member and cancels their unfinished tasks, so it needs the person: ask the user to open the team page (or the lead conversation) on the Web, choose ⋯ → 「退出团队模式」 and confirm. 退出团队模式会停掉所有成员、取消未完成的任务，需要用户本人在网页 ⋯ 菜单里点「退出团队模式」确认；agent 不能代为执行。';
 export type TeamExitHttp = {
     get: (path: string) => Promise<{ data: { team: TeamState } }>;
     post: (path: string, body: unknown) => Promise<{ data: TeamResponse }>;
@@ -54,7 +56,14 @@ export async function exitTeamMode(input: { home: string; sessionId: string; met
     if (!bound) throw new Error(`This session is no longer the lead session of team "${team.name}"; only its current lead session can exit team mode`);
     const archiving = team.archivedAt === undefined;
     if (archiving) {
-        team = (await http.post(`${path}/actions`, { requestId: `team-exit-${sessionId}`.slice(0, 128), action: { type: 'archive', keepLeadSession: true } })).data.team;
+        // B-962: the server archives only for the person on the Web (the daemon's machine token is refused); the Web
+        // archives first and then calls this, which only finishes this machine's side.
+        try {
+            team = (await http.post(`${path}/actions`, { requestId: `team-exit-${sessionId}`.slice(0, 128), action: { type: 'archive', keepLeadSession: true, source: 'cli' } })).data.team;
+        } catch (error: any) {
+            if (error?.response?.status === 403) throw new Error(TEAMS_EXIT_REFUSAL);
+            throw error;
+        }
     }
     // Only this archive can tell: a lead an earlier ordinary archive stopped and the owner resumed is live again
     // with its team env, and must restart without it (QA49 P2-3).

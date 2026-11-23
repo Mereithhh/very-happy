@@ -147,7 +147,8 @@ describe('spawn / team / automation first messages carry the choice (QA28 P2-5)'
         expect(sender).toContain('...(options.effortIntent !== undefined ? { effortIntent: options.effortIntent } : {}),');
     });
     it('a team member and an automation send the resolved meta with its intent', () => {
-        expect(worker).toContain("sentFrom: 'team', ...teamInitialModelMeta(op.model) });");
+        // B-962: a restored member continues its own conversation, which already carries its model choice.
+        expect(worker).toContain("sentFrom: 'team', ...(receipt.restoring ? {} : teamInitialModelMeta(op.model)) });");
         expect(runner).toContain("const meta = resolveFirstMessageMeta({ agent, permissionMode, explicitModel: action.model ?? undefined, capabilities });");
         expect(runner).toContain("await send(spawned.sessionId, `${header}\\n${action.prompt}`, { localId: `automation-${run.id}`, ...meta });");
     });

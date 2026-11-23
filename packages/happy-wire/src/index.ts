@@ -11,6 +11,7 @@ export * from "./teams";
 export * from "./teamWorktree";
 export * from "./teamActivity";
 export * from "./teamLead";
+export * from "./teamRestore";
 export * from "./automations";
 export * from "./projects";
 

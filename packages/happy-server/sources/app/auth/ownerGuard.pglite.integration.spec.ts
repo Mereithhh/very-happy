@@ -133,7 +133,7 @@ describe('B-927a owner guard (startApi, pglite)', () => {
                 expect(await act(teamId, { type: 'handoff', ...decision(task), assigneeBotId: lead.botId }, token)).toEqual(REFUSED);
                 expect(await act(teamId, { type: 'message', taskId: task.id, body: 'hi' }, token)).toEqual(REFUSED);
                 expect(await act(teamId, { type: 'set-permission-mode', permissionMode: 'bypassPermissions' }, token)).toEqual(REFUSED);
-                expect(await act(teamId, { type: 'archive' }, token)).toEqual(REFUSED);
+                expect(await act(teamId, { type: 'archive' }, token)).toMatchObject({ ...REFUSED, body: { ...REFUSED.body, hint: expect.stringContaining('Web') } });
                 expect(await act(teamId, { type: 'schedule-create', name: 's', botId: lead.botId, body: 'b', runAt: Date.now() + 120_000 }, token)).toEqual(REFUSED);
             }
             expect((await readTeam(teamId)).tasks.find((t: any) => t.id === task.id).status).toBe('submitted');
@@ -185,8 +185,17 @@ describe('B-927a owner guard (startApi, pglite)', () => {
             expect((await act(teamId, { type: 'set-permission-mode', permissionMode: 'default' }, machine)).status).toBe(200);
             expect(await act(teamId, { type: 'set-permission-mode', permissionMode: 'bypassPermissions' }, machine)).toEqual(REFUSED);
             expect((await act(teamId, { type: 'set-permission-mode', permissionMode: 'bypassPermissions' })).status).toBe(200);
-            // `team exit`: archive that keeps the Lead session.
-            expect((await act(teamId, { type: 'archive', keepLeadSession: true }, machine)).status).toBe(200);
+            // B-962: `teams exit` (the daemon's machine token) no longer archives: the person confirms it on the Web.
+            const exit = await act(teamId, { type: 'archive', keepLeadSession: true }, machine);
+            expect(exit.status).toBe(403);
+            expect(exit.body.error).toBe('owner_login_required');
+            expect(exit.body.hint).toContain('退出团队模式');
+            expect((await readTeam(teamId)).archivedAt).toBeUndefined();
+            expect((await act(teamId, { type: 'archive', keepLeadSession: true, source: 'web' })).status).toBe(200);
+            const archived = await readTeam(teamId);
+            expect(archived.archive).toMatchObject({ source: 'web', by: 'owner-login', keepLeadSession: true });
+            // Restoring is the person's too.
+            expect((await act(teamId, { type: 'restore' }, machine)).status).toBe(403);
             // A team create with a launch starts agents on a machine: the owner's.
             const launch = { goal: 'g', directory: '/tmp/x', assistant: 'claude' };
             expect(await call('POST', '/v1/teams', { name: 'l', machineId, requestId: rid(), launch }, as(machine))).toEqual(REFUSED);

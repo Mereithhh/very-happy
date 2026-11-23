@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { projectAgentProfilesFor, type TeamActionRequest, type TeamResponse, type TeamState, type TeamOperation, type TeamMessage, type TeamLaunch, type TeamProjectChoice } from '@slopus/happy-wire';
+import { TEAM_RESTORE_WINDOW_MS, projectAgentProfilesFor, type TeamActionRequest, type TeamResponse, type TeamState, type TeamOperation, type TeamMessage, type TeamLaunch, type TeamProjectChoice } from '@slopus/happy-wire';
 import { readDefaults } from '@/app/projects/rules';
 import { bindNewTeamProjectTx } from '@/app/projects/store';
 import { applyTeamTransitionsTx } from '@/app/attention/store';
@@ -15,7 +15,7 @@ import { machineJoinRefusal, ownerGuardMode } from '@/app/auth/ownerGuard';
 import { OWNER_LOGIN_REQUIRED } from '@/app/auth/tokenKind';
 import { log, warn } from '@/utils/log';
 import { renewTeamCredentialTx, TEAM_CREDENTIAL_TTL_MS } from './credentials';
-import { adoptLeadAccount, otherTeamBinding, reduceTeam, requireTeam, sessionInOtherTeamMessage, teamView, transferSessionOut, TeamError, type TeamActor } from './reducer';
+import { adoptLeadAccount, otherTeamBinding, reduceTeam, restoreBots, restoreSessionId, requireTeam, sessionInOtherTeamMessage, teamView, transferSessionOut, TeamError, type TeamActor } from './reducer';
 
 type Principal = { accountId: string; actor: TeamActor; credentialId?: string };
 type Row = { id: string; accountId: string; version: number; projectId?: string | null; state: TeamState };
@@ -141,6 +141,42 @@ async function guardSessionTeam(tx: Tx, accountId: string, sessionId: string, ta
         await persistTransition(tx, row, transferSessionOut(row.state, sessionId, targetTeamId, Date.now()));
     }
 }
+/**
+ * B-962: tasks and undelivered messages an archive cancelled that compaction already moved to `TeamArchive`
+ * (possible before B-962 under record pressure) go back into the state a restore reads. Recorded ids first,
+ * else the archive's moment (`closedAt` / `cancelledAt` == `archivedAt`).
+ */
+async function withRestoreArchive(tx: Tx, state: TeamState): Promise<TeamState> {
+    const at = state.archivedAt!;
+    const ids = JSON.stringify([...(state.archive?.at === at ? state.archive.restorable?.tasks.map(t => t.id) ?? [] : []), ...(state.archive?.at === at ? state.archive.restorable?.messageIds ?? [] : [])]);
+    const rows = await tx.$queryRaw<{ kind: string; state: any }[]>`SELECT "kind","state" FROM "TeamArchive" WHERE "teamId"=${state.id} AND (
+        ("kind"='task' AND ("id" IN (SELECT jsonb_array_elements_text(${ids}::jsonb)) OR ("state"->>'closedAt')::numeric=${at}))
+        OR ("kind"='message' AND "state"->>'scheduleId' IS NULL AND "state"->'deliveredAt'='null'::jsonb AND ("id" IN (SELECT jsonb_array_elements_text(${ids}::jsonb)) OR ("state"->>'cancelledAt')::numeric=${at})))`;
+    if (!rows.length) return state;
+    const taskIds = new Set(state.tasks.map(t => t.id)); const messageIds = new Set(state.messages.map(m => m.id));
+    const tasks = rows.filter(r => r.kind === 'task' && !taskIds.has(r.state.id)).map(r => r.state as TeamState['tasks'][number]);
+    const messages = rows.filter(r => r.kind === 'message' && !messageIds.has(r.state.id)).map(r => r.state as TeamMessage);
+    return { ...state, tasks: [...state.tasks, ...tasks], messages: mergeArchivedMessages(state.messages, messages) };
+}
+/** B-962: a restored member continues its own conversation unless another live team holds it now — then the owner chooses to skip it. */
+async function guardRestore(tx: Tx, accountId: string, state: TeamState, skip: Set<string>): Promise<void> {
+    const count = await tx.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM "AgentTeam" WHERE "accountId"=${accountId} AND "state"->>'archivedAt' IS NULL`;
+    requireCapacity(Number(count[0].count) < 32, 'team_limit', Number(count[0].count), 32);
+    const conflicts: { botId: string; botName: string; root: boolean; sessionId: string; teamId: string; teamName: string }[] = [];
+    for (const bot of restoreBots(state)) {
+        if (skip.has(bot.id) || bot.transferredTo) continue;
+        const sessionId = restoreSessionId(bot);
+        if (!sessionId) continue;
+        const rows = await tx.$queryRaw<{ id: string }[]>`
+            SELECT "id" FROM "AgentTeam" WHERE "accountId"=${accountId} AND "id"<>${state.id} AND "state"->>'archivedAt' IS NULL
+            AND EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE("state"->'bots', '[]'::jsonb)) b WHERE b->>'sessionId'=${sessionId}) ORDER BY "createdAt" LIMIT 1`;
+        if (!rows[0]) continue;
+        const other = await load(tx, rows[0].id, accountId);
+        const binding = otherTeamBinding([other.state], sessionId, state.id);
+        if (binding) conflicts.push({ botId: bot.id, botName: bot.name, root: bot.root, sessionId, teamId: binding.teamId, teamName: binding.teamName });
+    }
+    if (conflicts.length) throw new TeamError('restore_conflict', 409, { conflicts, hint: 'Some conversations of this team are now in another live team. Restore again with those members skipped: each starts a fresh session from its repository, and the other team keeps the original conversation untouched. 部分成员的原会话已在另一个团队里；可跳过它们恢复：这些成员会在原仓库新起会话，原会话不动。' });
+}
 async function credential(tx: Tx, team: TeamState, botId: string): Promise<{ botId: string; token: string }> {
     const bot = team.bots.find(b => b.id === botId)!;
     const prior = await tx.$queryRaw<{ tokenEnc: string }[]>`SELECT "tokenEnc" FROM "TeamAgentCredential" WHERE "teamId"=${team.id} AND "botId"=${botId} AND "generation"=${bot.generation} AND "revokedAt" IS NULL AND "expiresAt">now() LIMIT 1`;
@@ -192,16 +228,18 @@ export async function createTeam(accountId: string, input: { name: string; machi
         return { ...adopted, projectId: bound.state.projectId };
     });
 }
-export async function listTeams(accountId: string, machineId?: string): Promise<TeamState[]> {
+export async function listTeams(accountId: string, machineId?: string, opts: { restorable?: boolean } = {}): Promise<TeamState[]> {
     assertTeamsEnabled(accountId);
     return inTx(async tx => {
         const rows = machineId
             ? await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AgentTeam" WHERE "accountId"=${accountId} AND "machineId"=${machineId} ORDER BY "createdAt"`
-            : await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AgentTeam" WHERE "accountId"=${accountId} AND "state"->>'archivedAt' IS NULL ORDER BY "createdAt"`;
+            : opts.restorable
+                ? await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AgentTeam" WHERE "accountId"=${accountId} AND ("state"->>'archivedAt' IS NULL OR ("state"->>'archivedAt')::numeric > ${Date.now() - TEAM_RESTORE_WINDOW_MS}) ORDER BY "createdAt"`
+                : await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AgentTeam" WHERE "accountId"=${accountId} AND "state"->>'archivedAt' IS NULL ORDER BY "createdAt"`;
         const teams: TeamState[] = [];
         // B-959: the Web list carries open tasks' archived messages; the daemon's poll (machineId) does not need them.
         for (const row of rows) { const { state } = await load(tx, row.id, accountId); teams.push(machineId ? state : await withOpenTaskArchive(tx, state)); }
-        return teams.filter(team => team.archivedAt === undefined || (machineId && team.operations.some(op => ['pending', 'claimed', 'unknown', 'failed'].includes(op.status) && op.error !== 'task_closed_before_spawn')));
+        return teams.filter(team => team.archivedAt === undefined || (opts.restorable && !machineId) || (machineId && team.operations.some(op => ['pending', 'claimed', 'unknown', 'failed'].includes(op.status) && op.error !== 'task_closed_before_spawn')));
     });
 }
 export async function readTeam(teamId: string, auth: { accountId: string } | { token: string }): Promise<TeamState> {
@@ -256,9 +294,21 @@ export async function actOnTeam(teamId: string, auth: { accountId: string; machi
         }
         if (action.type === 'join' && p.actor.kind === 'owner' && row.state.archivedAt === undefined) await guardSessionTeam(tx, p.accountId, action.sessionId, teamId, action.transfer === true);
         const now = Date.now();
+        // B-962: 「恢复团队」 — put back what compaction moved out (before B-962 it could), refuse a session another live team holds.
+        let base = row.state;
+        if (action.type === 'restore' && p.actor.kind === 'owner' && base.archivedAt !== undefined) {
+            base = await withRestoreArchive(tx, base);
+            await guardRestore(tx, p.accountId, base, new Set(action.skipBotIds ?? []));
+        }
         // B-822: closed work moves to the archive before the action, so a team at a limit is unblocked by its next write.
         const projectAccounts = action.type === 'delegate' && action.agentProfile === undefined ? await teamProjectAccounts(tx, teamId, row.projectId) : null;
-        const reduced = reduceTeam(compactTeam(row.state, now), p.actor, action, { now, id: randomUUID, quiet: opts.quiet, projectAccounts });
+        const reduced = reduceTeam(compactTeam(base, now), p.actor, action, { now, id: randomUUID, quiet: opts.quiet, projectAccounts, ownerBy: 'accountId' in auth ? (auth.machine ? 'machine' : 'owner-login') : undefined });
+        if (base !== row.state) {
+            // The records taken back from the archive live in the team again.
+            const liveTasks = new Set(row.state.tasks.map(t => t.id)); const liveMessages = new Set(row.state.messages.map(m => m.id));
+            const taken = JSON.stringify([...base.tasks.filter(t => !liveTasks.has(t.id)).map(t => `task:${t.id}`), ...base.messages.filter(m => !liveMessages.has(m.id)).map(m => `message:${m.id}`)]);
+            await tx.$executeRaw`DELETE FROM "TeamArchive" WHERE "teamId"=${teamId} AND ("kind" || ':' || "id") IN (SELECT jsonb_array_elements_text(${taken}::jsonb))`;
+        }
         await persistTransition(tx, row, reduced.team);
         // B-766: a root task's submit has no recipient in the reducer — it becomes a「待你验收」briefing item instead.
         await applyTeamTransitionsTx(tx, p.accountId, row.state, reduced.team);

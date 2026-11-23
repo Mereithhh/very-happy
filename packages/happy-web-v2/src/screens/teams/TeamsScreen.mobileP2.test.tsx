@@ -88,5 +88,5 @@ it('归档团队 asks through the standard destructive confirm; cancel does noth
   expect(host.querySelector('dialog')).toBeNull();
   api.confirm.mockResolvedValueOnce(true);
   await act(async () => archive.click());
-  expect(api.actOnTeam).toHaveBeenCalledWith('t1', { type: 'archive' }, expect.any(String));
+  expect(api.actOnTeam).toHaveBeenCalledWith('t1', { type: 'archive', source: 'web' }, expect.any(String));
 });

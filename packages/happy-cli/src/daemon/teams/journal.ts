@@ -20,6 +20,10 @@ export interface TeamEffectReceipt {
     retryAt?: number;
     /** B-689: the op.retryRequestedAt this daemon already acted on. */
     retryConsumed?: number;
+    /** B-962: this launch continues `sessionId` in its own worktree (「恢复团队」) instead of spawning a new one. */
+    restoring?: true;
+    /** B-962: continuing the previous session failed; this launch starts fresh (a new worktree from the repository). */
+    restoreFallback?: string;
 }
 export function receiptPath(home: string, operationId: string): string {
     if (!/^[a-zA-Z0-9_-]{1,128}$/.test(operationId)) throw new Error('Invalid team operation id');

@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { readdirSync, readFileSync, unlinkSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
+import { sessionLaunchReceipt, teamExitMarkerPath, teamRestorePointerPath, writeTeamRestorePointer } from './relaunchScope';
 import { agentProfileUnavailableReason, MODEL_INTENT_CONFIG, type TeamOperation, type TeamState, type TeamResponse, type TeamAction } from '@slopus/happy-wire';
 import { configuration } from '@/configuration';
 import { readPersistedSessions } from '@/persistence';
@@ -38,6 +39,8 @@ export interface TeamWorkerDeps {
     resolveAccount?: (agent: 'claude' | 'codex', requested: string | null | undefined) => string | null;
     home?: string;
     serverUrl?: string;
+    /** B-962: continue an existing session in place (restart a live one, resume a stopped one) with the env its relaunch derives. Absent = restores start fresh. */
+    relaunch?: (sessionId: string) => Promise<SpawnSessionResult>;
 }
 
 /** B-850d: the spawn's `agentProfileId` for an operation (undefined = the machine default). */
@@ -165,6 +168,17 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                     // B-850d: refuse before preparing anything; waits for the owner's「重试启动」after a fix.
                     const refusal = teamAccountRefusal(deps.resolveAccount, op);
                     if (refusal) { await refuseForAccount(op, receipt, refusal); return; }
+                    // B-962: 「恢复团队」 — continue the member's own conversation in its own worktree.
+                    if (op.restoreVersion === 1 && op.resumeSessionId && !receipt.restoreFallback) {
+                        const continued = await continueSession(op, receipt, credential);
+                        if (continued) receipt = continued;
+                        else receipt = readReceipt(home, op.id)!;
+                    }
+                }
+                if (receipt.phase === 'prepared') {
+                    if (!credential) credential = (await action(op.teamId, `claim-${op.id}`, { type: 'claim-operation', operationId: op.id, machineId: deps.machineId, ...(op.teamLaunchVersion === 1 ? { teamLaunchVersion: 1 as const } : {}) })).credential;
+                    if (!credential) throw new Error('No scoped credential for worker');
+                    if (!op.directory) throw new Error('No repository selected for worker');
                     let resource: Awaited<ReturnType<typeof prepareTeamWorktree>>;
                     try {
                         // B-706: reactivating a bot must never reuse its removed worktree path.
@@ -208,6 +222,12 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                     receipt = { ...receipt, sessionId: spawned.sessionId, phase: 'spawned' };
                     writeReceipt(home, receipt);
                 }
+                if (receipt.phase === 'spawning' && receipt.restoring) {
+                    // B-962: a continued session is the receipt's own; it either came back or the relaunch is retried.
+                    if (!deps.live(receipt.sessionId!)) throw new Error('Restored session did not come back; it will be relaunched');
+                    receipt = { ...receipt, phase: 'spawned' };
+                    writeReceipt(home, receipt);
+                }
                 if (receipt.phase === 'spawning') {
                     // The wrapper registers metadata + key before spawn completes. A persisted exact
                     // correlation is positive evidence, while absence is NOT evidence of failure.
@@ -229,7 +249,10 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                         return;
                     }
                     const key = await waitForSessionKey(receipt.sessionId!, 10_000);
-                    await sendUserMessage(receipt.sessionId!, key, teamInitialPrompt(op.prompt, bot?.root === true, receipt.directory, detectTeamUserLanguage(teamOwnerText(current.tasks) ?? op.prompt)), 'teams', { localId: `teams-initial-${op.id}`, sentFrom: 'team', ...teamInitialModelMeta(op.model) });
+                    // B-962: a continued conversation already has the team skill; it reads what changed.
+                    const base = receipt.restoreFallback ? `[Very Happy: team restored] Your previous conversation could not be continued (${receipt.restoreFallback}), so this is a fresh session in a new worktree; earlier work is on the previous worktree's branch if it was committed.\n\n${op.prompt}` : op.prompt;
+                    const prompt = receipt.restoring ? op.prompt : teamInitialPrompt(base, bot?.root === true, receipt.directory, detectTeamUserLanguage(teamOwnerText(current.tasks) ?? op.prompt));
+                    await sendUserMessage(receipt.sessionId!, key, prompt, 'teams', { localId: `teams-initial-${op.id}`, sentFrom: 'team', ...(receipt.restoring ? {} : teamInitialModelMeta(op.model)) });
                     receipt = { ...receipt, phase: 'delivered' };
                     writeReceipt(home, receipt);
                 }
@@ -292,6 +315,40 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
             await action(op.teamId, `failure-${op.id}-${receipt.phase}-${createHash('sha256').update(detail).digest('hex').slice(0, 12)}${sessionStopped ? '-stopped' : ''}`, { type: 'fail-operation', operationId: op.id, machineId: deps.machineId, claimId: receipt.claimId, error: detail.slice(0, 1000), unknown, ...(sessionStopped ? { sessionStopped: true } : {}) }).catch(() => {});
             deps.log(`Teams operation ${op.id} ${unknown ? 'needs reconciliation' : 'will retry'}`);
         }
+    }
+
+    /**
+     * B-962: the restore launch of a member continues `op.resumeSessionId` in the worktree it ran in:
+     * scope for the new launch, this machine forgets the exit (a lead that left team mode), relaunches
+     * point at this launch, then the session restarts (live) or resumes (stopped). Returns the receipt
+     * in `spawned`, or null after recording a fallback (the caller then launches fresh, like B-945).
+     */
+    async function continueSession(op: TeamOperation, receipt: TeamEffectReceipt, credential: TeamResponse['credential']): Promise<TeamEffectReceipt | null> {
+        const sessionId = op.resumeSessionId!;
+        const fallback = (reason: string) => { writeReceipt(home, { ...receipt, restoreFallback: reason.slice(0, 300) }); deps.log(`Teams operation ${op.id}: ${sessionId} not continued (${reason}); launching fresh`); return null; };
+        if (!deps.relaunch) return fallback('this daemon cannot relaunch sessions');
+        if (!credential) return fallback('no scoped credential');
+        const origin = sessionLaunchReceipt(home, sessionId);
+        if (!origin) return fallback('its launch is not known on this machine');
+        if (!existsSync(origin.directory!)) return fallback('its worktree is gone');
+        const scopes = join(home, 'teams', 'scopes');
+        ensurePrivateDirectorySync(scopes);
+        const scopeFile = join(scopes, `${op.id}.json`);
+        writePrivateFileSync(scopeFile, JSON.stringify({ serverUrl: server, scopeToken: credential.token, teamId: op.teamId, botId: op.botId, taskId: op.taskId, attemptId: op.attemptId }));
+        const next: TeamEffectReceipt = { ...receipt, directory: origin.directory, repository: origin.repository, branch: origin.branch, scopeFile, sessionId, restoring: true, phase: 'spawning' };
+        writeReceipt(home, next);
+        try { unlinkSync(teamExitMarkerPath(home, sessionId)); } catch (error: any) { if (error?.code !== 'ENOENT') throw error; }
+        writeTeamRestorePointer(home, sessionId, op.id);
+        const result = await deps.relaunch(sessionId);
+        if (result.type !== 'success') {
+            try { unlinkSync(teamRestorePointerPath(home, sessionId)); } catch { /* best effort */ }
+            receipt = { ...next, phase: 'prepared', restoring: undefined, sessionId: undefined, directory: undefined, repository: undefined, branch: undefined, scopeFile: undefined };
+            return fallback(result.type === 'error' ? result.errorMessage : result.type);
+        }
+        const spawned: TeamEffectReceipt = { ...next, phase: 'spawned' };
+        writeReceipt(home, spawned);
+        deps.log(`Teams operation ${op.id}: continued ${sessionId} in ${origin.directory}`);
+        return spawned;
     }
 
     async function deliver(team: TeamState) {
@@ -359,7 +416,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                 const status = axios.isAxiosError(error) ? error.response?.status : undefined;
                 if (status !== 404) deps.log('Teams schedule advancement unavailable; regular reconciliation continues');
             }
-            const { data } = await http.get<{ operations: TeamOperation[]; teams: TeamState[] }>('/v1/teams/operations', { params: { machineId: deps.machineId, schedulesVersion: 1, teamLaunchVersion: 1, teamArchiveVersion: 1 } });
+            const { data } = await http.get<{ operations: TeamOperation[]; teams: TeamState[] }>('/v1/teams/operations', { params: { machineId: deps.machineId, schedulesVersion: 1, teamLaunchVersion: 1, teamArchiveVersion: 1, teamRestoreVersion: 1 } });
             knownSessionIds = new Set((data.teams ?? []).flatMap(team => team.bots.flatMap(bot => bot.sessionId ? [bot.sessionId] : [])));
             // Limit simultaneous launch IO; a running model does not occupy this polling slot.
             for (const op of data.operations) {

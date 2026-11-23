@@ -423,3 +423,14 @@
 
 /* B-899: one link per shared project, stacked. */
 .teams-empty-links { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); }
+/* B-962: 「这个团队已归档」+「恢复团队」, and the list's 「最近归档」. */
+.team-restore .team-restore-conflicts { margin-top: var(--sp-3); }
+.team-restore .team-restore-conflicts h3 { font-size: var(--fs-14); margin: 0 0 var(--sp-2); }
+.team-restore .team-restore-conflicts ul { margin: 0 0 var(--sp-2); padding-left: var(--sp-4); }
+.team-restore-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.teams-restorable { margin-top: var(--sp-6); }
+.teams-restorable h2 { font-size: var(--fs-14); margin: 0 0 var(--sp-1); }
+.teams-restorable p { color: var(--text-dim); margin: 0 0 var(--sp-2); }
+.teams-restorable ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
+.teams-restorable li { overflow-wrap: anywhere; }
+.teams-restorable li span { color: var(--text-dim); }
