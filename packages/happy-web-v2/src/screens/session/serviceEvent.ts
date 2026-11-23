@@ -1,3 +1,5 @@
+import { isDshRawNoKeyLine } from './goalNotice';
+
 export type ServiceEventPresentation =
     | { kind: 'hidden' }
     | { kind: 'stopped'; textKey: 'session.chat.stoppedByYou' }
@@ -36,6 +38,8 @@ const CLAUDE_AUTH_FAILURE = /^authentication_failed$|failed to authenticate|oaut
 
 export function presentServiceEvent(message: string): ServiceEventPresentation {
     const trimmed = message.trim();
+    // B-960: dsh's raw "no API key" words travel with the wrapper's hint, which says it once.
+    if (isDshRawNoKeyLine(trimmed)) return { kind: 'hidden' };
     const sdkErrorPrefix = 'claude code returned an error result:';
     const payload = trimmed.toLowerCase().startsWith(sdkErrorPrefix)
         ? trimmed.slice(sdkErrorPrefix.length).trim()

@@ -78,18 +78,33 @@ export function dshSpawnRefusal(problem: DshPrerequisiteProblem, dshPath?: strin
     return `DeepSeek Harness needs Node.js ${DSH_MIN_NODE}+, and the node that \`dsh\`${where} runs on is ${problem.nodeVersion ?? 'missing'}. Install Node.js ${DSH_MIN_NODE}+ (e.g. \`nvm install 24\`) and install dsh under it with ${DSH_INSTALL_COMMAND}; it is picked up within 5 minutes, no daemon restart needed.`;
 }
 
+/** B-960: what the wrapper knows when dsh says it has no key (the session ran on the machine login). */
+export type DshHintContext = {
+    /** A usable DeepSeek account on this machine (pickMachineLoginFallback), or null / absent = none. */
+    accountLabel?: string | null;
+};
+
+/**
+ * B-960: the machine login has no key. Fixed English — the Web recognises
+ * these exact lines (goalNotice.ts parseDshKeyHint) and shows its own text.
+ * Only when there is no account does it say to add one.
+ */
+export const DSH_NO_KEY_ADD_ACCOUNT = `DeepSeek Harness has no API key on this machine. Add a DeepSeek account under Settings → Models & accounts, or set ${DSH_API_KEY_ENV} in the daemon's environment.`;
+export function dshMissingKeyHint(accountLabel: string | null): string {
+    if (!accountLabel) return DSH_NO_KEY_ADD_ACCOUNT;
+    return `DeepSeek Harness has no API key: this session runs on the machine login, which has no DeepSeek key on this machine. Set this machine's DeepSeek default to "${accountLabel}" under Settings → Models & accounts, or pick it when starting a session.`;
+}
+
 /**
  * The message for a backend failure that means dsh is unusable, otherwise null:
  * a missing executable (`spawn dsh ENOENT`, PATH changed since the preflight)
  * or a missing / rejected DeepSeek API key (dsh reports `MISSING_CREDENTIAL`,
  * `INVALID_CREDENTIAL` or the API's HTTP 401).
  */
-export function dshFailureHint(detail: string | undefined | null): string | null {
+export function dshFailureHint(detail: string | undefined | null, context: DshHintContext = {}): string | null {
     if (!detail) return null;
     if (/ENOENT/.test(detail) && /\bdsh\b/.test(detail)) return dshSetupMessage({ kind: 'missing' });
-    if (/MISSING_CREDENTIAL|no API key/i.test(detail)) {
-        return `DeepSeek Harness has no API key. Add a DeepSeek account under Settings → Models & accounts on this machine, or set ${DSH_API_KEY_ENV} in the daemon's environment.`;
-    }
+    if (/MISSING_CREDENTIAL|no API key/i.test(detail)) return dshMissingKeyHint(context.accountLabel ?? null);
     if (/Insufficient Balance|HTTP 402|\b402\b.*Payment/i.test(detail)) {
         return 'DeepSeek says the account behind this API key has no balance left (402). Top it up on the DeepSeek platform, or switch the session to another DeepSeek account; the key itself works.';
     }

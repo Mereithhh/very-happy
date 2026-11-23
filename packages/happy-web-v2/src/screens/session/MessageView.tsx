@@ -22,7 +22,7 @@ import { stripHarnessBlocks, parseLocalCommandMessage, parseTaskNotification } f
 import { estimateWrappedLines, shouldCollapseBubble } from './codeCollapse';
 import { stripThinkingWrapper, formatThoughtFor, thinkingPreview, isLiveThinking } from './thinking';
 import { presentServiceEvent } from './serviceEvent';
-import { goalNoticeText, isDshSessionNotice, parseGoalNotice } from './goalNotice';
+import { dshKeyHintText, goalNoticeText, isDshSessionNotice, parseDshKeyHint, parseGoalNotice } from './goalNotice';
 import { runCodexHandoff } from './codexHandoffRun';
 import { isSharedWithMe } from '@/app/sessionAccess';
 import { toast } from '@/ui/Toast';
@@ -480,6 +480,12 @@ function AgentEventBlock({ message, sessionId, continueOffer = false }: { messag
                     if (isDshSessionNotice(ev.message)) {
                         label = t('session.chat.dshSessionNotice');
                         subtle = true;
+                        break;
+                    }
+                    // B-960: the dsh "no key" hint (a failed turn's one line), in the interface language.
+                    const dshKey = parseDshKeyHint(ev.message);
+                    if (dshKey) {
+                        label = dshKeyHintText(dshKey, t);
                         break;
                     }
                 }

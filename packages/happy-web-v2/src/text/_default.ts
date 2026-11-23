@@ -1045,6 +1045,9 @@ export const en = {
                 unknownVersion: 'an unknown version',
                 failed: ({ error }: { error: string }) => `Goal command failed: ${error}`,
             },
+            // B-960: the wrapper's fixed-English "no key" hints (dshRunner.ts dshMissingKeyHint), in the interface language.
+            dshNoKeyAddAccount: 'This machine has no DeepSeek key. Add a DeepSeek account under Settings → Models & accounts, or set DEEPSEEK_API_KEY in the daemon\'s environment.',
+            dshNoKeyUseAccount: ({ label }: { label: string }) => `This machine's DeepSeek default is the machine login, but there is no key here. Set the default to "${label}" under Settings → Models & accounts, or pick it when starting a session.`,
             dshSessionNotice: 'DeepSeek Harness session: replies appear one message at a time (dsh sends no word-by-word stream); resuming keeps this transcript but dsh does not replay it; plan mode, slash commands and images are not available. Tool permissions are asked here unless the session runs in yolo mode.',
             subagentPrompt: 'prompt',
             subagentLog: 'process',
@@ -3017,6 +3020,7 @@ export const en = {
         draftAccount: 'Account',
         draftDefault: ({ label }: { label: string }) => `Machine default · ${label}`,
         draftDefaultMachineLogin: 'Machine default · this machine\'s login',
+        draftDefaultFallback: ({ label }: { label: string }) => `Machine default · ${label} (no key on this machine)`,
         blockedMissing: ({ machine }: { machine: string }) => `The chosen account no longer exists on ${machine}. Pick another before starting.`,
         blockedExpired: ({ label, machine }: { label: string; machine: string }) => `The sign-in for "${label}" on ${machine} has expired. Sign in again or pick another before starting.`,
         blockedInvalid: ({ label, machine }: { label: string; machine: string }) => `The key of "${label}" was rejected on ${machine}. Fix it or pick another before starting.`,
@@ -3035,6 +3039,10 @@ export const en = {
         addDescriptionCodex: ({ machine }: { machine: string }) => `Added to ${machine}. Keys and sign-ins stay on that machine.`,
         machineLoginSubtitleCodex: 'codex\'s own sign-in and ~/.codex/config.toml on this machine',
         machineLoginSubtitleDsh: 'DEEPSEEK_API_KEY in the daemon\'s environment, or dsh\'s own saved key on this machine',
+        // B-960: the daemon reports the machine login has no DeepSeek key.
+        machineLoginNoKeyFallback: ({ label }: { label: string }) => `This machine has no DeepSeek key; new sessions use ${label} instead`,
+        machineLoginNoKeyAdd: 'This machine has no DeepSeek key; add an account below to use DeepSeek Harness',
+        fallbackBadge: 'Used by new sessions',
         typeCodexChatgpt: 'ChatGPT subscription',
         typeCodexChatgptHint: 'Sign in to ChatGPT (Plus, Pro, Team…) with a device code from any device — nothing to paste',
         typeCodexProvider: 'Local provider / API',
@@ -3488,6 +3496,12 @@ export const en = {
                 summary: 'When an agent tries to preview a file that does not exist (or a folder), it is told so instead of being told the preview went out, so it stops saying "preview opened" for nothing.',
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
+            },
+            nov23b: {
+                title: 'A DeepSeek account works as soon as you add it',
+                summary: 'Once you add a DeepSeek Harness account, new dsh sessions use it right away when this machine has no DeepSeek key of its own; no need to change the default first.',
+                fallback: 'When this machine has no DeepSeek key and the default is still 「this machine\'s login」, a new session that names no account starts on your DeepSeek account. Settings → Models & accounts and the new-session picker say which one. The first DeepSeek account you add on such a machine also becomes its default.',
+                error: 'A missing DeepSeek key now shows one line, in your interface language, that matches the machine: switch to the account you already added, or add one if there is none.',
             },
             nov23a: {
                 title: 'DeepSeek Harness through your own gateway',
