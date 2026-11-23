@@ -27,6 +27,15 @@ export const TEAM_CAPACITY_WARN = 0.8;
 const TEAM_CAPACITY_CLEAR = 0.7;
 /** B-959: an open task keeps at least its newest this many messages live, whatever their age. */
 export const TEAM_OPEN_TASK_KEEP_MESSAGES = 50;
+/**
+ * B-959b: put an open task's archived messages back for a read. Live can hold messages older than
+ * the archived ones (an undelivered message stays live whatever its age), so the merged list is
+ * ordered by (createdAt, id) rather than archived-then-live. Live wins on a duplicate id.
+ */
+export function mergeArchivedMessages(live: TeamMessage[], archived: TeamMessage[]): TeamMessage[] {
+    const ids = new Set(live.map(m => m.id));
+    return [...archived.filter(m => !ids.has(m.id)), ...live].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
 
 const closed = (task: TeamTask | undefined) => task?.status === 'done' || task?.status === 'cancelled';
 const terminal = (m: TeamMessage) => m.deliveredAt !== null || m.cancelledAt !== undefined;
