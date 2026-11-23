@@ -1492,7 +1492,7 @@ it('keeps the session usable after cancelling an in-flight turn', async () => {
       mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'hi' } });
       await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.some(([m]) => m.ev.t === 'turn-end' && m.ev.status === 'failed' && String(m.ev.error).includes('Add a DeepSeek account under Settings'))).toBe(true));
       // Not dsh's words + the fix + dsh's words again (B-960): no separate service lines.
-      const lines = mocks.mockSession.sendSessionEvent.mock.calls.map(([e]: [{ type: string; message?: string }]) => e.message ?? '');
+      const lines = mocks.mockSession.sendSessionEvent.mock.calls.map((call: unknown[]) => (call[0] as { message?: string }).message ?? '');
       expect(lines.filter((m: string) => /no API key/.test(m))).toEqual([]);
     } finally {
       mocks.backendState.sendPromptScript = null;

@@ -152,7 +152,7 @@ export function pickMachineLoginFallback(accounts: readonly Pick<AgentProfileSum
 }
 
 /** B-960: the fallback account a daemon state implies for an unchosen new session, or null. */
-export function machineLoginFallbackAccount(state: Pick<AgentProfilesState, 'accounts' | 'defaults' | 'machineLoginKey'>, agent: string): string | null {
+export function machineLoginFallbackAccount(state: { accounts: readonly Pick<AgentProfileSummary, 'id' | 'agent' | 'status' | 'createdAt'>[]; defaults: Record<string, string>; machineLoginKey?: Record<string, boolean> }, agent: string): string | null {
     if (state.machineLoginKey?.[agent] !== false) return null;
     if (state.defaults[agent]) return null;
     return pickMachineLoginFallback(state.accounts, agent);
