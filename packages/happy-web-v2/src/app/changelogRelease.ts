@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-23-codex-edit-delete-retry',
+    cliVersion: '0.2.224',
+    date: '2026-11-23',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov23c.title',
+    summaryKey: 'changelog.releases.nov23c.summary',
+    itemKeys: ['changelog.releases.nov23c.codex', 'changelog.releases.nov23c.retry', 'changelog.releases.nov23c.files'],
+  },
+  {
     id: '2026-11-23-dsh-account-without-machine-key',
     cliVersion: '0.2.223',
     date: '2026-11-23',

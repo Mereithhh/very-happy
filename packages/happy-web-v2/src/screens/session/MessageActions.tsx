@@ -1,6 +1,6 @@
 import { useReadOnlyTranscript } from './readOnlyTranscript';
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { GitFork, MessageSquarePlus, Pencil, Quote, TextQuote, Trash2 } from 'lucide-react';
+import { GitFork, Info, MessageSquarePlus, Pencil, Quote, RotateCcw, TextQuote, Trash2 } from 'lucide-react';
 import { useInRouterContext, useNavigate } from 'react-router-dom';
 import type { Session } from '@/sync/storageTypes';
 import { isMirrorSession } from '@/assistant/assistantSession';
@@ -24,6 +24,8 @@ import type { TurnSendStatus } from './sendStatusModel';
 import { RewindFailure, rewindConversation } from './conversationRewind';
 import { ForkFailure, forkFromMessage, messageForkTarget } from './forkFlow';
 import { forkReasonText, isForkableFlavor } from './forkModel';
+import { canRetryMessage, canRewindMessage, isCodexTurnFollower } from './rewindSupport';
+import { sessionCodexGoal } from '@/sync/codexGoal';
 import './messageActions.css';
 
 /**
@@ -35,11 +37,15 @@ import './messageActions.css';
  * everything after it — from the screen AND from the agent's memory — and
  * sends the new text as the next prompt. Delete drops just this prompt's turn
  * (the prompt and its replies). Both stop a running turn first. File changes
- * are not rolled back. Claude sessions only: the runner rewinds its own
- * transcript (conversationRewind.ts).
+ * are not rolled back. The runner rewinds its own conversation
+ * (conversationRewind.ts): Claude its transcript, Codex (B-961, codex-rewind-v1)
+ * `thread/revert`. B-961 retry = edit with the same text: drop this prompt's
+ * replies and everything after, then send it again.
  */
-export function MessageActions({ text, sessionId, userMessage, createdAt = userMessage?.createdAt, hasAttachments = false, send = null, status, children }: {
+export function MessageActions({ text, sessionId, userMessage, createdAt = userMessage?.createdAt, hasAttachments = false, send = null, status, retryOf, retryHasAttachments = false, children }: {
     text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments?: boolean;
+    /** B-961: on the latest agent reply — the prompt a retry resends (the turn's first one). */
+    retryOf?: UserTextMessage; retryHasAttachments?: boolean;
     /** B-513: not yet confirmed by the server — copy only; a failed turn shows its recovery actions instead of the time. */
     send?: TurnSendStatus | null;
     /** B-766: an always-visible chip before the time (the owner bubble's 「已答 ↗」). */
@@ -47,11 +53,12 @@ export function MessageActions({ text, sessionId, userMessage, createdAt = userM
     children?: ReactNode;
 }) {
     if (useReadOnlyTranscript()) return <>{children}</>;
-    return <EditableMessageActions text={text} sessionId={sessionId} userMessage={userMessage} createdAt={createdAt} hasAttachments={hasAttachments} send={send} status={status}>{children}</EditableMessageActions>;
+    return <EditableMessageActions text={text} sessionId={sessionId} userMessage={userMessage} createdAt={createdAt} hasAttachments={hasAttachments} send={send} status={status} retryOf={retryOf} retryHasAttachments={retryHasAttachments}>{children}</EditableMessageActions>;
 }
 
-function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAttachments, send, status, children }: {
-    text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments: boolean; send: TurnSendStatus | null; status?: ReactNode; children?: ReactNode;
+function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAttachments, send, status, retryOf, retryHasAttachments, children }: {
+    text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments: boolean; send: TurnSendStatus | null; status?: ReactNode;
+    retryOf?: UserTextMessage; retryHasAttachments: boolean; children?: ReactNode;
 }) {
     const { t, lang } = useTranslation();
     const copy = messageActionsCopy(lang);
@@ -65,7 +72,8 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
     // B-577 touch: a selection inside this message, still for 500ms (SelectionQuote).
     const actionsRef = useRef<HTMLDivElement>(null);
     const selectionQuote = useTouchQuoteOffer(actionsRef);
-    const [mode, setMode] = useState<'idle' | 'edit' | 'delete'>('idle');
+    const [mode, setMode] = useState<'idle' | 'edit' | 'delete' | 'retry'>('idle');
+    const retryButton = useRef<HTMLButtonElement>(null);
     const [edited, setEdited] = useState(text);
     const [busy, setBusy] = useState(false);
     const busyRef = useRef(false);
@@ -73,10 +81,23 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
     const [forkNote, setForkNote] = useState<string | null>(null);
     const inRouter = useInRouterContext();
 
-    // Only a Claude runner can rewind its own conversation; mirrors are read-only.
-    const flavor = session?.metadata?.flavor ?? 'claude';
-    // B-619: rewind / edit-and-resend are owner operations (session RPC); a grantee only reads.
-    const canRewind = !!userMessage && !send && flavor === 'claude' && typeof userMessage.seq === 'number' && !session?.share;
+    // B-619 / B-961: owner only; Claude, and Codex wrappers that advertise codex-rewind-v1.
+    // B-961: a Codex prompt inside another's turn is edited through that one (hint instead of buttons).
+    const follower = isCodexTurnFollower(session, userMessage);
+    const canRewind = canRewindMessage(session, userMessage, send) && !follower;
+    // Retry: on a prompt, or (retryOf) on the latest reply for the prompt that opened its turn.
+    const retryTarget = userMessage ?? retryOf;
+    const canRetry = canRetryMessage(
+        canRewindMessage(session, retryTarget, send) && !isCodexTurnFollower(session, retryTarget),
+        userMessage ? hasAttachments : retryHasAttachments,
+        retryTarget?.text ?? '',
+    );
+    // B-961: Stop pauses an active /goal before the rewind (B-953) — say so where it is confirmed.
+    const goalNote = sessionCodexGoal(session)?.status === 'active' ? ` ${copy.goalPaused}` : '';
+    // B-961: Codex rewinds from a turn to the end (thread/revert) — a delete says so.
+    const codexSession = session?.metadata?.flavor === 'codex';
+    const deleteTitle = codexSession ? copy.deleteTitleCodex : copy.deleteTitle;
+    const deleteHint = codexSession ? copy.deleteHintCodex : copy.deleteHint;
     // B-851: 「从这里分叉」 — Claude and Codex; a blocked fork explains itself under the row.
     const canFork = inRouter && !!userMessage && !!session && !send && !session.share && !isMirrorSession(session) && isForkableFlavor(session.metadata?.flavor);
 
@@ -88,11 +109,11 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
         el.style.height = `${el.scrollHeight}px`;
     }, [edited, mode]);
 
-    const close = (focus: 'edit' | 'delete') => {
+    const close = (focus: 'edit' | 'delete' | 'retry') => {
         if (busyRef.current) return;
         setMode('idle');
         setError(null);
-        requestAnimationFrame(() => (focus === 'edit' ? editButton : deleteButton).current?.focus());
+        requestAnimationFrame(() => (focus === 'edit' ? editButton : focus === 'retry' ? retryButton : deleteButton).current?.focus());
     };
     const openEditor = () => {
         setEdited(text);
@@ -106,6 +127,7 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
     const failureText = (cause: unknown) => {
         if (cause instanceof RewindFailure) {
             if (cause.kind === 'unsupported') return copy.unsupported;
+            if (cause.kind === 'outdated') return copy.codexOutdated;
             if (cause.kind === 'unsent') return copy.unsent;
             if (cause.kind === 'send') return copy.sendFailed;
             if (cause.kind === 'record') return copy.recordFailed;
@@ -113,13 +135,13 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
         }
         return copy.failed;
     };
-    const run = async (request: { action: 'delete' } | { action: 'edit'; text: string }) => {
-        if (busyRef.current || !userMessage) return;
+    const run = async (request: { action: 'delete' } | { action: 'edit'; text: string }, target: UserTextMessage | undefined = userMessage) => {
+        if (busyRef.current || !target) return;
         busyRef.current = true;
         setBusy(true);
         setError(null);
         try {
-            await rewindConversation(sessionId, userMessage, request);
+            await rewindConversation(sessionId, target, request);
             busyRef.current = false;
             setMode('idle');
         } catch (cause) {
@@ -159,7 +181,7 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
             {error && <p role="alert" className="msg-edit-error">{error}</p>}
             <div className="msg-edit-footer">
                 {/* B-722: the save is visible where it happens; the new prompt then shows its own send state. */}
-                <p id={hintId} className="msg-edit-hint" aria-live="polite" data-save-state={busy ? 'saving' : undefined}>{busy ? t('session.chat.saveState.saving') : copy.editHint}</p>
+                <p id={hintId} className="msg-edit-hint" aria-live="polite" data-save-state={busy ? 'saving' : undefined}>{busy ? t('session.chat.saveState.saving') : `${copy.editHint}${goalNote}`}</p>
                 <Button size="sm" onClick={() => close('edit')} disabled={busy}>{copy.cancel}</Button>
                 <Button size="sm" variant="primary" loading={busy} disabled={!edited.trim()} onClick={submitEdit}>{copy.submit}</Button>
             </div>
@@ -168,15 +190,17 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
 
     return <>
         {children}
-        {mode === 'delete' && userMessage
-            ? <div className="msg-delete-confirm" role="group" aria-label={copy.deleteTitle} onKeyDown={event => {
-                if (event.key === 'Escape') { event.preventDefault(); close('delete'); }
+        {(mode === 'delete' && userMessage) || (mode === 'retry' && retryTarget)
+            ? <div className="msg-delete-confirm" role="group" aria-label={mode === 'retry' ? copy.retryTitle : deleteTitle} onKeyDown={event => {
+                if (event.key === 'Escape') { event.preventDefault(); close(mode); }
             }}>
-                <p className="msg-delete-text"><strong>{copy.deleteTitle}</strong> {copy.deleteHint}</p>
+                <p className="msg-delete-text"><strong>{mode === 'retry' ? copy.retryTitle : deleteTitle}</strong> {mode === 'retry' ? copy.retryHint : deleteHint}{goalNote}</p>
                 {error && <p role="alert" className="msg-edit-error">{error}</p>}
                 <div className="msg-edit-footer">
-                    <Button size="sm" onClick={() => close('delete')} disabled={busy} autoFocus>{copy.cancel}</Button>
-                    <Button size="sm" variant="danger" loading={busy} onClick={() => void run({ action: 'delete' })}>{copy.delete}</Button>
+                    <Button size="sm" onClick={() => close(mode)} disabled={busy} autoFocus>{copy.cancel}</Button>
+                    {mode === 'retry'
+                        ? <Button size="sm" variant="primary" loading={busy} onClick={() => retryTarget && void run({ action: 'edit', text: retryTarget.text }, retryTarget)}>{copy.retry}</Button>
+                        : <Button size="sm" variant="danger" loading={busy} onClick={() => void run({ action: 'delete' })}>{copy.delete}</Button>}
                 </div>
             </div>
             : <div ref={actionsRef} className="msg-actions" role={text ? 'group' : undefined} aria-label={text ? copy.actions : undefined}>
@@ -209,6 +233,8 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
                     ><MessageSquarePlus size={14} aria-hidden /><span>{t('session.chat.annotations.annotate')}</span></button>}
                     {canFork && <ForkFromHereButton session={session} message={userMessage} hasAttachments={hasAttachments} onNote={setForkNote} />}
                     {canRewind && <button ref={editButton} type="button" className="msg-action" aria-label={copy.edit} title={copy.edit} onClick={openEditor}><Pencil size={14} aria-hidden /></button>}
+                    {follower && !send && <span className="msg-action msg-action--hint" role="note" aria-label={copy.followerHint} title={copy.followerHint}><Info size={14} aria-hidden /></span>}
+                    {canRetry && <button ref={retryButton} type="button" className="msg-action" aria-label={copy.retry} title={copy.retry} onClick={() => { setError(null); setMode('retry'); }}><RotateCcw size={14} aria-hidden /></button>}
                     {canRewind && <button ref={deleteButton} type="button" className="msg-action" aria-label={copy.delete} title={copy.delete} onClick={() => { setError(null); setMode('delete'); }}><Trash2 size={14} aria-hidden /></button>}
                 </div>}
                 {send?.state === 'failed'

@@ -181,7 +181,7 @@ describe('MessageActions send states', () => {
 
     it('a confirmed message shows the normal actions again', () => {
         render(base);
-        expect(labels()).toEqual(['message.copyMessage', 'Quote', 'Edit', 'Delete']);
+        expect(labels()).toEqual(['message.copyMessage', 'Quote', 'Edit', 'Retry', 'Delete']);
         expect(host.querySelector('.msg-send-failed, .msg-sending')).toBeNull();
     });
 });

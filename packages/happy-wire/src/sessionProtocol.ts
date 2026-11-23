@@ -18,6 +18,13 @@ import * as z from 'zod';
 export const CODEX_STEER_CAPABILITY = 'codex-steer-v1';
 
 /**
+ * B-961: the Codex wrapper answers `conversation-rewind` (edit / delete / retry
+ * a prompt in place, app-server `thread/revert`). Older Codex wrappers do not,
+ * so the web shows those actions only on sessions that advertise this (AGENTS #14).
+ */
+export const CODEX_REWIND_CAPABILITY = 'codex-rewind-v1';
+
+/**
  * The Codex wrapper runs a standalone `/compact` itself (app-server
  * `thread/compact/start`) instead of sending the text to the model. Older Codex
  * wrappers do not, so the web marks /compact unavailable on them (AGENTS #14).

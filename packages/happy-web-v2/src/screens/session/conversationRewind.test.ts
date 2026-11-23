@@ -102,3 +102,48 @@ describe('rewindConversation (B-528)', () => {
         });
     });
 });
+
+describe('B-961 Codex', () => {
+    it('forwards the Codex item id so the wrapper finds the turn; nothing changes on screen when Codex is too old', async () => {
+        const d = deps({ rpc: vi.fn(async () => ({ ok: false, code: 'codex-outdated', error: 'This Codex version cannot rewind a conversation' })) });
+        await expect(rewindConversation('s', { ...message, codexItemId: 'item-7' }, { action: 'delete' }, d)).rejects.toMatchObject({ kind: 'outdated' });
+        expect(d.rpc).toHaveBeenCalledWith('s', { action: 'delete', sourceId: 'local-10', codexItemId: 'item-7', text: 'hello', requestId: 'req-1' });
+        expect(d.recordDrop).not.toHaveBeenCalled();
+        expect(d.send).not.toHaveBeenCalled();
+    });
+
+    it('a Codex delete hides from this prompt to the end — thread/revert dropped the later turns too (dropsLater)', async () => {
+        const d = deps({ rpc: vi.fn(async () => ({ ok: true, action: 'delete', freshConversation: false, dropsLater: true })) });
+        await rewindConversation('s', message, { action: 'delete' }, d);
+        expect(d.recordDrop).toHaveBeenCalledWith('s', { fromSeq: 10, reason: 'delete', requestId: 'req-1' });
+    });
+
+    it('retry is an edit with the same text: hide from this prompt on, send it again', async () => {
+        const d = deps();
+        await rewindConversation('s', message, { action: 'edit', text: message.text }, d);
+        expect(d.recordDrop).toHaveBeenCalledWith('s', { fromSeq: 10, reason: 'edit', requestId: 'req-1' });
+        expect(d.send).toHaveBeenCalledWith('s', 'hello');
+    });
+});
+
+import { codexRewindReconcile } from './conversationRewind';
+
+describe('B-961 reconcile a Codex rewind whose ack was missed', () => {
+    const msgs = [
+        { kind: 'agent-text', id: 'a', seq: 12 },
+        { kind: 'user-text', id: 'u', seq: 11, localId: 'l11', codexItemId: 'item-11' },
+    ] as any[];
+    const session = (rewind: unknown, extra: Record<string, unknown> = {}) => ({ metadata: { flavor: 'codex', rewind }, ...extra }) as any;
+    it('applied record + its prompt still on screen → hide from that prompt', () => {
+        expect(codexRewindReconcile(session({ requestId: 'r', action: 'delete', state: 'applied', sourceId: 'l11' }), msgs))
+            .toEqual({ requestId: 'r', reason: 'delete', fromSeq: 11 });
+        expect(codexRewindReconcile(session({ requestId: 'r', action: 'edit', state: 'applied', codexItemId: 'item-11' }), msgs))
+            .toEqual({ requestId: 'r', reason: 'edit', fromSeq: 11 });
+    });
+    it('nothing when already hidden, not applied, not Codex, or a grantee', () => {
+        expect(codexRewindReconcile(session({ requestId: 'r', action: 'delete', state: 'applied', sourceId: 'gone' }), msgs)).toBeNull();
+        expect(codexRewindReconcile(session({ requestId: 'r', action: 'delete', state: 'pending', sourceId: 'l11' }), msgs)).toBeNull();
+        expect(codexRewindReconcile({ metadata: { flavor: 'claude', rewind: { requestId: 'r', state: 'applied', sourceId: 'l11' } } } as any, msgs)).toBeNull();
+        expect(codexRewindReconcile(session({ requestId: 'r', state: 'applied', sourceId: 'l11' }, { share: { accessLevel: 'view' } }), msgs)).toBeNull();
+    });
+});

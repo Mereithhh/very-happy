@@ -23,7 +23,8 @@ export type CodexSteerDeps<A, S extends StagedSteerAttachment> = {
     /** Removes a staged copy that will not be used (the message fell back to the queue). */
     unlink: (path: string) => Promise<void>;
     isImage: (file: S) => boolean;
-    onSteered: (text: string) => void;
+    /** `localKey`: the web prompt's id (B-961: it joins the running turn, never opens one). */
+    onSteered: (text: string, localKey?: string) => void;
     log: (message: string) => void;
 };
 
@@ -43,7 +44,7 @@ export async function steerIntoRunningTurn<A, S extends StagedSteerAttachment>(
             clientId: localKey,
         });
         if (outcome === 'steered') {
-            deps.onSteered(text);
+            deps.onSteered(text, localKey);
             return true;
         }
         deps.log(`[Codex] Steer not taken (${outcome}); queuing the message for the next turn`);

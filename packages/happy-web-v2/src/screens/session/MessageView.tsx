@@ -180,6 +180,8 @@ function AgentText({
     sessionId,
     thinkingDurationMs,
     optionsActive = false,
+    retryOf,
+    retryHasAttachments = false,
 }: {
     message: AgentTextMessage;
     showMeta: boolean;
@@ -187,6 +189,8 @@ function AgentText({
     sessionId: string;
     thinkingDurationMs?: number;
     optionsActive?: boolean;
+    retryOf?: UserTextMessage;
+    retryHasAttachments?: boolean;
 }) {
     const { t } = useTranslation();
     // Live-thinking auto-expand (B-101): while the session is working and no
@@ -263,7 +267,7 @@ function AgentText({
                     <DraftScopeProvider sessionId={sessionId} seq={message.seq}>
                         <Markdown text={prose} onOption={offerOptions ? onOption : undefined} hideOptions={!offerOptions} />
                     </DraftScopeProvider>
-                    {showActions && <MessageActions text={text} sessionId={sessionId} createdAt={message.createdAt} />}
+                    {showActions && <MessageActions text={text} sessionId={sessionId} createdAt={message.createdAt} retryOf={retryOf} retryHasAttachments={retryHasAttachments} />}
                 </div>
             )}
             {showMeta && (
@@ -586,6 +590,9 @@ type MessageViewProps = {
     optionsActive?: boolean;
     /** B-578: the latest user stop — offer 「继续」 (see chatTurns). */
     continueOffer?: boolean;
+    /** B-961: the latest reply — 「重试」 resends this prompt. */
+    retryOf?: UserTextMessage;
+    retryHasAttachments?: boolean;
 };
 
 /** B-565: one message row = one boundary. resetKey is the message object —
@@ -605,6 +612,8 @@ export const MessageView = memo(function MessageView(props: MessageViewProps) {
     && prev.thinkingDurationMs === next.thinkingDurationMs
     && prev.optionsActive === next.optionsActive
     && prev.continueOffer === next.continueOffer
+    && prev.retryOf === next.retryOf
+    && prev.retryHasAttachments === next.retryHasAttachments
     && sameTools(prev.attachments, next.attachments)
 ));
 
@@ -617,6 +626,8 @@ function MessageViewBody({
     attachments,
     optionsActive = false,
     continueOffer = false,
+    retryOf,
+    retryHasAttachments,
 }: MessageViewProps) {
     switch (message.kind) {
         case 'user-text':
@@ -630,6 +641,8 @@ function MessageViewBody({
                     sessionId={sessionId}
                     thinkingDurationMs={thinkingDurationMs}
                     optionsActive={optionsActive}
+                    retryOf={retryOf}
+                    retryHasAttachments={retryHasAttachments}
                 />
             );
         case 'agent-event':

@@ -4,13 +4,13 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UserTextMessage } from '@/sync/typesMessage';
 
-const mocks = vi.hoisted(() => ({ send: vi.fn(), rewind: vi.fn(), flavor: 'claude' as string | undefined, enterToSend: true }));
+const mocks = vi.hoisted(() => ({ send: vi.fn(), rewind: vi.fn(), flavor: 'claude' as string | undefined, capabilities: undefined as string[] | undefined, codexGoal: undefined as unknown, followers: undefined as string[] | undefined, enterToSend: true }));
 vi.mock('@/sync/sync', () => ({ sync: { sendMessage: mocks.send } }));
 vi.mock('@/sync/apiSocket', () => ({ apiSocket: {} }));
 vi.mock('@/sync/storage', () => ({
     // B-722: DeliverOnResumeHint selects from the store (no session → nothing to say).
     storage: Object.assign((select: (state: unknown) => unknown) => select({ sessionMessages: {}, sessions: {} }), { getState: () => ({ sessionMessages: {}, machines: {} }) }),
-    useSession: () => ({ metadata: { flavor: mocks.flavor } }),
+    useSession: () => ({ metadata: { flavor: mocks.flavor, capabilities: mocks.capabilities, codexTurnFollowers: mocks.followers }, agentState: { codexGoal: mocks.codexGoal } }),
     useSetting: () => mocks.enterToSend,
 }));
 vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ lang: 'en', t: (key: string) => key }) }));
@@ -31,6 +31,9 @@ beforeEach(() => {
     mocks.send.mockResolvedValue({ id: 'receipt' });
     mocks.rewind.mockResolvedValue(undefined);
     mocks.flavor = 'claude';
+    mocks.capabilities = undefined;
+    mocks.codexGoal = undefined;
+    mocks.followers = undefined;
     mocks.enterToSend = true;
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
 });
@@ -54,7 +57,7 @@ describe('persistent message action row', () => {
     it('renders named icon buttons with their own operation hints and no visible text labels', () => {
         render();
         const controls = [...host.querySelectorAll<HTMLButtonElement>('.msg-actions button')];
-        expect(controls.map(control => control.getAttribute('aria-label'))).toEqual(['message.copyMessage', 'Quote', 'Edit', 'Delete']);
+        expect(controls.map(control => control.getAttribute('aria-label'))).toEqual(['message.copyMessage', 'Quote', 'Edit', 'Retry', 'Delete']);
         for (const control of controls) {
             expect(control.textContent?.trim()).toBe('');
             expect(control.querySelector('svg')).not.toBeNull();
@@ -204,9 +207,75 @@ describe('delete (B-528)', () => {
     });
 });
 
+describe('B-961 retry', () => {
+    it('confirms (replies dropped, files not undone), then rewinds with the original text', async () => {
+        render(); await click('Retry');
+        const confirm = host.querySelector('.msg-delete-confirm');
+        expect(confirm?.textContent).toContain('Retry this message?');
+        expect(confirm?.textContent).toContain('File changes are not undone.');
+        await click('Cancel');
+        expect(mocks.rewind).not.toHaveBeenCalled();
+        await click('Retry');
+        const go = [...host.querySelectorAll('.msg-delete-confirm button')].find(el => el.textContent?.trim() === 'Retry') as HTMLButtonElement;
+        await act(async () => go.click());
+        expect(mocks.rewind).toHaveBeenCalledExactlyOnceWith('parent', message, { action: 'edit', text: 'original' });
+        expect(host.querySelector('.msg-delete-confirm')).toBeNull();
+    });
+    it('is not offered for a prompt with attachments (resending the text would lose them)', () => {
+        act(() => root.render(<MessageActions text="original" sessionId="parent" userMessage={message} hasAttachments><div /></MessageActions>));
+        const labels = [...host.querySelectorAll('.msg-actions button')].map(el => el.getAttribute('aria-label'));
+        expect(labels).toEqual(['message.copyMessage', 'Quote', 'Edit', 'Delete']);
+    });
+    it('a Codex wrapper that is too old for thread/revert says so', async () => {
+        mocks.rewind.mockRejectedValueOnce(new RewindFailure('outdated', 'x'));
+        render(); await click('Delete');
+        const go = [...host.querySelectorAll('.msg-delete-confirm button')].find(el => el.textContent?.trim() === 'Delete') as HTMLButtonElement;
+        await act(async () => go.click());
+        expect(host.querySelector('[role=alert]')?.textContent).toContain('Codex on this machine is too old');
+    });
+});
+
+describe('B-961 Codex sessions', () => {
+    it('offer edit / retry / delete when the wrapper advertises codex-rewind-v1', () => {
+        mocks.flavor = 'codex'; mocks.capabilities = ['codex-rewind-v1'];
+        render();
+        const labels = [...host.querySelectorAll('.msg-actions button')].map(el => el.getAttribute('aria-label'));
+        expect(labels).toEqual(['message.copyMessage', 'Quote', 'Edit', 'Retry', 'Delete']);
+    });
+    it('say in the confirmation that an active /goal is paused first', async () => {
+        mocks.flavor = 'codex'; mocks.capabilities = ['codex-rewind-v1', 'codex-goal-v1'];
+        mocks.codexGoal = { objective: 'ship', status: 'active', updatedAt: 1 };
+        render(); await click('Delete');
+        const text = host.querySelector('.msg-delete-confirm')?.textContent;
+        expect(text).toContain('Delete this message and everything after it?');
+        expect(text).toContain('File changes are not undone.');
+        expect(text).toContain('The active /goal is paused first.');
+    });
+});
+
+describe('B-961 Codex turn followers and the reply retry', () => {
+    it('a prompt inside another prompt\'s turn: no edit / delete / retry, a hover hint instead', () => {
+        mocks.flavor = 'codex'; mocks.capabilities = ['codex-rewind-v1'];
+        mocks.followers = ['follow'];
+        render({ ...message, localId: 'follow' });
+        const labels = [...host.querySelectorAll('.msg-actions button')].map(el => el.getAttribute('aria-label'));
+        expect(labels).toEqual(['message.copyMessage', 'Quote']);
+        expect(host.querySelector('[role=note]')?.getAttribute('title')).toContain('same turn as the one before it');
+    });
+    it('the latest reply offers Retry for its prompt and resends that prompt\'s text', async () => {
+        act(() => root.render(<MessageActions text="the answer" sessionId="parent" retryOf={message}><div /></MessageActions>));
+        const labels = [...host.querySelectorAll('.msg-actions button')].map(el => el.getAttribute('aria-label'));
+        expect(labels).toEqual(['message.copyMessage', 'Quote', 'Retry']);
+        await click('Retry');
+        const go = [...host.querySelectorAll('.msg-delete-confirm button')].find(el => el.textContent?.trim() === 'Retry') as HTMLButtonElement;
+        await act(async () => go.click());
+        expect(mocks.rewind).toHaveBeenCalledExactlyOnceWith('parent', message, { action: 'edit', text: 'original' });
+    });
+});
+
 describe('who gets edit/delete', () => {
     it.each([
-        ['codex session', { flavor: 'codex' }, message],
+        ['codex session on an older wrapper', { flavor: 'codex' }, message],
         ['mirror', { flavor: 'terminal-mirror' }, message],
         ['unconfirmed message', {}, { ...message, seq: null }],
     ])('hides them for a %s', (_name, overrides, userMessage) => {

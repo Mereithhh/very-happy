@@ -28,7 +28,7 @@ describe('steerIntoRunningTurn (B-628)', () => {
             images: ['/staged/shot.png'],
             clientId: 'local-1',
         });
-        expect(d.onSteered).toHaveBeenCalledWith('also lint');
+        expect(d.onSteered).toHaveBeenCalledWith('also lint', expect.anything());
         expect(d.unlink).not.toHaveBeenCalled();
     });
 

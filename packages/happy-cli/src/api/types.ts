@@ -836,7 +836,16 @@ export type Metadata = {
     claudeSessionId: string | null
     at: number
     state: string
+    /** B-961 (Codex, state `applied`): the rewound prompt, for the web's own reconcile. */
+    sourceId?: string
+    codexItemId?: string
   } | null
+  /**
+   * B-961: web prompts that are not the first of their Codex turn (batched
+   * behind another, steered in) — the web offers no edit / delete on them.
+   * Written by codex-rewind-v1 wrappers only; old web ignores it.
+   */
+  codexTurnFollowers?: string[]
   /**
    * B-290: the Claude conversation this session was imported from (the
    * on-disk transcript written by claude CLI / desktop / claude.ai that was
