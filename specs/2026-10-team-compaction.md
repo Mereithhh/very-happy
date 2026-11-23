@@ -95,6 +95,16 @@
 
 没有客户端读 scoped 写响应里的 `team.tasks`，所以不需要能力位。实测（隔离 standalone server，按 11-11 Lead 团队规模造数：22 任务 / 34 消息 / 23.4 万 bytes，经 0.2.181 的 `teams action` 同一条 `client.action` 路径）：改前 lead 写 23.2–24.1 万字符，只有 delegate/schedule 带 id；改后 807–1,447 字符，每次都带 `taskId` 或 `scheduleId`。旧 wrapper 的 `team_inspect` 仍是完整视图（读路径不在本修订范围）。
 
+### 5. B-959 修订：字节数不再拒绝写入，开着的任务也归档旧消息
+
+现场：一个带 16 个未关任务的团队约 2.0 MB（1,070 条消息约 1.73 MB，全部挂在开着的任务上，单个任务 173 条 / 256 KB），超过 2 MB 后每次写都 `team_size_limit`，卡了约 16 小时。原因是 §1 只归档已关闭任务的消息，Lead 的根任务、长跑任务的已送达消息永远留在实时表。
+
+- **去掉字节硬上限**：`reducer.ts` 末尾和 `schedules.advanceSchedules` 不再按 `JSON.stringify` 长度拒绝写入。`capacity.metrics.bytes` 和 80% 提醒保留，作为观测，也仍参与压缩的压力判断（≥ 50% 进 1 小时 / 10 分钟档）。提醒文案不再说「写入会被拒绝」；只有某个计数项（messages / operations / tasks）同时 ≥ 80% 时才写「新的该类记录在 100% 时会被拒绝」——这三项仍是硬上限（409 `team_message_limit` / `team_operation_limit` / `team_task_limit`），本次不改。
+- **开着的任务也归档**：`messageArchivable` 对未关闭任务放行已送达或已取消的消息，前提是同一任务在它留下的状态里还有至少 `TEAM_OPEN_TASK_KEEP_MESSAGES`（50）条更新的消息（按 createdAt、再按 id）。未送达的永不归档；schedule 消息仍走自己的保留规则；年龄分档（24 小时、压力下 1 小时 / 10 分钟）不变。`persistTransition` 用同一谓词校验，SQL DELETE 的状态复核不变。
+- **读回**：`readTeam`（owner 与 agent，即 team_inspect 的 taskId / full / 精简视图）、owner 写响应、Web 的团队列表会把**仍开着的任务**已归档的消息从 `TeamArchive` 合并回 `messages`（按时间排在实时消息前面）。只进响应：reducer、`persistTransition` 和 `capacity` 只看实时记录，所以下一次写不会把它们写回实时表。daemon 的 poll（`listTeams(machineId)`）不合并。已关闭任务的消息仍按 §1 不出现在视图里。
+- 取舍：开着的任务的读响应大小和改前一样随对话增长（改前它们本来就在实时表里），这次只解决「写被卡死」；需要时再做按任务分页读。idle 判定看的是实时消息，旧消息归档后最多和 §1 一样多提示一次 idle。
+- 残余风险：消息数仍是硬上限。每个开着的任务保留 50 条，约 40 个开着的任务各有 ≥ 50 条消息时，实时消息数才会到 2000。
+
 ## 兼容与发布顺序
 
 | 组合 | 行为 |
@@ -113,4 +123,5 @@
 
 - `compaction.spec.ts`：安全规则逐条测试；24 小时 / 压力分档；legacy 任务的年龄；80% 只提醒一次、降到 70% 以下后可再次提醒；上限错误为 409 + details。复用 bot 的非首个 spawn 跑了 >24h、任务刚 accept、stop pending / claimed / failed / unknown，或会话仍绑定时，spawn 保留（P1 复现）；legacy 任务首次见到补 closedAt、压力档下用代理时间；压力档最小宽限 10 分钟。长跑 fixture：520 个周期（2080 条消息、1040 个 operation、520 个任务，跨 11 天），开启压缩时四项用量峰值都低于 80%；未结束的根任务、卡住的任务和它已认领的 spawn、源仓库都保留。关闭压缩时同样的流程撞上限（复现事故）。
 - `store.pglite.integration.spec.ts`：24 小时后真的写进 `TeamArchive`，并从实时表里删除；未送达的消息、未结束的任务、源仓库 spawn 都保留；手工构造不安全的删除，三种情况都被拒绝；P1 复现场景下 daemon claim stop 这一次写入不会归档它要找的 spawn，手工删除该 spawn 被 `unsafe_operation_prune` 拒绝。
+- B-959：`compaction.spec.ts`「B-959 open tasks」（保留最近 50 条、未送达 / schedule 不动、>2 MB 写入与定时任务成功、提醒文案、压缩后体积下降）；`store.pglite.integration.spec.ts` 的 B-959 用例（>2 MB 的开着任务：写入成功、归档 1,150 条、owner / agent / Web 列表读回、daemon poll 不合并、下一次写不回灌）。
 - CLI：`refusal.test.ts`（409 和 429 两种情况）、`toolView.test.ts`、`tools.test.ts`（精简视图、taskId、full、不重复压缩；B-840：每个写工具都返回回执、回执不随团队规模增长、bridge 转发的回执原样透传）。

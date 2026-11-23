@@ -60,9 +60,10 @@ export function actorCanReadTask(state: TeamState, actor: TeamActor, task: TeamT
     if (state.bots.some(b => b.id === actor.botId && b.root)) return true;
     return state.tasks.some(t => (t.assigneeBotId === actor.botId || t.ownerBotId === actor.botId) && inTaskTree(state, task, t.id));
 }
-export function teamView(state: TeamState, actor: TeamActor): TeamState {
-    // B-822: capacity is the whole record's, whoever reads it (the limits refuse writes for everyone).
-    const view = { ...withMemberActivity(scopedTeamView(state, actor), state), capacity: teamCapacity(state) };
+/** `live`: the stored record when `state` carries read-only extras (B-959: archived messages of open tasks). */
+export function teamView(state: TeamState, actor: TeamActor, live: TeamState = state): TeamState {
+    // B-822: capacity is the whole live record's, whoever reads it (the count limits refuse writes for everyone).
+    const view = { ...withMemberActivity(scopedTeamView(state, actor), state), capacity: teamCapacity(live) };
     return actor.kind === 'agent' ? { ...view, idleMembers: idleMembersFor(state, actor.botId), cleanupIssues: cleanupIssuesFor(state, view) } : view;
 }
 /** B-775: what the reader must know about a member cleanup that failed — agents cannot
@@ -575,8 +576,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         }
     }
     s.version++;
-    let bytes = JSON.stringify(s).length;
-    if (warnCapacity(s, bytes, now, id)) bytes = JSON.stringify(s).length;
-    requireCapacity(bytes <= TEAM_LIMITS.bytes, 'team_size_limit', bytes, TEAM_LIMITS.bytes);
+    // B-959: the byte size is observed (capacity, the 80% warning), never a refusal — a team over 2 MB stayed stuck for 16 h.
+    warnCapacity(s, JSON.stringify(s).length, now, id);
     return { team: s, credentialBotId, operationId, taskId, scheduleId };
 }

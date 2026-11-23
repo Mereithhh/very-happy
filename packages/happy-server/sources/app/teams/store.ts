@@ -94,6 +94,22 @@ async function persistTransition(tx: Tx, row: Row, team: TeamState): Promise<voi
         requireTeam(removed === messages.length, 'message_prune_conflict');
     }
 }
+/**
+ * B-959: compaction archives the older delivered messages of an open task too; reads (team_inspect
+ * taskId / full, the Web team page) still show that task's whole conversation. Response only — the
+ * reducer, persistTransition and capacity see the live record. Closed tasks' messages stay archived
+ * out of view (B-822).
+ */
+async function withOpenTaskArchive(tx: Tx, state: TeamState): Promise<TeamState> {
+    const open = state.tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').map(t => t.id);
+    if (!open.length) return state;
+    const rows = await tx.$queryRaw<{ state: TeamMessage }[]>`SELECT "state" FROM "TeamArchive" WHERE "teamId"=${state.id} AND "kind"='message' AND "state"->>'taskId' IN (SELECT jsonb_array_elements_text(${JSON.stringify(open)}::jsonb))`;
+    if (!rows.length) return state;
+    const live = new Set(state.messages.map(m => m.id));
+    const archived = rows.map(r => r.state).filter(m => !live.has(m.id)).sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    return { ...state, messages: [...archived, ...state.messages] };
+}
+const readView = async (tx: Tx, state: TeamState, actor: TeamActor) => teamView(await withOpenTaskArchive(tx, state), actor, state);
 async function principal(tx: Tx, teamId: string, auth: { accountId: string } | { token: string }): Promise<Principal> {
     if ('accountId' in auth) { assertTeamsEnabled(auth.accountId); return { accountId: auth.accountId, actor: { kind: 'owner' } }; }
     requireTeam(auth.token.startsWith('vh_team_'), 'invalid_team_token', 401);
@@ -185,7 +201,8 @@ export async function listTeams(accountId: string, machineId?: string): Promise<
             ? await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AgentTeam" WHERE "accountId"=${accountId} AND "machineId"=${machineId} ORDER BY "createdAt"`
             : await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AgentTeam" WHERE "accountId"=${accountId} AND "state"->>'archivedAt' IS NULL ORDER BY "createdAt"`;
         const teams: TeamState[] = [];
-        for (const row of rows) teams.push((await load(tx, row.id, accountId)).state);
+        // B-959: the Web list carries open tasks' archived messages; the daemon's poll (machineId) does not need them.
+        for (const row of rows) { const { state } = await load(tx, row.id, accountId); teams.push(machineId ? state : await withOpenTaskArchive(tx, state)); }
         return teams.filter(team => team.archivedAt === undefined || (machineId && team.operations.some(op => ['pending', 'claimed', 'unknown', 'failed'].includes(op.status) && op.error !== 'task_closed_before_spawn')));
     });
 }
@@ -194,7 +211,7 @@ export async function readTeam(teamId: string, auth: { accountId: string } | { t
         const p = await principal(tx, teamId, auth);
         const { state } = await load(tx, teamId, p.accountId);
         if (p.actor.kind === 'agent') { const a = p.actor; requireTeam(state.bots.some(b => b.id === a.botId && b.generation === a.generation), 'stale_agent', 403); }
-        return teamView(state, p.actor);
+        return readView(tx, state, p.actor);
     });
 }
 export async function actOnTeam(teamId: string, auth: { accountId: string; machine?: boolean } | { token: string }, request: TeamActionRequest, opts: { quiet?: boolean } = {}): Promise<TeamResponse> {
@@ -210,7 +227,7 @@ export async function actOnTeam(teamId: string, auth: { accountId: string; machi
         }
         if (prior[0]) {
             requireTeam(prior[0].actorKey === actorKey && prior[0].requestHash === requestHash, 'request_id_conflict');
-            const result: TeamResponse = { team: teamView(row.state, p.actor), taskId: prior[0].response.taskId, scheduleId: prior[0].response.scheduleId, ...(prior[0].response.scheduleId ? { scheduleRecordRetained: !!row.state.schedules?.some(s => s.id === prior[0].response.scheduleId) } : {}) };
+            const result: TeamResponse = { team: await readView(tx, row.state, p.actor), taskId: prior[0].response.taskId, scheduleId: prior[0].response.scheduleId, ...(prior[0].response.scheduleId ? { scheduleRecordRetained: !!row.state.schedules?.some(s => s.id === prior[0].response.scheduleId) } : {}) };
             if (prior[0].response.operationId) result.operation = row.state.operations.find(o => o.id === prior[0].response.operationId);
             if (prior[0].response.credentialBotId) {
                 requireTeam(row.state.bots.find(b => b.id === prior[0].response.credentialBotId)?.generation === prior[0].response.credentialGeneration, 'stale_credential_request');
@@ -249,7 +266,7 @@ export async function actOnTeam(teamId: string, auth: { accountId: string; machi
         await applyTeamTransitionsTx(tx, p.accountId, row.state, reduced.team);
         const memo = JSON.stringify({ credentialBotId: reduced.credentialBotId, credentialGeneration: reduced.team.bots.find(b => b.id === reduced.credentialBotId)?.generation, operationId: reduced.operationId, taskId: reduced.taskId, scheduleId: reduced.scheduleId });
         await tx.$executeRaw`INSERT INTO "TeamRequest" ("teamId","requestId","actorKey","requestHash","response") VALUES (${teamId},${request.requestId},${actorKey},${requestHash},${memo}::jsonb)`;
-        const response: TeamResponse = { team: teamView(reduced.team, p.actor), taskId: reduced.taskId, scheduleId: reduced.scheduleId, ...(reduced.scheduleId ? { scheduleRecordRetained: !!reduced.team.schedules?.some(s => s.id === reduced.scheduleId) } : {}) };
+        const response: TeamResponse = { team: await readView(tx, reduced.team, p.actor), taskId: reduced.taskId, scheduleId: reduced.scheduleId, ...(reduced.scheduleId ? { scheduleRecordRetained: !!reduced.team.schedules?.some(s => s.id === reduced.scheduleId) } : {}) };
         if (reduced.operationId) response.operation = reduced.team.operations.find(o => o.id === reduced.operationId);
         if (reduced.credentialBotId) response.credential = await credential(tx, reduced.team, reduced.credentialBotId);
         return response;
