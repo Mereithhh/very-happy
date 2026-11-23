@@ -1,4 +1,4 @@
-import { archiveRestorable, restoreSessionId, TEAM_RESTORE_WINDOW_MS, TEAM_OWNED_TASKS_UNFINISHED, teamBotActivity, teamCleanupHoldsSession, teamCleanupIssues, teamLeadReviveBlock, teamMemberCounts, teamOwnedOpenTasks, type TeamOwnedOpenTasks, type TeamAction, type TeamArchiveRecord, type TeamCleanupIssue, type TeamState, type TeamBot, type TeamTask, type TeamOperation, type ProjectAgentProfile } from '@slopus/happy-wire';
+import { archiveRestorable, restoreSessionId, teamRestoreFreshNote, TEAM_RESTORE_WINDOW_MS, TEAM_OWNED_TASKS_UNFINISHED, teamBotActivity, teamCleanupHoldsSession, teamCleanupIssues, teamLeadReviveBlock, teamMemberCounts, teamOwnedOpenTasks, type TeamOwnedOpenTasks, type TeamAction, type TeamArchiveRecord, type TeamCleanupIssue, type TeamState, type TeamBot, type TeamTask, type TeamOperation, type ProjectAgentProfile } from '@slopus/happy-wire';
 
 export type TeamActor = { kind: 'owner' } | { kind: 'agent'; botId: string; generation: number };
 export { TeamError, requireTeam } from './errors';
@@ -357,7 +357,13 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                 const op = operation(launch!, bot, 'spawn');
                 op.restoreVersion = 1;
                 if (resume) { op.resumeSessionId = resume; op.prompt = restoreResumePrompt(launch!, bot.root); }
-                else op.prompt = `[Very Happy: team restored] The owner restored this team after it was archived; your previous conversation could not be continued (it is in use elsewhere), so this is a fresh session in a new worktree. Run team_inspect first.\n\n${op.prompt}`;
+                else {
+                    // B-962c: the actual reason (it used to say「in use elsewhere」for every case).
+                    op.restoreFallback = skip.has(bot.id) ? 'conflict: its conversation is in another team now'
+                        : bot.transferredTo ? 'transferred: its conversation was moved to another team'
+                        : 'no-session: no earlier conversation of this member was recorded';
+                    op.prompt = `${teamRestoreFreshNote(op.restoreFallback)}\n\n${op.prompt}`;
+                }
             }
             break;
         }
@@ -609,6 +615,8 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                     // generation's「idle 19:50」/「exited」described another conversation.
                     if (bot.sessionId !== action.sessionId) { delete bot.lastEvent; delete bot.lastEventAt; delete bot.idleEscalatedAt; }
                     bot.sessionId = action.sessionId; op.sessionId = action.sessionId; assigned(bot);
+                    // B-962c: the daemon could not continue this member's session (the Web lists it).
+                    if (op.restoreVersion === 1 && action.restoreFallback) op.restoreFallback = action.restoreFallback;
                     if (action.workingDirectory) bot.directory = action.workingDirectory;
                     if (t.currentAttemptId === op.attemptId && t.status === 'queued') { t.status = 'running'; t.attempts.find(a => a.id === op.attemptId)!.status = 'running'; }
                     // B-962: a restored member whose task waits for review is bound again (a return reaches it).

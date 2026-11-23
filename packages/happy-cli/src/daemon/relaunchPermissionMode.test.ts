@@ -38,7 +38,7 @@ describe('B-696 automation wake keeps the published permission mode', () => {
         const run = readFileSync(join(__dirname, 'run.ts'), 'utf8');
         const wake = run.slice(run.indexOf('wakeHibernated: async (id) => {'), run.indexOf('joinProject: (sessionId, projectId)'));
         expect(wake).toContain('await resumeSession(id, { keepPublishedPermissionMode: true });');
-        const impl = run.slice(run.indexOf('const resumeSessionImpl = async'), run.indexOf('const restartCounts = new Map'));
+        const impl = run.slice(run.indexOf('const resumeSessionImpl = async'), run.indexOf('const restartCounts: Record<RestartBudget'));
         expect(impl).toMatch(/const requestedMode = options\?\.permissionMode\s+\?\? \(options\?\.keepPublishedPermissionMode \? publishedRelaunchPermissionMode\(metadata\) : undefined\);/);
         expect(impl).toContain('const permissionMode = sanitizeSpawnPermissionMode(requestedMode);');
         expect(impl).toContain("if (permissionMode) launch.args.push('--permission-mode', permissionMode);");

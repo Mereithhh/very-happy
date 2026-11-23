@@ -14,6 +14,8 @@ import { launchTeamId, relaunchTeamOperationId, teamExitMarker, teamExitMarkerPa
  */
 /** B-962: what `teams exit` answers in an agent's environment (and what the server's refusal says too). */
 export const TEAMS_EXIT_REFUSAL = 'Exiting team mode stops every member and cancels their unfinished tasks, so it needs the person: ask the user to open the team page (or the lead conversation) on the Web, choose ⋯ → 「退出团队模式」 and confirm. 退出团队模式会停掉所有成员、取消未完成的任务，需要用户本人在网页 ⋯ 菜单里点「退出团队模式」确认；agent 不能代为执行。';
+/** B-962c: a Web page cached from before B-962 asks the daemon to archive, which the server refuses (403): that person IS on the Web. */
+export const TEAMS_EXIT_WEB_REFRESH_HINT = 'If you are doing this on the Web, refresh the page and try again. 如果你正在网页上操作，请刷新页面后重试。';
 export type TeamExitHttp = {
     get: (path: string) => Promise<{ data: { team: TeamState } }>;
     post: (path: string, body: unknown) => Promise<{ data: TeamResponse }>;
@@ -61,7 +63,7 @@ export async function exitTeamMode(input: { home: string; sessionId: string; met
         try {
             team = (await http.post(`${path}/actions`, { requestId: `team-exit-${sessionId}`.slice(0, 128), action: { type: 'archive', keepLeadSession: true, source: 'cli' } })).data.team;
         } catch (error: any) {
-            if (error?.response?.status === 403) throw new Error(TEAMS_EXIT_REFUSAL);
+            if (error?.response?.status === 403) throw new Error(`${TEAMS_EXIT_REFUSAL} ${TEAMS_EXIT_WEB_REFRESH_HINT}`);
             throw error;
         }
     }

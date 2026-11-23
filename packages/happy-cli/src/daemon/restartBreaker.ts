@@ -22,6 +22,21 @@ export const DEFAULT_MAX_RESTARTS = 3;
  */
 export const DEFAULT_MAX_ACCOUNT_RESTARTS = 50;
 
+/**
+ * B-962c: 「退出团队模式」 and 「恢复团队」 restart the lead in place (and a live member on a restore).
+ * They are the user's own actions too: two per exit/restore round would use up the 3 above by the
+ * second restore, so they get their own count with the account bound.
+ */
+export const DEFAULT_MAX_TEAM_MODE_RESTARTS = 50;
+
+/** Which restart count a restart uses: the crash-loop guard, or one of the user-action counts. */
+export type RestartBudget = 'manual' | 'account' | 'team-mode';
+export function restartBudget(options: { account?: true; teamMode?: true } | undefined): { budget: RestartBudget; max: number } {
+    if (options?.account) return { budget: 'account', max: DEFAULT_MAX_ACCOUNT_RESTARTS };
+    if (options?.teamMode) return { budget: 'team-mode', max: DEFAULT_MAX_TEAM_MODE_RESTARTS };
+    return { budget: 'manual', max: DEFAULT_MAX_RESTARTS };
+}
+
 export type RestartDecision =
     | { allowed: true; attempt: number }
     | { allowed: false; reason: string };

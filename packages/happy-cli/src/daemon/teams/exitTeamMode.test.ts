@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { exitTeamMode, TEAMS_EXIT_REFUSAL } from './exitTeamMode';
+import { exitTeamMode, TEAMS_EXIT_REFUSAL, TEAMS_EXIT_WEB_REFRESH_HINT } from './exitTeamMode';
 import { archivedLeadMarker, hasExitedTeamMode, teamExitMarkerPath, teamRelaunchEnv, teamScopeFilePath } from './relaunchScope';
 import { writeReceipt } from './journal';
 
@@ -149,6 +149,10 @@ describe('B-962: the server archives only for the person on the Web', () => {
         const client = http();
         client.post = vi.fn(async () => { throw Object.assign(new Error('Request failed with status code 403'), { response: { status: 403, data: { error: 'owner_login_required' } } }); });
         await expect(exitTeamMode({ home, sessionId: 's1', metadata: { teamOperationId: 'op-lead' }, http: client })).rejects.toThrow(TEAMS_EXIT_REFUSAL);
+        // B-962c: an old cached Web page lands here too — that person is on the Web: refresh and retry.
+        await expect(exitTeamMode({ home, sessionId: 's1', metadata: { teamOperationId: 'op-lead' }, http: client })).rejects.toThrow(`${TEAMS_EXIT_REFUSAL} ${TEAMS_EXIT_WEB_REFRESH_HINT}`);
+        expect(TEAMS_EXIT_WEB_REFRESH_HINT).toContain('refresh the page and try again');
+        expect(TEAMS_EXIT_WEB_REFRESH_HINT).toContain('请刷新页面后重试');
         expect(existsSync(file)).toBe(true);
         expect(hasExitedTeamMode(home, 's1')).toBe(false);
     });
