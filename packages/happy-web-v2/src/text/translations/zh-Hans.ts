@@ -1198,6 +1198,7 @@ export const zhHans: TranslationStructure = {
             subagentResult: '子代理报告',
             subagentResultTruncated: '已截断至 16KB',
             subagentPanelTitle: '子代理',
+            subagentContext: ({ usage }: { usage: string }) => `上下文 ${usage}`,
             subagentActualModel: '实际模型',
             subagentRequestedModel: '请求模型',
             backgroundCommand: '后台命令',
@@ -3658,6 +3659,13 @@ export const zhHans: TranslationStructure = {
                 summary: '终端所在的机器没连上时，打开终端只有黑屏，别人分享给你的终端尤其如此。现在终端里会写明这台机器没连上，以及是哪台机器。',
                 shared: '别人分享给你的终端会写明是谁的哪台机器（比如「Alex 的 mac-studio」）：连接时显示正在连接，机器没连上时显示没连上，看的过程中掉线也一样。',
                 recover: '机器重新连上后，终端会自动恢复，不用刷新，也不用点重试。你自己的终端也一样。',
+            },
+            nov24b: {
+                title: 'Codex 会话和子代理的上下文用量',
+                summary: 'Codex 会话现在会显示上下文已用多少，每个子代理也各自显示自己的。',
+                codex: 'Codex 会话输入框下面显示当前占用的 token 和 Codex 报的窗口大小。压缩后会下降，刷新页面或恢复会话后仍在。',
+                subagents: '子代理详情里显示它自己的「上下文 已用 / 窗口」，Claude 和 Codex 都有，取代原来没有说明的 token 数。',
+                restart: '需要会话在 CLI 0.2.225 上重启。重启前，Codex 会话不显示数字，Claude 子代理仍显示原来的数。在 Codex 会话里撤回消息后，数字会留空，下一次回复后更新。',
             },
             nov23c: {
                 title: 'Codex 会话也能编辑、删除、重试消息',

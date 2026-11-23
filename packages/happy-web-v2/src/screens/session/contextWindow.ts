@@ -66,6 +66,20 @@ export function contextPercentOf(contextSize: number, window: number | null): nu
     return Math.max(0, Math.min(100, Math.round((contextSize / window) * 100)));
 }
 
+/**
+ * B-963: a sub-agent's window. The session's reported window holds only for the
+ * model the session runs; another model falls back to the id table.
+ */
+export function subagentContextWindow(models: readonly string[], session: { currentModelCode?: string | null; currentContextWindow?: number | null } | null | undefined, tokens: number): number | null {
+    const base = (id: string) => id.trim().toLowerCase().replace(/\[1m\]$/, '');
+    const model = models.at(-1) ?? null;
+    const running = session?.currentModelCode ?? null;
+    const sameModel = running !== null && (model === null || base(model) === base(running));
+    const reported = session?.currentContextWindow;
+    const window = sameModel && typeof reported === 'number' && reported > 0 ? reported : contextWindowFor(model ?? running);
+    return windowHolding(window, tokens);
+}
+
 export interface ComposerContextUsage {
     tokens: number | null;
     /** Denominator, or null when no trustworthy window exists (no percentage then). */
@@ -95,7 +109,13 @@ export function composerContextUsage(
     runningModel?: string | null,
     /** B-908: the window the wrapper reports Claude Code measures against — beats the id guess. */
     reportedWindow?: number | null,
+    /** B-963: Codex sessions read only Codex's own figures (null = none reported); undefined = not Codex. */
+    codex?: { tokens: number | null; contextWindow?: number | null } | null,
 ): ComposerContextUsage {
+    if (codex !== undefined) {
+        const window = codex?.contextWindow ?? null;
+        return { tokens: codex?.tokens ?? null, window, estimated: false, windowSource: window === null ? 'unknown' : 'configured', compacted: false };
+    }
     if (isPi) {
         const tokens = runtime?.tokens ?? null;
         let windowSource = contextWindowSourceOf(runtime);

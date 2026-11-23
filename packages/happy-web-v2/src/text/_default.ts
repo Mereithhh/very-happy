@@ -990,6 +990,7 @@ export const en = {
             subagentResult: 'sub-agent report',
             subagentResultTruncated: 'truncated at 16KB',
             subagentPanelTitle: 'Sub-agent',
+            subagentContext: ({ usage }: { usage: string }) => `Context ${usage}`,
             subagentActualModel: 'Reported model',
             subagentRequestedModel: 'Requested model',
             backgroundCommand: 'Background command',
@@ -3500,6 +3501,13 @@ export const en = {
                 summary: 'When an agent tries to preview a file that does not exist (or a folder), it is told so instead of being told the preview went out, so it stops saying "preview opened" for nothing.',
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
+            },
+            nov24b: {
+                title: 'Context used, for Codex sessions and sub-agents',
+                summary: 'Codex sessions now show how full the context is, and each sub-agent shows its own.',
+                codex: 'The meter under the composer in a Codex session shows the tokens in context now against the window Codex reports. It drops after a compaction and is still there after a reload or resume.',
+                subagents: 'A sub-agent’s details show “Context used / window” for that sub-agent alone, for Claude and Codex. It replaces the unlabeled token count.',
+                restart: 'Both need the session restarted on CLI 0.2.225. Until then Codex sessions show no figure, and Claude sub-agents keep the old count. Right after you rewind a Codex conversation the figure is blank until the next reply.',
             },
             nov23c: {
                 title: 'Edit, delete and retry messages in Codex sessions',

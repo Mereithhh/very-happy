@@ -130,9 +130,9 @@ export type SubagentLifecycle = {
     title?: string;
     description?: string;
     subagentType?: string;
-    progress?: { toolUses: number; lastTool?: string; totalTokens?: number; durationMs?: number; summary?: string };
+    progress?: { toolUses: number; lastTool?: string; totalTokens?: number; contextTokens?: number; durationMs?: number; summary?: string };
     result?: { text: string; truncated?: boolean };
-    usage?: { toolUses?: number; totalTokens?: number; durationMs?: number };
+    usage?: { toolUses?: number; totalTokens?: number; contextTokens?: number; durationMs?: number };
     /** createdAt of the latest lifecycle event folded in. */
     updatedAt: number;
 };

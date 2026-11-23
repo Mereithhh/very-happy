@@ -21,7 +21,9 @@ import { buildSubagentSummary } from './subagentSummary';
 import { presentedSubagentStatus } from './subagentAbort';
 import { asCommand, resultToText } from './toolInfo';
 import { CommandView } from './CommandView';
-import { formatDurationMs, formatTokens } from './format';
+import { contextFact, formatDurationMs, formatTokens } from './format';
+import { subagentContextWindow } from './contextWindow';
+import { useSession } from '@/sync/storage';
 import { ActivityMessages } from './ActivityMessages';
 import { messageTimestamp } from './messageTimestamp';
 import { compareMessagesNewestFirst } from '@/sync/messageOrder';
@@ -53,6 +55,7 @@ function Fold({ label, children, defaultOpen = false }: { label: string; childre
 export function SubagentDetail({ message, abortedAt = null }: { message: ToolCallMessage; abortedAt?: number | null }) {
     const { t, lang } = useTranslation();
     const { id: sessionId = '' } = useParams();
+    const session = useSession(sessionId);
     const summary = buildSubagentSummary(message, Number.POSITIVE_INFINITY);
     const status = presentedSubagentStatus(message, abortedAt);
     const prompt = typeof message.tool.input?.prompt === 'string' ? message.tool.input.prompt : null;
@@ -67,10 +70,13 @@ export function SubagentDetail({ message, abortedAt = null }: { message: ToolCal
     // way the old inline card was — the drawer scrolls, the transcript doesn't.
     const children = [...message.children].sort((a, b) => compareMessagesNewestFirst(b, a));
     const lifecycle = summary.lifecycle;
+    // B-963: the sub-agent's own context; older CLIs report only their total.
+    const context = lifecycle?.contextTokens ?? null;
     const facts = [
         summary.toolCount > 0 ? t('session.chat.usedTools', { count: summary.toolCount }) : null,
         lifecycle?.durationMs != null ? formatDurationMs(lifecycle.durationMs) : null,
-        lifecycle?.totalTokens != null ? `${formatTokens(lifecycle.totalTokens)} tok` : null,
+        context != null ? contextFact(t, context, subagentContextWindow(summary.actualModels, session?.metadata, context))
+            : lifecycle?.totalTokens != null ? `${formatTokens(lifecycle.totalTokens)} tok` : null,
     ].filter((v): v is string => v !== null);
 
     return (

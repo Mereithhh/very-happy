@@ -600,13 +600,16 @@ export class CodexAppServerClient {
 
         if (method === 'thread/tokenUsage/updated') {
             // B-628: per thread (a running total, Orca codex-subagent-activity.ts); a child's
-            // would overwrite the session's own context-usage figure.
-            if (!this.isOwnThreadFrame(params)) return true;
+            // would overwrite the session's own figures, so it is its own event (B-963:
+            // the child's context only — the usage report stays the session thread's).
             const tokenUsage = params?.tokenUsage;
             if (tokenUsage && typeof tokenUsage === 'object') {
+                const child = this.childThreadIdOf(params);
+                const threadId = child ?? this.extractThreadId(params) ?? this._threadId;
                 this.eventHandler?.({
-                    type: 'token_count',
+                    type: child ? 'child_token_count' : 'token_count',
                     ...tokenUsage,
+                    ...(threadId ? { thread_id: threadId } : {}),
                 });
             }
             return true;

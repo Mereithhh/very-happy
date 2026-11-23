@@ -577,7 +577,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         };
     }
 
-    if (type === 'token_count') {
+    if (type === 'token_count' || type === 'child_token_count') {
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,

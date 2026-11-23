@@ -44,7 +44,16 @@ export function toolUseResultStatus(toolUseResult: unknown): 'async_launched' | 
     return 'unknown';
 }
 
-export type SubagentRunStats = { toolUses?: number; totalTokens?: number; durationMs?: number; toolStats?: Record<string, unknown> };
+export type SubagentRunStats = { toolUses?: number; totalTokens?: number; contextTokens?: number; durationMs?: number; toolStats?: Record<string, unknown> };
+
+/** B-963: input side (fresh + cache read + cache write) of one API call's usage. */
+export function contextTokensOf(usage: unknown): number | undefined {
+    if (!usage || typeof usage !== 'object') return undefined;
+    const u = usage as Record<string, unknown>;
+    const n = (key: string) => (typeof u[key] === 'number' && Number.isFinite(u[key]) ? u[key] as number : 0);
+    const tokens = n('input_tokens') + n('cache_read_input_tokens') + n('cache_creation_input_tokens');
+    return tokens > 0 ? tokens : undefined;
+}
 
 export function toolUseResultStats(toolUseResult: unknown): SubagentRunStats | undefined {
     if (!toolUseResult || typeof toolUseResult !== 'object') return undefined;
@@ -52,6 +61,9 @@ export function toolUseResultStats(toolUseResult: unknown): SubagentRunStats | u
     const stats: SubagentRunStats = {};
     if (typeof r.totalToolUseCount === 'number') stats.toolUses = r.totalToolUseCount;
     if (typeof r.totalTokens === 'number') stats.totalTokens = r.totalTokens;
+    // B-963: `usage` is the sub-agent's LAST API call; its input side is the context.
+    const context = contextTokensOf(r.usage);
+    if (context !== undefined) stats.contextTokens = context;
     if (typeof r.totalDurationMs === 'number') stats.durationMs = r.totalDurationMs;
     if (r.toolStats && typeof r.toolStats === 'object') stats.toolStats = r.toolStats as Record<string, unknown>;
     return Object.keys(stats).length > 0 ? stats : undefined;

@@ -59,11 +59,12 @@ const agentEventSchema = z.discriminatedUnion('type', [z.object({
         toolUses: z.number(),
         lastTool: z.string().optional(),
         totalTokens: z.number().optional(),
+        contextTokens: z.number().optional(),
         durationMs: z.number().optional(),
         summary: z.string().optional(),
     }).optional(),
     result: z.object({ text: z.string(), truncated: z.boolean().optional() }).optional(),
-    usage: z.object({ toolUses: z.number().optional(), totalTokens: z.number().optional(), durationMs: z.number().optional() }).optional(),
+    usage: z.object({ toolUses: z.number().optional(), totalTokens: z.number().optional(), contextTokens: z.number().optional(), durationMs: z.number().optional() }).optional(),
 }), z.object({
     type: z.literal('queue-cancel'),
     targetLocalKeys: z.array(z.string().min(1)).min(1),
@@ -104,7 +105,7 @@ const sessionToolCallStartEventSchema = z.object({
 });
 
 const subagentResultSchema = z.object({ text: z.string(), truncated: z.boolean().optional() });
-const subagentUsageSchema = z.object({ toolUses: z.number().optional(), totalTokens: z.number().optional(), durationMs: z.number().optional() });
+const subagentUsageSchema = z.object({ toolUses: z.number().optional(), totalTokens: z.number().optional(), contextTokens: z.number().optional(), durationMs: z.number().optional() });
 
 const sessionToolCallEndEventSchema = z.object({
     t: z.literal('tool-call-end'),
@@ -175,6 +176,7 @@ const sessionProgressEventSchema = z.object({
     toolUses: z.number(),
     lastTool: z.string().optional(),
     totalTokens: z.number().optional(),
+    contextTokens: z.number().optional(),
     durationMs: z.number().optional(),
     summary: z.string().optional(),
 });
@@ -738,6 +740,7 @@ function normalizeSessionEnvelope(
                         toolUses: ev.toolUses,
                         ...(ev.lastTool ? { lastTool: ev.lastTool } : {}),
                         ...(typeof ev.totalTokens === 'number' ? { totalTokens: ev.totalTokens } : {}),
+                        ...(typeof ev.contextTokens === 'number' ? { contextTokens: ev.contextTokens } : {}),
                         ...(typeof ev.durationMs === 'number' ? { durationMs: ev.durationMs } : {}),
                         ...(ev.summary ? { summary: ev.summary } : {}),
                     },

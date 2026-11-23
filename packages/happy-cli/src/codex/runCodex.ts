@@ -1,4 +1,4 @@
-import { AGENT_PROFILE_SESSION_CAPABILITY, ATTACHMENT_REUSE_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_GOAL_CAPABILITY, CODEX_REWIND_CAPABILITY, parseCodexGoalCommand, CODEX_LIVE_PERMISSION_CAPABILITY, CODEX_STEER_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, TURN_FAILURE_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort, type TurnFailure } from '@slopus/happy-wire';
+import { AGENT_PROFILE_SESSION_CAPABILITY, ATTACHMENT_REUSE_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_CONTEXT_CAPABILITY, CODEX_GOAL_CAPABILITY, CODEX_REWIND_CAPABILITY, parseCodexGoalCommand, CODEX_LIVE_PERMISSION_CAPABILITY, CODEX_STEER_CAPABILITY, ISSUE_SESSION_CAPABILITY, readCodexContextUsage, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, TURN_FAILURE_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort, type TurnFailure } from '@slopus/happy-wire';
 import { isSessionPeerPrompt } from '@/claude/nonUserPrompt';
 import { codexTurnFailure } from './codexTurnFailure';
 import { issueSessionMetadata } from '@/issues/sessionMetadata';
@@ -67,6 +67,7 @@ import { resumeExistingThread } from './resumeExistingThread';
 import { importCodexThread, IMPORT_CODEX_THREAD_ENV } from './importCodexThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
 import { CODEX_IDLE_RELEASE_ENV, CodexIdleReleaseTimer, resolveCodexIdleReleaseMs, shouldReleaseIdleCodex } from './codexIdleRelease';
+import { CodexContextTracker } from './codexContextTracker';
 import { codexCompactCommand, codexGoalText, enqueueCodexUserText, isCodexClearText, isCodexControlText } from './codexClearCommand';
 import { runCodexCompact } from './codexCompact';
 import { describeGoalTransition, GOAL_PAUSED_ON_STOP, restoreCodexGoal, runCodexGoal, toAgentStateGoal, type CodexThreadGoal } from './codexGoal';
@@ -196,6 +197,8 @@ export async function runCodex(opts: {
     metadata.capabilities = [...metadata.capabilities, TURN_FAILURE_CAPABILITY];
     // B-953: `/goal` runs through thread/goal/*; the goal is mirrored in agentState.codexGoal.
     metadata.capabilities = [...metadata.capabilities, CODEX_GOAL_CAPABILITY];
+    // B-963: context occupancy is mirrored in agentState.codexContextUsage.
+    metadata.capabilities = [...metadata.capabilities, CODEX_CONTEXT_CAPABILITY];
     // B-961: conversation-rewind (thread/revert).
     metadata.capabilities = [...metadata.capabilities, CODEX_REWIND_CAPABILITY];
     // B-961b: edit / retry re-sends a prompt's attachments by reference.
@@ -667,6 +670,10 @@ export async function runCodex(opts: {
     // person acts on (describeGoalTransition); agentState follows every change of
     // status/objective/budget at once, token counts at most every 15 s.
     let codexGoal: CodexThreadGoal | null = null;
+    const contextTracker = new CodexContextTracker(
+        (usage) => session.setCodexContextUsage(usage), undefined, undefined,
+        () => readCodexContextUsage(session.getAgentState()?.codexContextUsage),
+    );
     let goalTokensWrittenAt = 0;
     /** An unrequested (goal) turn ran since the last ready; its end owes one. */
     let goalReadyOwed = false;
@@ -932,7 +939,10 @@ export async function runCodex(opts: {
             if (!threadId) return [];
             return (await client.readThread({ threadId, includeTurns: true })).thread.turns ?? [];
         },
-        revert: (beforeTurnId) => client.revertThread(beforeTurnId),
+        revert: async (beforeTurnId) => {
+            await client.revertThread(beforeTurnId);
+            contextTracker.invalidate();
+        },
         dropTurnsFrom: (turnId) => turnSources.dropFrom(turnId),
         record: (record) => persistCodexRewindRecord(session, record),
         // B-961b: an edit / retry re-sends the prompt's attachments; a file
@@ -1151,6 +1161,8 @@ export async function runCodex(opts: {
         if (msg.type === 'token_count') {
             session.sendAgentUsageSnapshot('codex', msg);
         }
+        // B-963: the report above stays cumulative; the meter reads `last`.
+        if (msg.type === 'token_count' || msg.type === 'child_token_count') contextTracker.onUsage(msg);
         logger.debug('[Codex] Event metadata', codexEventLogMetadata(msg));
 
         // Add messages to the ink UI buffer based on message type
@@ -1564,6 +1576,7 @@ export async function runCodex(opts: {
                 logger.debug('[Codex] Handling /clear command - resetting Codex thread state');
                 heldInput.delivered();
                 client.clearThreadState();
+                contextTracker.reset();
                 turnSources.clear();
                 blockedResumeThreadId = null;
                 currentTurnId = null;
@@ -1805,6 +1818,7 @@ export async function runCodex(opts: {
     } finally {
         // Clean up resources when main loop exits
         disposeTermination?.();
+        contextTracker.dispose();
         hibernationProbe?.stop();
         session.closePromptQueueDrain(); // B-509: no more pops into a process that is leaving
         // B-854: leaving the loop (Ctrl-C, closed queue) — nothing goes silently.

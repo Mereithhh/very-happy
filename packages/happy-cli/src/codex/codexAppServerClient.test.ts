@@ -1971,7 +1971,8 @@ describe('CodexAppServerClient sandbox integration', () => {
         expect(events.filter((event) => event.type === 'subagent_turn_end')).toEqual([expect.objectContaining({ ...child, status: 'completed' })]);
         // The spawn call itself stays the parent's; the child's token total never replaces the session's.
         expect(events.filter((event) => event.type === 'collab_agent_item').every((event) => !('subagent' in event))).toBe(true);
-        expect(events.filter((event) => event.type === 'token_count')).toEqual([expect.objectContaining({ total: { totalTokens: 42 } })]);
+        expect(events.filter((event) => event.type === 'token_count')).toEqual([expect.objectContaining({ total: { totalTokens: 42 }, thread_id: 'thread-raw-14' })]);
+        expect(events.filter((event) => event.type === 'child_token_count')).toEqual([expect.objectContaining({ total: { totalTokens: 999 }, thread_id: 'thread-child-14' })]);
         // The parent's turn ended once, after the child's.
         expect(events.filter((event) => event.type === 'task_complete')).toEqual([expect.objectContaining({ turn_id: 'turn-raw-14' })]);
         await client.disconnect();
