@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { TeamAction, TeamMessage, TeamOperation, TeamState, TeamTask } from '@slopus/happy-wire';
 import { reduceTeam, teamBotRepository, teamView, TeamError, type TeamActor } from './reducer';
-import { compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable, teamCapacity, warnCapacity, TEAM_COMPACT_AGE_MS, TEAM_COMPACT_MIN_AGE_MS, TEAM_LIMITS, TEAM_OPEN_TASK_KEEP_MESSAGES } from './compaction';
+import { compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable, teamCapacity, warnCapacity, mergeArchivedMessages, TEAM_COMPACT_AGE_MS, TEAM_COMPACT_MIN_AGE_MS, TEAM_LIMITS, TEAM_OPEN_TASK_KEEP_MESSAGES } from './compaction';
 import { advanceSchedules } from './schedules';
 import { TEAM_CAPACITY_HINT } from './errors';
 
@@ -121,6 +121,30 @@ describe('B-822 compaction policy', () => {
 });
 
 describe('B-959 open tasks', () => {
+    it('B-959b: a read merges archived and live by (createdAt, id); a live undelivered message older than the archive keeps its place', () => {
+        // The R74 shape: m0000..m1149 archived; live = the newest delivered + old undelivered u0300 / u0900.
+        const at = (i: number) => 1000 + i * 10;
+        const archived = Array.from({ length: 1150 }, (_, i) => message(`m${String(i).padStart(4, '0')}`, 'root', { createdAt: at(i), deliveredAt: at(i) }));
+        const live = [
+            ...Array.from({ length: 50 }, (_, i) => message(`m${String(1150 + i).padStart(4, '0')}`, 'root', { createdAt: at(1150 + i), deliveredAt: at(1150 + i) })),
+            message('u0300', 'root', { createdAt: at(300) + 5, deliveredAt: null }),
+            message('u0900', 'root', { createdAt: at(900) + 5, deliveredAt: null }),
+            message('same-a', 'root', { createdAt: at(1199) + 1 }),
+        ];
+        const merged = mergeArchivedMessages(live, [...archived].reverse().concat(message('same-0', 'root', { createdAt: at(1199) + 1 })));
+        const ids = merged.map(m => m.id);
+        expect(ids.slice(299, 303)).toEqual(['m0299', 'm0300', 'u0300', 'm0301']);
+        expect(ids.slice(900, 904)).toEqual(['m0899', 'm0900', 'u0900', 'm0901']);
+        expect(ids.slice(1150, 1154)).toEqual(['m1148', 'm1149', 'm1150', 'm1151']);
+        expect(ids.slice(-2)).toEqual(['same-0', 'same-a']); // same createdAt orders by id
+        expect(merged.every((m, i) => i === 0 || merged[i - 1].createdAt <= m.createdAt)).toBe(true);
+        // Nothing lost or doubled; live wins on a duplicate id.
+        expect(new Set(ids).size).toBe(ids.length);
+        expect(ids).toHaveLength(1150 + 53 + 1);
+        const dup = mergeArchivedMessages([{ ...live[0], body: 'live' }], [{ ...live[0], body: 'archived' }]);
+        expect(dup.map(m => m.body)).toEqual(['live']);
+    });
+
     const N = TEAM_OPEN_TASK_KEEP_MESSAGES;
     const lead = { id: 'lead', name: 'Lead', root: true, managed: false, sessionId: 's', generation: 1, assistant: 'claude' as const, directory: null };
     it('an open task\'s terminal message is archivable only with ≥ N newer messages of that task left live', () => {
