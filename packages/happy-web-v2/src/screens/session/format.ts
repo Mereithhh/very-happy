@@ -1,3 +1,4 @@
+import { contextPercentOf } from './contextWindow';
 /** Shared formatting helpers for the chat screen. */
 
 export function formatElapsed(totalSeconds: number): string {
@@ -42,3 +43,9 @@ export function hasDisplayableCost(usd: number | null | undefined): usd is numbe
  * `./contextWindow.ts`（B-135——原来这里写死 190_000，对 1M 模型直接钉死在
  * 「剩余 0%」）。别再往这个文件加写死的窗口常量。
  */
+
+/** B-963: 「上下文 24.2k / 258.4k（9%）」 for a sub-agent; the percentage only with a known window. */
+export function contextFact(t: (key: 'session.chat.subagentContext', params: { usage: string }) => string, tokens: number, window: number | null): string {
+    const percent = contextPercentOf(tokens, window);
+    return t('session.chat.subagentContext', { usage: window === null || percent === null ? formatTokens(tokens) : `${formatTokens(tokens)} / ${formatTokens(window)} (${percent}%)` });
+}

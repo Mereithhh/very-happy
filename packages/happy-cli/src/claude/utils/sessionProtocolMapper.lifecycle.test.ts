@@ -61,6 +61,38 @@ describe('sub-agent lifecycle mapping (B-260-P2)', () => {
         expect(done.envelopes[0].ev).toEqual({ t: 'stop', status: 'completed', usage: { toolUses: 9, totalTokens: 5000, durationMs: 60_000 } });
     });
 
+    it('B-963: progress and stop carry the sub-agent’s own context (input side of its newest call)', () => {
+        const state: ClaudeSessionProtocolState = { currentTurnId: null, now: () => 1_000 };
+        agentToolUse(state);
+        const call = (parent: string | null, read: number) => mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant', uuid: `s-${read}`, ...(parent ? { isSidechain: true, parent_tool_use_id: parent } : {}),
+            message: { role: 'assistant', content: [{ type: 'text', text: 'x' }], usage: { input_tokens: 10, cache_read_input_tokens: read, cache_creation_input_tokens: 90, output_tokens: 700 } },
+        } as any, state);
+        stubResult(state);
+        call('toolu_agent_1', 20_000);
+        call('toolu_agent_1', 30_000);
+        call(null, 500_000); // the session's own call is not the sub-agent's
+        const progress = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'system', subtype: 'task_progress', task_id: 't1', tool_use_id: 'toolu_agent_1', usage: { total_tokens: 30_800, tool_uses: 3, duration_ms: 4000 }, uuid: 's-p',
+        } as any, state);
+        expect(progress.envelopes.at(-1)?.ev).toMatchObject({ t: 'progress', totalTokens: 30_800, contextTokens: 30_100 });
+        const done = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'system', subtype: 'task_notification', task_id: 't1', tool_use_id: 'toolu_agent_1', status: 'completed', usage: { total_tokens: 30_800, tool_uses: 3, duration_ms: 4000 }, uuid: 's-n',
+        } as any, state);
+        expect(done.envelopes.at(-1)?.ev).toMatchObject({ t: 'stop', usage: { totalTokens: 30_800, contextTokens: 30_100 } });
+    });
+
+    it('B-963: a foreground result reads the context from its last call, not totalTokens', () => {
+        const state: ClaudeSessionProtocolState = { currentTurnId: null };
+        agentToolUse(state);
+        const done = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user', uuid: 'u-r',
+            tool_use_result: { status: 'completed', content: [{ type: 'text', text: 'ok' }], totalTokens: 116_596, usage: { input_tokens: 2, cache_read_input_tokens: 113_000, cache_creation_input_tokens: 926, output_tokens: 2_668 } },
+            message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_agent_1', content: 'ok' }] },
+        } as any, state);
+        expect(done.envelopes.find((e) => e.ev.t === 'stop')?.ev).toMatchObject({ usage: { totalTokens: 116_596, contextTokens: 113_928 } });
+    });
+
     it('the task-notification user message re-emits stop with the <result> report, then stays a turn boundary', () => {
         const state: ClaudeSessionProtocolState = { currentTurnId: null };
         const start = agentToolUse(state);

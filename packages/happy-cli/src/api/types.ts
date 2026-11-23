@@ -904,6 +904,8 @@ export type AgentState = {
   turnFailure?: import('@slopus/happy-wire').TurnFailure | null
   /** B-953: the Codex thread's goal (`/goal`); null once cleared. */
   codexGoal?: import('@slopus/happy-wire').CodexGoal | null
+  /** B-963: context occupancy of the Codex thread and its sub-agent threads. */
+  codexContextUsage?: import('@slopus/happy-wire').CodexContextUsage | null
   requests?: {
     [id: string]: {
       tool: string,

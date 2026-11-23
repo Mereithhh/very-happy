@@ -1608,6 +1608,12 @@ export class ApiSessionClient extends EventEmitter {
         this.updateAgentState((state) => ({ ...state, codexGoal: goal }));
     }
 
+    /** B-963: context occupancy of the Codex thread; the caller spaces the writes. */
+    setCodexContextUsage(usage: import('@slopus/happy-wire').CodexContextUsage | null): void {
+        if (!usage && !this.agentState?.codexContextUsage) return;
+        this.updateAgentState((state) => ({ ...state, codexContextUsage: usage }));
+    }
+
     keepAlive(thinking: boolean, mode: 'local' | 'remote', backgroundTasks?: readonly BackgroundTaskInfo[]) {
         // B-587: a hibernating wrapper stops beating, so no beat can be
         // flushed by the server's presence batch after it went offline.

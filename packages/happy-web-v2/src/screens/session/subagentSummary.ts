@@ -29,6 +29,8 @@ export interface SubagentSummary {
         latest: string | null;
         durationMs: number | null;
         totalTokens: number | null;
+        /** B-963: its own context (input side of its newest call); null from older CLIs. */
+        contextTokens: number | null;
         result: { text: string; truncated?: boolean } | null;
     } | null;
 }
@@ -67,6 +69,8 @@ export function buildSubagentSummary(message: ToolCallMessage, recentLimit = 3):
             latest: lc.progress?.lastTool ? `[${lc.progress.lastTool}]` : (recent[recent.length - 1] ?? null),
             durationMs: lc.usage?.durationMs ?? lc.progress?.durationMs ?? null,
             totalTokens: lc.usage?.totalTokens ?? lc.progress?.totalTokens ?? null,
+            // A resumed sub-agent runs again: its newest progress, not the earlier run's end.
+            contextTokens: (lc.status === 'running' ? lc.progress?.contextTokens : undefined) ?? lc.usage?.contextTokens ?? lc.progress?.contextTokens ?? null,
             result: lc.result ?? null,
         }
         : null;

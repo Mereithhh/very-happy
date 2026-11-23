@@ -8,12 +8,16 @@ import { Markdown } from './Markdown';
 import { useTranslation } from '@/i18n/useTranslation';
 import { AgentGlyph } from './AgentChip';
 import { shortThreadId } from './agentIdentity';
+import { contextFact } from './format';
+import { codexChildContext } from '@/sync/codexContext';
+import { useSession } from '@/sync/storage';
 
 export function CodexChildDetail({sessionId,message}:{sessionId:string;message:ToolCallMessage}) {
     const {t}=useTranslation();
     const input=message.tool.input;
     const ids: string[]=Array.isArray(input?.receiverThreadIds)?input.receiverThreadIds.filter((id:unknown)=>typeof id==='string'):[];
     const [selected,setSelected]=useState(ids[0]??'');
+    const context=codexChildContext(useSession(sessionId),selected);
     const [messages,setMessages]=useState<Message[]>([]);
     const [error,setError]=useState('');
     const [loading,setLoading]=useState(true);
@@ -41,7 +45,7 @@ export function CodexChildDetail({sessionId,message}:{sessionId:string;message:T
     // B-614: same anatomy as SubagentDetail — facts, briefing, then one
     // segmented thread switcher (Codex glyph + short id; full id on hover).
     return <div className="sa">
-        {typeof input?.model==='string'&&<div className="sa-head"><span className="sa-facts"><span className="sa-model">{t('session.chat.subagentRequestedModel')}: {input.model}</span></span></div>}
+        {(typeof input?.model==='string'||context)&&<div className="sa-head"><span className="sa-facts">{typeof input?.model==='string'&&<span className="sa-model">{t('session.chat.subagentRequestedModel')}: {input.model}</span>}{context&&<span>{contextFact(t,context.tokens,context.contextWindow)}</span>}</span></div>}
         {typeof input?.prompt==='string'&&<div className="sa-brief"><Markdown text={input.prompt}/></div>}
         {ids.length>0&&<div className="sa-threads vh-segmented" role="group" aria-label={t('session.chat.subagentLog')}>{ids.map(id=><button key={id} type="button" className="sa-thread" aria-pressed={id===selected} title={id} onClick={()=>setSelected(id)}><AgentGlyph kind="codex" size={13}/><span className="vh-segmented-label">{shortThreadId(id)}</span></button>)}</div>}
         {error&&<div role="status" className="tg-error">{error}</div>}

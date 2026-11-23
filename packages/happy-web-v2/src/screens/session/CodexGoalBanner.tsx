@@ -66,7 +66,7 @@ export function CodexGoalBanner({ sessionId }: { sessionId: string }) {
                     {/* usage before the objective: on a phone the objective is clamped, the numbers must stay */}
                     {usage && (
                         <>
-                            <span className="mrb-goal-usage" data-testid="codex-goal-usage">{t('session.chat.goalTokens', { usage })}</span>
+                            <span className="mrb-goal-usage" data-testid="codex-goal-usage">{t('session.chat.goalTokensTotal', { usage })}</span>
                             <span className="mrb-note-sep" aria-hidden> · </span>
                         </>
                     )}

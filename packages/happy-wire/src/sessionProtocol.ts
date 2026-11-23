@@ -97,6 +97,8 @@ export const sessionSubagentUsageSchema = z.object({
   toolUses: z.number().optional(),
   totalTokens: z.number().optional(),
   durationMs: z.number().optional(),
+  // B-963: the sub-agent's own context — input side of its newest call.
+  contextTokens: z.number().optional(),
 });
 
 export const sessionToolCallEndEventSchema = z.object({
@@ -185,6 +187,7 @@ export const sessionProgressEventSchema = z.object({
   toolUses: z.number(),
   lastTool: z.string().optional(),
   totalTokens: z.number().optional(),
+  contextTokens: z.number().optional(),
   durationMs: z.number().optional(),
   summary: z.string().optional(),
 });

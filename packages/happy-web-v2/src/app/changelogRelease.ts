@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-24-codex-context-meter',
+    cliVersion: '0.2.225',
+    date: '2026-11-24',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov24b.title',
+    summaryKey: 'changelog.releases.nov24b.summary',
+    itemKeys: ['changelog.releases.nov24b.codex', 'changelog.releases.nov24b.subagents', 'changelog.releases.nov24b.restart', 'changelog.releases.nov24b.fixes'],
+  },
+  {
     id: '2026-11-23-codex-edit-delete-retry',
     cliVersion: '0.2.224',
     date: '2026-11-23',

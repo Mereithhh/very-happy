@@ -1,4 +1,4 @@
-import { CodexGoalSchema, ContextUsageSchema } from '@slopus/happy-wire';
+import { CodexContextUsageSchema, CodexGoalSchema, ContextUsageSchema } from '@slopus/happy-wire';
 import { z } from "zod";
 import type { SessionShareInfo } from './sessionShareTypes';
 
@@ -256,6 +256,8 @@ export const AgentStateSchema = z.object({
     /** B-953: the Codex thread's goal (`/goal`, wrappers with `codex-goal-v1`);
      *  read through `sessionCodexGoal`. Lenient like turnFailure. */
     codexGoal: CodexGoalSchema.nullish().catch(undefined),
+    /** B-963: Codex context occupancy; read through `sessionCodexContext`. */
+    codexContextUsage: CodexContextUsageSchema.nullish().catch(undefined),
     requests: z.record(z.string(), z.object({
         tool: z.string(),
         arguments: z.any(),

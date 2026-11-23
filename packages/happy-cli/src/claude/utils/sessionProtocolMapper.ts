@@ -10,7 +10,7 @@ import {
     capSubagentText,
     parseTaskNotificationText,
     shouldEmitProgress,
-    toolUseResultStats,
+    contextTokensOf, toolUseResultStats,
     toolUseResultStatus,
     toolUseResultToText,
     type ProgressThrottleState,
@@ -39,6 +39,8 @@ export type ClaudeSessionProtocolState = {
     /** Sub-agents whose tool_result was the async stub — their stop comes from task_notification. */
     stubSubagents?: Set<string>;
     progressThrottle?: Map<string, ProgressThrottleState>;
+    /** B-963: each running sub-agent's context (input side of its newest call). */
+    subagentContext?: Map<string, number>;
     /**
      * B-309: how many content blocks of the CURRENT assistant message have
      * already been mapped. The SDK splits one API message across several
@@ -445,7 +447,7 @@ function emitSubagentStopWithStatus(
     turn: string | undefined,
     subagent: string,
     envelopes: SessionEnvelope[],
-    payload: { status?: 'completed' | 'failed' | 'stopped'; result?: { text: string; truncated?: boolean }; usage?: { toolUses?: number; totalTokens?: number; durationMs?: number } },
+    payload: { status?: 'completed' | 'failed' | 'stopped'; result?: { text: string; truncated?: boolean }; usage?: { toolUses?: number; totalTokens?: number; durationMs?: number; contextTokens?: number } },
 ): void {
     envelopes.push(createEnvelope('agent', {
         t: 'stop',
@@ -625,6 +627,7 @@ function mapTaskLifecycleSystemMessage(
         maybeEmitSubagentStart(state, turn, subagent, envelopes);
         return;
     }
+    const contextTokens = state.subagentContext?.get(subagent);
     if (subtype === 'task_progress') {
         const toolUses = typeof raw.usage?.tool_uses === 'number' ? raw.usage.tool_uses : 0;
         const throttle = getProgressThrottle(state);
@@ -638,6 +641,7 @@ function mapTaskLifecycleSystemMessage(
             toolUses,
             ...(typeof raw.last_tool_name === 'string' && raw.last_tool_name ? { lastTool: raw.last_tool_name } : {}),
             ...(usage?.totalTokens !== undefined ? { totalTokens: usage.totalTokens } : {}),
+            ...(contextTokens !== undefined ? { contextTokens } : {}),
             ...(usage?.durationMs !== undefined ? { durationMs: usage.durationMs } : {}),
             ...(typeof raw.summary === 'string' && raw.summary.trim() ? { summary: raw.summary.trim() } : {}),
         }, { turn, subagent }));
@@ -647,8 +651,9 @@ function mapTaskLifecycleSystemMessage(
         const status = raw.status === 'completed' || raw.status === 'failed' || raw.status === 'stopped' ? raw.status : 'completed';
         emitSubagentStopWithStatus(state, state.currentTurnId ?? undefined, subagent, envelopes, {
             status,
-            ...(usage ? { usage } : {}),
+            ...(usage || contextTokens !== undefined ? { usage: { ...usage, ...(contextTokens !== undefined ? { contextTokens } : {}) } } : {}),
         });
+        state.subagentContext?.delete(subagent);
         getStubSubagents(state).delete(subagent);
         getProgressThrottle(state).delete(subagent);
         return;
@@ -708,6 +713,8 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
         const turnId = ensureTurn(state, envelopes);
         maybeEmitSubagentStart(state, turnId, subagent, envelopes);
         const usage = pickAssistantUsage(message);
+        const subagentContext = subagent ? contextTokensOf(usage) : undefined;
+        if (subagent && subagentContext !== undefined) (state.subagentContext ??= new Map()).set(subagent, subagentContext);
         const blocks = Array.isArray(message.message?.content) ? message.message.content : [];
         // B-309: the API message id plus the content block index identify the
         // live draft this envelope supersedes.
@@ -897,7 +904,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                             emitSubagentStopWithStatus(state, turnId, sessionSubagentForToolResult, envelopes, {
                                 status: 'completed',
                                 ...(result ? { result } : {}),
-                                ...(stats ? { usage: { toolUses: stats.toolUses, totalTokens: stats.totalTokens, durationMs: stats.durationMs } } : {}),
+                                ...(stats ? { usage: { toolUses: stats.toolUses, totalTokens: stats.totalTokens, durationMs: stats.durationMs, ...(stats.contextTokens !== undefined ? { contextTokens: stats.contextTokens } : {}) } } : {}),
                             });
                             envelopes.push(createEnvelope('agent', {
                                 t: 'tool-call-end',
