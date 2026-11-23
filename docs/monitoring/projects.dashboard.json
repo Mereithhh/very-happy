@@ -202,7 +202,7 @@
       "id": 5,
       "type": "timeseries",
       "title": "Project notes and refusals",
-      "description": "Agent vs user notes, quota refusals (each refusal returns a one-line alternative), revocations.",
+      "description": "Agent vs user notes and revocations.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -216,7 +216,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (op, actor) (rate(project_ops_total{op=~\"note_create|note_quota_refused|note_revoke\"}[$__rate_interval]))",
+          "expr": "sum by (op, actor) (rate(project_ops_total{op=~\"note_create|note_revoke\"}[$__rate_interval]))",
           "legendFormat": "{{op}} · {{actor}}"
         }
       ],

@@ -20,9 +20,6 @@ export const PROJECT_LIMITS = {
     logTitleChars: 200,
     logBodyBytes: 4 * 1024,
     messageBytes: 64 * 1024,
-    /** Per author session, rolling hour. */
-    notesPerHour: 5,
-    decisionsPerHour: 2,
     presenceBatch: 200,
     memberBatch: 200,
     /** Delivered offline-message bodies are erased after this long (Q4). */
@@ -298,7 +295,7 @@ export type ProjectDigest = {
 /** Narrow error codes clients can branch on. */
 export const PROJECT_ERROR_CODES = [
     'projects_disabled', 'project_not_found', 'project_count_quota_exceeded', 'session_not_found', 'session_not_owned',
-    'instructions_version_conflict', 'project_note_quota_exceeded', 'log_entry_not_found', 'log_entry_not_owned',
+    'instructions_version_conflict', 'log_entry_not_found', 'log_entry_not_owned',
     'team_not_found', 'team_machine_not_in_project', 'not_a_project_member', 'message_quota_exceeded',
     'project_presence_rate_quota_exceeded', 'transaction_conflict', 'invalid_folders',
 ] as const;

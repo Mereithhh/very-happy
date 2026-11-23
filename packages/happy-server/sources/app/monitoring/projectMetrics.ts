@@ -43,7 +43,7 @@ export const sessionPeerMessagesCounter = reuse('session_peer_messages_total', (
 
 export type ProjectOp =
     | 'create' | 'member_add' | 'member_remove' | 'instructions_put' | 'instructions_conflict'
-    | 'note_create' | 'note_quota_refused' | 'note_revoke' | 'context_read' | 'digest_read' | 'digest_nonempty'
+    | 'note_create' | 'note_revoke' | 'context_read' | 'digest_read' | 'digest_nonempty'
     | 'message_stored' | 'message_delivered' | 'presence_write' | 'team_attach';
 
 export function countProjectOp(op: ProjectOp, actor: 'user' | 'agent' | 'daemon' = 'user', by = 1): void {

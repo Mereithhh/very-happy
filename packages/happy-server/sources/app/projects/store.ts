@@ -11,7 +11,7 @@ import { isAccountMainAgent } from './mainAgent';
 import { inTx, isRetryableTransactionConflict, type Tx } from '@/storage/inTx';
 import { configuredResourceLimit, enforceAccountWriteRate, isAccountResourceLimitError } from '@/app/api/resourceLimits';
 import {
-    ProjectError, requireProject, normalizeFolders, normalizeDefaults, readFolders, readDefaults, noteQuotaRefusal, parseLogRef,
+    ProjectError, requireProject, normalizeFolders, normalizeDefaults, readFolders, readDefaults, parseLogRef,
     teamMachineAllowed, snapshotTeamDefaults,
     sessionSharingOf, isStaleSessionNote,
 } from './rules';
@@ -488,9 +488,9 @@ async function resolveLogRef(tx: Tx, projectId: string, ref: string): Promise<Lo
 
 /**
  * Append-only. An agent-authored note (authorSessionId set by the wrapper)
- * must come from a member and fits a rolling-hour budget (≤5, ≤2 decisions);
- * over budget answers 429 with a one-line alternative. User notes are not
- * budgeted. Editing = a new entry that `supersedes` the old one.
+ * must come from a member. There is no per-hour count limit (B-964); title
+ * and body length are bounded by the wire schema. Editing = a new entry that
+ * `supersedes` the old one.
  */
 export async function createLogEntry(accountId: string, projectId: string, input: ProjectLogCreate): Promise<ProjectLogEntryView> {
     return run(async tx => {
@@ -501,12 +501,6 @@ export async function createLogEntry(accountId: string, projectId: string, input
             if (!(member && member.projectId === projectId)) {
                 requireProject(await isAccountMainAgent(tx, accountId, input.authorSessionId), 'not_a_project_member', 409);
             }
-            const recent = await tx.projectLogEntry.findMany({
-                where: { authorSessionId: input.authorSessionId, createdAt: { gt: new Date(Date.now() - 3600_000) } },
-                select: { kind: true },
-            });
-            const refusal = noteQuotaRefusal(recent, input.kind);
-            if (refusal) throw new ProjectError('project_note_quota_exceeded', 429, refusal);
         }
         const supersedes = input.supersedes ? (await resolveLogRef(tx, projectId, input.supersedes)).id : null;
         const bumped = await tx.project.update({ where: { id: projectId }, data: { logSeq: { increment: 1 }, updatedAt: new Date() }, select: { logSeq: true } });

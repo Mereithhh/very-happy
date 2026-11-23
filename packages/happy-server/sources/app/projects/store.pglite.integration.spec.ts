@@ -164,9 +164,8 @@ describe('projects store (pglite)', () => {
         await db.userKVStore.create({ data: { accountId, key: 'vh.main-agent.v1', value: pointer(main) } });
         const entry = await store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'Lead idle 3h', authorSessionId: main });
         expect(entry).toMatchObject({ authorSessionId: main, authorUser: false, title: 'Lead idle 3h' });
-        // The agent budget still applies to it.
-        for (let i = 0; i < 4; i++) await store.createLogEntry(accountId, p.id, { kind: 'finding', title: `f${i}`, authorSessionId: main });
-        await expect(store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'sixth', authorSessionId: main })).rejects.toMatchObject({ code: 'project_note_quota_exceeded' });
+        // B-964: no per-hour count — it keeps writing.
+        for (let i = 0; i < 9; i++) await store.createLogEntry(accountId, p.id, { kind: i % 3 ? 'finding' : 'decision', title: `f${i}`, authorSessionId: main });
         // Another session of the account is still refused.
         await expect(store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'x', authorSessionId: stranger })).rejects.toMatchObject({ code: 'not_a_project_member' });
         // A pointer naming another account's session gives nothing; neither does a broken value.
@@ -177,20 +176,20 @@ describe('projects store (pglite)', () => {
         await db.userKVStore.delete({ where: { accountId_key: { accountId, key: 'vh.main-agent.v1' } } });
     });
 
-    it('agent notes: members only, ≤5/hour with ≤2 decisions and an actionable refusal; user notes unbudgeted; revoke own only', async () => {
+    it('agent notes: members only, no per-hour count (B-964: 10 notes incl. 5 decisions all land); revoke own only', async () => {
         const p = await newProject();
         const s = await newSession(); const outsider = await newSession();
         await store.addMembers(accountId, p.id, { sessionIds: [s] });
         await expect(store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'x', authorSessionId: outsider })).rejects.toMatchObject({ code: 'not_a_project_member', status: 409 });
         const d1 = await store.createLogEntry(accountId, p.id, { kind: 'decision', title: 'use pnpm', authorSessionId: s });
-        await store.createLogEntry(accountId, p.id, { kind: 'decision', title: 'no zod default', authorSessionId: s });
-        const third = await store.createLogEntry(accountId, p.id, { kind: 'decision', title: 'one more', authorSessionId: s }).catch(e => e);
-        expect(third).toMatchObject({ code: 'project_note_quota_exceeded', status: 429, details: { limit: 2, count: 2 } });
-        expect(third.details.suggestion).toMatch(/finding|supersede/);
-        await store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'f1', authorSessionId: s });
-        await store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'f2', authorSessionId: s });
-        await store.createLogEntry(accountId, p.id, { kind: 'handoff', title: 'h1', authorSessionId: s });
-        await expect(store.createLogEntry(accountId, p.id, { kind: 'handoff', title: 'h2', authorSessionId: s })).rejects.toMatchObject({ code: 'project_note_quota_exceeded', details: { limit: 5 } });
+        // B-964: the same session writes 10 entries within the hour, 5 of them decisions — none refused.
+        const kinds = ['decision', 'decision', 'decision', 'decision', 'finding', 'finding', 'finding', 'handoff', 'handoff'] as const;
+        for (const [i, kind] of kinds.entries()) {
+            await expect(store.createLogEntry(accountId, p.id, { kind, title: `${kind} ${i}`, authorSessionId: s })).resolves.toMatchObject({ kind, authorSessionId: s });
+        }
+        const mine = (await store.listLog(accountId, p.id)).filter(e => e.authorSessionId === s);
+        expect(mine).toHaveLength(10);
+        expect(mine.filter(e => e.kind === 'decision')).toHaveLength(5);
         for (let i = 0; i < 7; i++) await store.createLogEntry(accountId, p.id, { kind: 'decision', title: `user ${i}` });
         // Supersede by #seq; superseded decision drops out of "in effect".
         const replacement = await store.createLogEntry(accountId, p.id, { kind: 'decision', title: 'use pnpm 10', supersedes: `#${d1.seq}` });

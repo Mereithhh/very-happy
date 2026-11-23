@@ -236,7 +236,7 @@ describe('projects by projectId', () => {
         expect(JSON.parse(text(r))).toMatchObject({ ok: false, error: 'project_not_member' })
         expect(calls).toHaveLength(1)
         expect(calls[0].authorSessionId).toBe('main-agent-session')
-        const failing = deps({ projects: { ...deps().projects, note: async () => { throw Object.assign(new Error('quota'), { code: 'project_note_quota_exceeded' }) } } })
+        const failing = deps({ projects: { ...deps().projects, note: async () => { throw Object.assign(new Error('not found'), { code: 'project_not_found' }) } } })
         expect((await run(failing, 'project_note', { projectId: 'p1', kind: 'finding', title: 't' })).isError).toBe(true)
     })
 })
