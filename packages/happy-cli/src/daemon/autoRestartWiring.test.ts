@@ -70,7 +70,7 @@ describe('B-852 auto-restart wiring', () => {
         // B-931: Codex says "updated" only when the app-server it started reports the target.
         expect(codex).toContain("const autoUpdated = takeAutoRestartedEvent(process.env, { cliVersion: packageJson.version, agentVersion: codexAgentVersion }, 'Codex');\n        if (autoUpdated) session.sendSessionEvent(autoUpdated);");
         expect(codex.indexOf('codexAgentVersion = client.serverVersion;')).toBeLessThan(codex.indexOf('const autoUpdated = takeAutoRestartedEvent('));
-        expect(claude).toContain('HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY]');
+        expect(claude).toContain('HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY, ATTACHMENT_REUSE_CAPABILITY]');
         expect(codex).toContain('HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, CODEX_STEER_CAPABILITY');
         expect(acp).toContain("...(opts.agentName === 'pi' && opts.startedBy === 'daemon' ? [AUTO_RESTART_CAPABILITY] : [])],");
     });

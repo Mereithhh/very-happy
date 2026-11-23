@@ -29,7 +29,7 @@ const between = (source: string, start: string, end: string) => {
 describe('B-850a Claude wrapper', () => {
     it('advertises the capability', () => {
         expect(AGENT_PROFILE_SESSION_CAPABILITY).toBe('agent-profile-v1');
-        expect(claude).toContain('CLAUDE_CONFIG_MODEL_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY],');
+        expect(claude).toContain('CLAUDE_CONFIG_MODEL_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY, ATTACHMENT_REUSE_CAPABILITY],');
     });
 
     it('reads and drops the spawn account variable before anything is spawned', () => {
