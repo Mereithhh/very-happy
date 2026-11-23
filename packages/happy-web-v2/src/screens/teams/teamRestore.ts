@@ -43,7 +43,7 @@ export function restoreConflicts(details: unknown): TeamRestoreConflict[] {
 
 const en = {
   title: "This team is archived",
-  counts: (v: TeamRestoreView) => `${v.tasks} ${v.tasks === 1 ? "task" : "tasks"} · ${v.schedules} ${v.schedules === 1 ? "schedule" : "schedules"} · ${v.messages} undelivered ${v.messages === 1 ? "message" : "messages"} were cancelled by the archive`,
+  counts: (v: TeamRestoreView) => `${v.tasks} ${v.tasks === 1 ? "task" : "tasks"} · ${v.schedules} ${v.schedules === 1 ? "schedule" : "schedules"} · ${v.messages} undelivered ${v.messages === 1 ? "message" : "messages"} were cancelled by the archive.`,
   source: { web: "Archived from the Web.", cli: "Archived from the command line.", unknown: "" } as Record<TeamRestoreView["source"], string>,
   hint: (days: number) => `Restore brings them back: each member continues its own conversation in its own working directory, and the lead rejoins the team. You can restore it for ${days} more ${days === 1 ? "day" : "days"}.`,
   button: "Restore team",
@@ -71,7 +71,7 @@ const en = {
 };
 const zh: typeof en = {
   title: "这个团队已归档",
-  counts: (v) => `归档取消了 ${v.tasks} 个任务、${v.schedules} 个定时安排、${v.messages} 条未送达的消息`,
+  counts: (v) => `归档取消了 ${v.tasks} 个任务、${v.schedules} 个定时安排、${v.messages} 条未送达的消息。`,
   source: { web: "从网页归档。", cli: "从命令行归档。", unknown: "" },
   hint: (days) => `恢复后它们会回来：每个成员在自己原来的工作目录里接着原来的对话，负责人重新回到团队。还可以恢复 ${days} 天。`,
   button: "恢复团队",
