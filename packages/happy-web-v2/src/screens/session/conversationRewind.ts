@@ -29,7 +29,12 @@ import type { Session } from '@/sync/storageTypes';
 export type RewindAction = 'edit' | 'delete';
 
 export class RewindFailure extends Error {
-    constructor(public readonly kind: 'unsupported' | 'outdated' | 'unsent' | 'agent' | 'record' | 'send' | 'attachments', message: string) {
+    constructor(
+        public readonly kind: 'unsupported' | 'outdated' | 'unsent' | 'agent' | 'record' | 'send' | 'attachments',
+        message: string,
+        /** B-961c: `attachments` — the files that could not be re-sent. */
+        public readonly files: readonly string[] = [],
+    ) {
         super(message);
         this.name = 'RewindFailure';
     }
@@ -40,8 +45,10 @@ export type RewindDeps = {
     recordDrop: (sessionId: string, drop: { fromSeq: number; toSeq?: number; reason: RewindAction; requestId?: string }) => Promise<void>;
     /** B-961b: `attachments` are re-sent by reference (edit keeps them). */
     send: (sessionId: string, text: string, attachments?: ReusableAttachment[]) => Promise<unknown>;
-    /** Seqs of the session's server-confirmed user prompts. */
+    /** B-961c: where each server-confirmed user prompt's turn starts (its leading `file` events). */
     userSeqs: (sessionId: string) => number[];
+    /** B-961c: the seq a rewind hides from — the first `file` event sent with the prompt, else the prompt. */
+    turnStart?: (sessionId: string, seq: number) => number;
     /** B-544: resolves true once session metadata shows `rewind.requestId === requestId`, false after `ms`. */
     waitForRewindRecord?: (sessionId: string, requestId: string, ms: number) => Promise<boolean>;
     newRequestId?: () => string;
@@ -82,13 +89,41 @@ const defaultDeps: RewindDeps = {
         source: 'chat',
         ...(attachments && attachments.length > 0 ? { reuseAttachments: attachments } : {}),
     }),
-    userSeqs: (sessionId) => (storage.getState().sessionMessages[sessionId]?.messages ?? [])
-        .flatMap((message) => message.kind === 'user-text' && typeof message.seq === 'number' ? [message.seq] : []),
+    userSeqs: (sessionId) => [...userTurnStarts(storage.getState().sessionMessages[sessionId]?.messages ?? []).values()],
+    turnStart: (sessionId, seq) => userTurnStarts(storage.getState().sessionMessages[sessionId]?.messages ?? []).get(seq) ?? seq,
     waitForRewindRecord: waitForRewindRecordInStore,
     newRequestId: randomUUID,
 };
 
 const UNSUPPORTED = /method not found|rpc method not available|unknown method/i;
+
+/**
+ * B-961c: a prompt sent with files is `file` events, then the text (sendMessage
+ * queues them first, so they get the smaller seqs), and the transcript shows
+ * that leading run of `file` events as the prompt's attachments. A rewind that
+ * hid from the text's own seq left the old `file` events visible, and the
+ * re-sent prompt's new ones joined the same run — every retry / edit doubled
+ * the thumbnails, and the next retry re-sent all of them to the agent. So a
+ * turn starts at its first leading `file` event. Map: prompt seq → turn start.
+ * Pure.
+ */
+export function userTurnStarts(messages: readonly Message[]): Map<number, number> {
+    const ordered = messages
+        .filter((message) => typeof message.seq === 'number')
+        .sort((a, b) => (a.seq as number) - (b.seq as number));
+    const starts = new Map<number, number>();
+    let runStart: number | null = null;
+    for (const message of ordered) {
+        const seq = message.seq as number;
+        if (message.kind === 'tool-call' && message.tool.name === 'file') {
+            if (runStart === null) runStart = seq;
+            continue;
+        }
+        if (message.kind === 'user-text') starts.set(seq, runStart ?? seq);
+        runStart = null;
+    }
+    return starts;
+}
 
 /** The turn a delete removes: this prompt up to (not including) the next one. */
 export function deleteRange(seq: number, userSeqs: readonly number[]): { fromSeq: number; toSeq?: number } {
@@ -135,7 +170,9 @@ export function codexRewindReconcile(
     const target = newestFirst.find((message) => message.kind === 'user-text'
         && ((record.sourceId && message.localId === record.sourceId) || (record.codexItemId && message.codexItemId === record.codexItemId)));
     if (!target || typeof target.seq !== 'number') return null;
-    return { requestId: record.requestId, reason: record.action === 'edit' ? 'edit' : 'delete', fromSeq: target.seq };
+    // B-961c: from the prompt's first attachment on, like the live path.
+    const fromSeq = userTurnStarts(newestFirst).get(target.seq) ?? target.seq;
+    return { requestId: record.requestId, reason: record.action === 'edit' ? 'edit' : 'delete', fromSeq };
 }
 
 export function useCodexRewindReconcile(sessionId: string, session: Session | null | undefined, newestFirst: readonly Message[], isLoaded: boolean): void {
@@ -195,11 +232,19 @@ async function rewindWithId(
         // B-961: the wrapper can rewind, the Codex it runs cannot (no thread/revert).
         if (result.code === 'codex-outdated') throw new RewindFailure('outdated', text);
         // B-961b: the wrapper could not resolve an attachment — before any rewind.
-        if (result.code === 'attachment-gone') throw new RewindFailure('attachments', text);
+        if (result.code === 'attachment-gone') {
+            // B-961c: name the files — the wrapper's list, else every file this request carried.
+            const missing = Array.isArray(result.missing) ? result.missing.filter((name): name is string => typeof name === 'string' && name.length > 0) : [];
+            throw new RewindFailure('attachments', text, missing.length > 0 ? missing : (attachments ?? []).map((attachment) => attachment.name));
+        }
         throw new RewindFailure(UNSUPPORTED.test(text) ? 'unsupported' : 'agent', text);
     }
     // B-961: Codex `thread/revert` drops this turn and every later one (`dropsLater`) — hide them all.
-    const range = request.action === 'delete' && result.dropsLater !== true ? deleteRange(message.seq, deps.userSeqs(sessionId)) : { fromSeq: message.seq };
+    // B-961c: the turn starts at the prompt's first attachment, not at its text.
+    const fromSeq = deps.turnStart ? deps.turnStart(sessionId, message.seq) : message.seq;
+    const range = request.action === 'delete' && result.dropsLater !== true
+        ? { ...deleteRange(message.seq, deps.userSeqs(sessionId)), fromSeq }
+        : { fromSeq };
     try {
         await deps.recordDrop(sessionId, { ...range, reason: request.action, requestId });
     } catch (error) {

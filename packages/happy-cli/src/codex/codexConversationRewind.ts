@@ -36,7 +36,7 @@ export type CodexRewindAction = 'edit' | 'delete';
 
 export type CodexRewindResult =
     | { ok: true; action: CodexRewindAction; freshConversation: boolean; dropsLater: true }
-    | { ok: false; code: 'invalid' | 'busy' | 'running' | 'no-conversation' | 'not-found' | 'ambiguous' | 'unsafe' | 'codex-outdated' | 'attachment-gone'; error: string };
+    | { ok: false; code: 'invalid' | 'busy' | 'running' | 'no-conversation' | 'not-found' | 'ambiguous' | 'unsafe' | 'codex-outdated' | 'attachment-gone'; error: string; missing?: string[] };
 
 /** What the wrapper remembers about a turn it started: the prompts (sourceIds) it carried, in order. */
 export type CodexTurnSources = { turnId: string; sourceIds: string[] };
@@ -171,7 +171,7 @@ export function createCodexConversationRewind(deps: CodexRewindDeps) {
             if (attachments.length > 0 && deps.ensureAttachments) {
                 const resolved = await deps.ensureAttachments(attachments);
                 if (!resolved.ok) {
-                    return { ok: false, code: 'attachment-gone', error: attachmentGoneMessage(resolved.missing) };
+                    return { ok: false, code: 'attachment-gone', error: attachmentGoneMessage(resolved.missing), missing: resolved.missing };
                 }
             }
             if (deps.isBusy()) {

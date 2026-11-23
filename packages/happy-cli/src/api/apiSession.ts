@@ -1,4 +1,5 @@
 import { agentInstanceAuth, SESSION_SUPERSEDED_ERROR, type SessionSupersededNotice } from './agentInstance';
+import { uniqueAttachmentsByRef } from '@/utils/attachmentReuse';
 import { logger } from '@/ui/logger'
 import { connectGuarded, socketConnectGuard } from './socketConnectGuard'
 import { EventEmitter } from 'node:events'
@@ -646,7 +647,7 @@ export class ApiSessionClient extends EventEmitter {
         this.pendingDownloads = [];
         if (downloads.length === 0) return [];
         const results = await Promise.all(downloads);
-        return results.filter((x): x is DownloadedAttachment => x !== null);
+        return uniqueAttachmentsByRef(results.filter((x): x is DownloadedAttachment => x !== null));
     }
 
     private authHeaders() {

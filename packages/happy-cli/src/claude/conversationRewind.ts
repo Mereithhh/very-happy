@@ -18,7 +18,7 @@ import { attachmentGoneMessage, parseRewindAttachments, type RewindAttachmentRef
 
 export type ConversationRewindResult =
     | { ok: true; action: ConversationRewindAction; freshConversation: boolean }
-    | { ok: false; code: 'invalid' | 'busy' | 'running' | 'no-conversation' | 'not-found' | 'ambiguous' | 'unsafe' | 'attachment-gone'; error: string };
+    | { ok: false; code: 'invalid' | 'busy' | 'running' | 'no-conversation' | 'not-found' | 'ambiguous' | 'unsafe' | 'attachment-gone'; error: string; missing?: string[] };
 
 export type ConversationRewindDeps = {
     claudeSessionId: () => string | null;
@@ -73,7 +73,7 @@ export function createConversationRewind(deps: ConversationRewindDeps) {
             if (attachments.length > 0 && deps.ensureAttachments) {
                 const resolved = await deps.ensureAttachments(attachments);
                 if (!resolved.ok) {
-                    return { ok: false, code: 'attachment-gone', error: attachmentGoneMessage(resolved.missing) };
+                    return { ok: false, code: 'attachment-gone', error: attachmentGoneMessage(resolved.missing), missing: resolved.missing };
                 }
             }
             if (deps.isThinking()) {

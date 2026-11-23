@@ -47,9 +47,12 @@ export function attachmentsFromFileEvents(tools: readonly ToolCallMessage[]): At
 export function reusableAttachmentsFromFileEvents(tools: readonly ToolCallMessage[] | undefined): ReusableAttachment[] {
     if (!tools || tools.length === 0) return [];
     const out: ReusableAttachment[] = [];
+    // B-961c: a ref twice is one file (a turn left doubled by an older rewind).
+    const seen = new Set<string>();
     for (const message of tools) {
         const ref = asString(message.tool.input?.ref);
-        if (!ref) continue;
+        if (!ref || seen.has(ref)) continue;
+        seen.add(ref);
         const name = asString(message.tool.input?.name) ?? 'attachment';
         const size = typeof message.tool.input?.size === 'number' ? message.tool.input.size : 0;
         const mimeType = asString(message.tool.input?.mimeType) ?? undefined;

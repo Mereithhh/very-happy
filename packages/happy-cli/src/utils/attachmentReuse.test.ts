@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { attachmentGoneMessage, ensureRewindAttachments, parseRewindAttachments } from './attachmentReuse';
+import { attachmentGoneMessage, ensureRewindAttachments, parseRewindAttachments, uniqueAttachmentsByRef } from './attachmentReuse';
 import { lookupMachineAttachment, recordMachineAttachment, resetAttachmentRegistryForTests } from './attachmentRegistry';
 
 const dirs: string[] = [];
@@ -72,5 +72,13 @@ describe('ensureRewindAttachments', () => {
         expect(await ensureRewindAttachments({ happyHomeDir, sessionId: 's1', download, stage: vi.fn() }, [{ ref: 'r1', name: 'a.png' }]))
             .toEqual({ ok: false, missing: ['a.png'] });
         expect(download).toHaveBeenCalledWith('r1');
+    });
+});
+
+describe('uniqueAttachmentsByRef (B-961c)', () => {
+    it('one prompt carries a ref once; attachments without a ref are kept', () => {
+        const file = (name: string, ref?: string) => ({ data: new Uint8Array(0), mimeType: 'image/png', name, ...(ref ? { ref } : {}) });
+        expect(uniqueAttachmentsByRef([file('red.png', 'r1'), file('red.png', 'r1'), file('blue.png', 'r2'), file('x.png'), file('x.png')]).map((f) => f.name))
+            .toEqual(['red.png', 'blue.png', 'x.png', 'x.png']);
     });
 });
