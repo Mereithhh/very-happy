@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { sessionLaunchReceipt, teamExitMarkerPath, teamRestorePointerPath, writeTeamRestorePointer } from './relaunchScope';
-import { agentProfileUnavailableReason, MODEL_INTENT_CONFIG, type TeamOperation, type TeamState, type TeamResponse, type TeamAction } from '@slopus/happy-wire';
+import { agentProfileUnavailableReason, MODEL_INTENT_CONFIG, teamRestoreFreshNote, type TeamOperation, type TeamState, type TeamResponse, type TeamAction } from '@slopus/happy-wire';
 import { configuration } from '@/configuration';
 import { readPersistedSessions } from '@/persistence';
 import { sendUserMessage, waitForSessionKey } from '@/commands/sessionMessage';
@@ -107,7 +107,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
     }
 
     async function complete(op: TeamOperation, receipt: TeamEffectReceipt) {
-        await action(op.teamId, `complete-${op.id}`, { type: 'complete-operation', operationId: op.id, machineId: deps.machineId, claimId: receipt.claimId, ...(receipt.sessionId ? { sessionId: receipt.sessionId } : {}), ...(op.type === 'spawn' && receipt.directory ? { workingDirectory: receipt.directory } : {}) });
+        await action(op.teamId, `complete-${op.id}`, { type: 'complete-operation', operationId: op.id, machineId: deps.machineId, claimId: receipt.claimId, ...(receipt.sessionId ? { sessionId: receipt.sessionId } : {}), ...(op.type === 'spawn' && receipt.directory ? { workingDirectory: receipt.directory } : {}), ...(op.type === 'spawn' && op.restoreVersion === 1 && receipt.restoreFallback ? { restoreFallback: receipt.restoreFallback } : {}) });
         writeReceipt(home, { ...receipt, phase: 'completed' });
     }
 
@@ -250,7 +250,8 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                     }
                     const key = await waitForSessionKey(receipt.sessionId!, 10_000);
                     // B-962: a continued conversation already has the team skill; it reads what changed.
-                    const base = receipt.restoreFallback ? `[Very Happy: team restored] Your previous conversation could not be continued (${receipt.restoreFallback}), so this is a fresh session in a new worktree; earlier work is on the previous worktree's branch if it was committed.\n\n${op.prompt}` : op.prompt;
+                    // B-962c: op.prompt is the「continue where you left off」text; a fresh session gets the task with the actual reason.
+                    const base = receipt.restoreFallback && task ? `Task ${task.id}\n${teamRestoreFreshNote(receipt.restoreFallback)}\n\nYour task:\n${task.goal}\nAcceptance:\n${task.acceptance.join('\n')}` : op.prompt;
                     const prompt = receipt.restoring ? op.prompt : teamInitialPrompt(base, bot?.root === true, receipt.directory, detectTeamUserLanguage(teamOwnerText(current.tasks) ?? op.prompt));
                     await sendUserMessage(receipt.sessionId!, key, prompt, 'teams', { localId: `teams-initial-${op.id}`, sentFrom: 'team', ...(receipt.restoring ? {} : teamInitialModelMeta(op.model)) });
                     receipt = { ...receipt, phase: 'delivered' };
@@ -329,8 +330,8 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
         if (!deps.relaunch) return fallback('this daemon cannot relaunch sessions');
         if (!credential) return fallback('no scoped credential');
         const origin = sessionLaunchReceipt(home, sessionId);
-        if (!origin) return fallback('its launch is not known on this machine');
-        if (!existsSync(origin.directory!)) return fallback('its worktree is gone');
+        if (!origin) return fallback('not-tracked: its launch is not known on this machine');
+        if (!existsSync(origin.directory!)) return fallback(`cwd-missing: its worktree ${origin.directory} is gone`);
         const scopes = join(home, 'teams', 'scopes');
         ensurePrivateDirectorySync(scopes);
         const scopeFile = join(scopes, `${op.id}.json`);

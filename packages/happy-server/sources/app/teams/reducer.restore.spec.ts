@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TEAM_RESTORE_WINDOW_MS, type TeamAction, type TeamState } from '@slopus/happy-wire';
+import { TEAM_RESTORE_WINDOW_MS, teamRestoreOutcomes, type TeamAction, type TeamState } from '@slopus/happy-wire';
 import { reduceTeam, TeamError, type TeamActor } from './reducer';
 import { compactTeam } from './compaction';
 
@@ -143,6 +143,31 @@ describe('B-962 restore', () => {
         expect(op.resumeSessionId).toBeUndefined();
         expect(op.prompt).toContain('fresh session');
         expect(f.state.bots.find(b => b.id === lead.id)!.previousSessionIds).toContain('lead-1');
+        // B-962c: the actual reason, not「in use elsewhere」for every case.
+        expect(op.restoreFallback).toMatch(/^conflict: /);
+        expect(op.prompt).toContain(`could not be continued (${op.restoreFallback})`);
+        expect(op.prompt).not.toContain('in use elsewhere');
+        const queued = f.state.operations.find(o => o.restoreVersion === 1 && o.botId === f.state.bots.find(b => b.name === 'queued')!.id)!;
+        expect(queued.restoreFallback).toMatch(/^no-session: /);
+    });
+    it('B-962c: the daemon\'s fallback reason is recorded; the outcomes say who continued and who started fresh, and why', () => {
+        const { f, lead } = archivedTeam();
+        f.act({ type: 'restore' });
+        const op = (name: string) => f.state.operations.find(o => o.restoreVersion === 1 && o.botId === f.state.bots.find(b => b.name === name)!.id)!;
+        expect(teamRestoreOutcomes(f.state)!.map(o => [o.botName, o.state])).toEqual([['Lead', 'pending'], ['running', 'pending'], ['submitted', 'pending'], ['queued', 'fresh']]);
+        // The lead's relaunch hit the restart limit: the daemon launched it fresh and says why.
+        const leadOp = f.state.operations.find(o => o.restoreVersion === 1 && o.botId === lead.id)!;
+        f.act({ type: 'claim-operation', operationId: leadOp.id, machineId: 'machine', teamLaunchVersion: 1 });
+        f.act({ type: 'complete-operation', operationId: leadOp.id, machineId: 'machine', claimId: f.claimId(leadOp.id), sessionId: 'lead-2', restoreFallback: 'restart:restart-limit: max 3' });
+        f.launch(op('running').id, 's-running', '/wt/running');
+        expect(f.state.operations.find(o => o.id === leadOp.id)!.restoreFallback).toBe('restart:restart-limit: max 3');
+        expect(op('running').restoreFallback).toBeUndefined();
+        const outcomes = teamRestoreOutcomes(f.state)!;
+        expect(outcomes.find(o => o.root)).toMatchObject({ state: 'fresh', kind: 'restart-limit' });
+        expect(outcomes.find(o => o.botName === 'running')).toMatchObject({ state: 'continued' });
+        expect(outcomes.find(o => o.botName === 'queued')).toMatchObject({ state: 'fresh', kind: 'no-session' });
+        // An ordinary launch never carries it.
+        expect(f.state.operations.filter(o => o.restoreVersion !== 1).every(o => o.restoreFallback === undefined)).toBe(true);
     });
     it('an archive from before B-962 (no record) is inferred from closedAt == archivedAt; schedules come back paused', () => {
         const { f, running, queued } = archivedTeam(false);

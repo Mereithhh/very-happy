@@ -44,7 +44,7 @@ import { teamProjectMenu } from "@/screens/projects/projectChoice";
 import { ChangeTeamProjectModal } from "@/screens/projects/ChangeTeamProjectModal";
 import { TeamDialog } from "./TeamDialog";
 import { LeadReviveNotice } from "./LeadReviveNotice";
-import { TeamRestoreNotice } from "./TeamRestoreNotice";
+import { TeamRestoreNotice, TeamRestoreOutcomeNotice } from "./TeamRestoreNotice";
 import { archivedStatusLine, useTeamRestoreCopy } from "./teamRestore";
 import { acceptBlockedByOpenTasks, leadReviveCopyFor, ownedTasksRefusalCount } from "./leadRevive";
 import { TeamTaskMessages, TeamTaskSummary } from "./TeamTaskDetail";
@@ -312,6 +312,7 @@ function TeamsContent() {
             {!dispatchReady && <p role="status">{tr("teams.machineRequired")}</p>}
             <LeadReviveNotice team={team} machine={executionMachine} disabled={disabled} act={actApplied} />
             <TeamRestoreNotice team={team} machine={executionMachine} onRestored={() => void load()} />
+            <TeamRestoreOutcomeNotice team={team} />
             {team.bots.length === 0 && <div className="teams-empty"><h2>{first.setup}</h2><p>{first.setupHint}</p><button className="teams-primary" disabled={disabled} onClick={() => setStartingExisting(true)}>{first.start}</button></div>}
             {['preparing', 'failed'].includes(launchPhase) && <div className="team-launch-state" role="status"><h2>{launchPhase === 'failed' ? first.failed : first.preparing}</h2><p>{launchPhase === 'failed' ? first.failedHint : first.preparingHint}</p>{team.tasks.filter(task => team.bots.some(bot => bot.root && bot.id === task.assigneeBotId)).map(task => <button key={task.id} onClick={() => setSelectedTask(task.id)}>{first.inspect}</button>)}</div>}
             <div className="teams-work-actions">

@@ -45,7 +45,7 @@ describe('B-852 auto-restart wiring', () => {
         expect(run).toContain('...(options?.auto ? { [AUTO_RESTARTED_ENV]: encodeAutoRestarted(options.auto.kind, options.auto.target) } : {}),');
     });
     it('automatic restarts never use up the manual breaker', () => {
-        expect(run).toContain('const decision = options?.auto || options?.queued ? { allowed: true as const } : decideRestart(prior, options?.account ? DEFAULT_MAX_ACCOUNT_RESTARTS : DEFAULT_MAX_RESTARTS);');
+        expect(run).toContain('const decision = options?.auto || options?.queued ? { allowed: true as const } : decideRestart(prior, max);');
         expect(run).toContain('if (!options?.auto && !options?.queued) counts.set(happySessionId, recordRestartAttempt(prior));');
     });
     it('a team lead is not told "exited" for an automatic restart', () => {

@@ -428,6 +428,7 @@
 .team-restore .team-restore-conflicts h3 { font-size: var(--fs-14); margin: 0 0 var(--sp-2); }
 .team-restore .team-restore-conflicts ul { margin: 0 0 var(--sp-2); padding-left: var(--sp-4); }
 .team-restore-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.team-restore ul.team-restore-outcome { margin: var(--sp-2) 0; padding-left: var(--sp-4); }
 .teams-restorable { margin-top: var(--sp-6); }
 .teams-restorable h2 { font-size: var(--fs-14); margin: 0 0 var(--sp-1); }
 .teams-restorable p { color: var(--text-dim); margin: 0 0 var(--sp-2); }

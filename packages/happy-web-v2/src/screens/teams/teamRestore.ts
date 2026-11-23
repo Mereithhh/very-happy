@@ -4,7 +4,7 @@
  * conversation and worktree. The rules live in happy-wire (`archiveRestorable`, `teamRestoreBlock`)
  * and on the server; this file is the page's view of them.
  */
-import { archiveRestorable, teamRestoreBlock, TEAM_RESTORE_WINDOW_MS, type TeamState } from "@slopus/happy-wire";
+import { archiveRestorable, teamRestoreBlock, teamRestoreOutcomes, TEAM_RESTORE_WINDOW_MS, type TeamRestoreFallbackKind, type TeamRestoreOutcome, type TeamState } from "@slopus/happy-wire";
 import { useTranslation } from "@/i18n/useTranslation";
 
 type MachineLike = { metadata?: unknown; active?: boolean } | undefined;
@@ -45,6 +45,25 @@ export function archivedStatusLine(team: Pick<TeamState, "archivedAt">, now: num
   return teamRestoreBlock(team, now) ? `${readOnly} · ${fmt(team.archivedAt)}` : copy.restorableUntil(fmt(team.archivedAt + TEAM_RESTORE_WINDOW_MS));
 }
 
+/**
+ * B-962c: what the live team page says about its latest restore — who is still being relaunched, and
+ * who started a new session instead of continuing its own conversation, and why. Shown for a day while
+ * any member did not continue (or is still pending), for 10 minutes when all continued; null otherwise.
+ */
+export const RESTORE_OUTCOME_SHOW_MS = 24 * 60 * 60 * 1000;
+export const RESTORE_OUTCOME_ALL_CONTINUED_MS = 10 * 60 * 1000;
+export type TeamRestoreResult = { pending: number; total: number; notContinued: TeamRestoreOutcome[]; allContinued: boolean };
+export function teamRestoreResult(team: TeamState, now: number): TeamRestoreResult | null {
+  const outcomes = teamRestoreOutcomes(team);
+  const restoredAt = team.archiveHistory?.at(-1)?.restoredAt;
+  if (!outcomes?.length || restoredAt === undefined) return null;
+  const pending = outcomes.filter(o => o.state === "pending").length;
+  const notContinued = outcomes.filter(o => o.state === "fresh" || o.state === "failed");
+  const allContinued = pending === 0 && notContinued.length === 0;
+  if (now - restoredAt > (allContinued ? RESTORE_OUTCOME_ALL_CONTINUED_MS : RESTORE_OUTCOME_SHOW_MS)) return null;
+  return { pending, total: outcomes.length, notContinued, allContinued };
+}
+
 /** The conflicts a `restore_conflict` refusal names (members whose conversation another live team holds). */
 export function restoreConflicts(details: unknown): TeamRestoreConflict[] {
   const list = (details as { conflicts?: unknown } | null | undefined)?.conflicts;
@@ -68,7 +87,27 @@ const en = {
   conflictHint: "Restore without them: each of these members starts a new session from the team's repository. Their original conversations stay in the other team, untouched.",
   conflictSkip: "Restore, start these members fresh",
   conflictCancel: "Cancel",
-  restored: "Team restored. Members are continuing their conversations.",
+  // B-962c: said before the computer relaunches anyone — it cannot claim they continued yet.
+  restored: "Team restored. Members are being relaunched; this page shows who continued their own conversation.",
+  restoredSkipped: (names: string) => `Team restored. ${names} start new sessions (their conversations are in another team); the other members are being relaunched.`,
+  outcomeTitle: "Some members started new sessions",
+  outcomePending: (pending: number, total: number) => `Relaunching members: ${total - pending} of ${total} done.`,
+  outcomeAllContinued: "Every member continued its own conversation.",
+  outcomeItem: (name: string, why: string) => `${name}: new session — ${why}`,
+  outcomeFailed: (name: string, why: string) => `${name}: did not start — ${why}`,
+  outcomeHint: "Their earlier work is on the previous worktree's branch if it was committed. The new session was told why.",
+  lead: "Lead",
+  reasons: {
+    conflict: "its conversation is in another team",
+    transferred: "its conversation was moved to another team",
+    "no-session": "it had no earlier conversation",
+    "restart-limit": "its session was restarted too many times since the computer's daemon started",
+    "cwd-missing": "its working directory is gone",
+    "not-tracked": "the team's computer no longer knows its session",
+    "conversation-missing": "its conversation history is not on the team's computer",
+    other: "its conversation could not be continued",
+  } as Record<TeamRestoreFallbackKind, string>,
+  launchFailed: "the launch failed",
   listTitle: "Recently archived",
   listHint: "Teams archived in the last 7 days. Open one to restore it.",
   archivedAt: (at: string) => `archived ${at}`,
@@ -97,7 +136,26 @@ const zh: typeof en = {
   conflictHint: "可以跳过它们恢复：这些成员会在团队的原仓库里新起一个会话，原来的会话不动，继续留在另一个团队。",
   conflictSkip: "恢复，这些成员新起会话",
   conflictCancel: "取消",
-  restored: "团队已恢复，成员正在接着原来的对话继续。",
+  restored: "团队已恢复，正在重新启动成员；谁接着原来的对话、谁新起了会话，看团队页。",
+  restoredSkipped: (names) => `团队已恢复。${names} 新起会话（原会话在另一个团队里）；其他成员正在重新启动。`,
+  outcomeTitle: "部分成员新起了会话",
+  outcomePending: (pending, total) => `正在重新启动成员：已完成 ${total - pending}/${total}。`,
+  outcomeAllContinued: "所有成员都接着原来的对话继续了。",
+  outcomeItem: (name, why) => `${name}：新起会话，因为${why}`,
+  outcomeFailed: (name, why) => `${name}：没有启动，${why}`,
+  outcomeHint: "之前的工作如果已提交，在原工作目录的分支上。新会话已被告知原因。",
+  lead: "负责人",
+  reasons: {
+    conflict: "原会话在另一个团队里",
+    transferred: "原会话已转到另一个团队",
+    "no-session": "之前还没有会话",
+    "restart-limit": "这个会话在执行电脑本次 daemon 运行期间重启次数已到上限",
+    "cwd-missing": "原工作目录已不存在",
+    "not-tracked": "执行电脑上找不到原会话的记录",
+    "conversation-missing": "执行电脑上没有原对话记录",
+    other: "原会话无法续上",
+  },
+  launchFailed: "启动失败",
   listTitle: "最近归档",
   listHint: "7 天内归档的团队，打开后可以恢复。",
   archivedAt: (at) => `归档于 ${at}`,

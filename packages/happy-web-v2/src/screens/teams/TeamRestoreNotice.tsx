@@ -5,7 +5,7 @@ import { Modal } from "@/modal";
 import { toast } from "@/ui/Toast";
 import { actOnTeam, TeamsApiError } from "@/sync/teams";
 import { refreshTeamNavigation } from "@/screens/sessions/useTeamNavigation";
-import { restoreConflicts, teamRestoreView, useTeamRestoreCopy, type TeamRestoreConflict } from "./teamRestore";
+import { restoreConflicts, teamRestoreResult, teamRestoreView, useTeamRestoreCopy, type TeamRestoreConflict } from "./teamRestore";
 
 /**
  * B-962: the archived team page's 「这个团队已归档」+「恢复团队」. A member whose conversation another live
@@ -28,8 +28,10 @@ export function TeamRestoreNotice({ team, machine, onRestored }: {
     setSending(true); setError("");
     try {
       await actOnTeam(team.id, { type: "restore", ...(skip?.length ? { skipBotIds: skip } : {}) }, crypto.randomUUID());
+      // B-962c: skipped members start fresh — never say every member continues its conversation.
+      const skipped = conflicts.filter(c => skip?.includes(c.botId)).map(c => c.root ? copy.lead : c.botName);
       setConflicts([]);
-      toast.success(copy.restored);
+      toast.success(skipped.length ? copy.restoredSkipped(skipped.join(", ")) : copy.restored);
       void refreshTeamNavigation();
       onRestored();
     } catch (e) {
@@ -59,6 +61,30 @@ export function TeamRestoreNotice({ team, machine, onRestored }: {
           <RotateCcw size={16} aria-hidden />{copy.button}
         </button>
       )}
+    </section>
+  );
+}
+
+/**
+ * B-962c: after a restore, the live team page says who is still being relaunched and which members
+ * started a new session instead of continuing their own conversation, and why (teamRestoreResult).
+ */
+export function TeamRestoreOutcomeNotice({ team }: { team: TeamState }) {
+  const copy = useTeamRestoreCopy();
+  const result = teamRestoreResult(team, Date.now());
+  if (!result) return null;
+  return (
+    <section className="team-launch-state team-restore" role="status" data-testid="team-restore-outcome">
+      {result.notContinued.length > 0 && <>
+        <h2>{copy.outcomeTitle}</h2>
+        <ul className="team-restore-outcome">{result.notContinued.map(o => {
+          const name = o.root ? copy.lead : o.botName;
+          return <li key={o.botId}>{o.state === "failed" ? copy.outcomeFailed(name, o.reason ?? copy.launchFailed) : copy.outcomeItem(name, copy.reasons[o.kind ?? "other"])}</li>;
+        })}</ul>
+        <p>{copy.outcomeHint}</p>
+      </>}
+      {result.pending > 0 && <p>{copy.outcomePending(result.pending, result.total)}</p>}
+      {result.allContinued && <p>{copy.outcomeAllContinued}</p>}
     </section>
   );
 }

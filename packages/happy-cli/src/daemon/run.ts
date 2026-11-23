@@ -40,7 +40,7 @@ import { sendUserMessage } from '@/commands/sessionMessage';
 import { sanitizeSpawnPermissionMode } from './spawnPermissionMode';
 import { publishedRelaunchPermissionMode } from './relaunchPermissionMode';
 import { resumePrecheck, resumeStartsFreshConversation, sanitizeResumeModel } from './resumePrecheck';
-import { decideRestart, recordRestartAttempt, DEFAULT_MAX_ACCOUNT_RESTARTS, DEFAULT_MAX_RESTARTS } from './restartBreaker';
+import { decideRestart, recordRestartAttempt, restartBudget, type RestartBudget } from './restartBreaker';
 import type { SpawnGate } from './assistantSpawn';
 import { startDaemonControlServer } from './controlServer';
 import { createPeerCoordinator } from './peerCoordinator';
@@ -1510,15 +1510,14 @@ export async function startDaemon(): Promise<void> {
     // relaunches on the current CLI code. It reuses the same per-session gate as
     // resume (so restart/resume/concurrent-restart never double-spawn) and is
     // bounded by a per-daemon-lifetime circuit breaker.
-    const restartCounts = new Map<string, number>();
-    // B-850a: account switches count separately (restartBreaker.ts).
-    const accountRestartCounts = new Map<string, number>();
+    // B-850a: account switches count separately; B-962c: so do exit-team-mode/restore (restartBreaker.ts).
+    const restartCounts: Record<RestartBudget, Map<string, number>> = { manual: new Map(), account: new Map(), 'team-mode': new Map() };
     // B-852: `auto` = the daemon's own idle restart after an upgrade. It has its
     // own attempt limit (autoRestartPolicy) and must not use up the user's
     // manual-restart breaker; the respawned wrapper posts the "updated" line.
     // B-911: `effort` = the effort an old wrapper (no recorded intent) was running; `requested` = the agent asked
     // (`request_idle_restart`: the new wrapper says so); `queued` = a queued idle restart (own limits, not the breaker).
-    type RestartSessionOptions = { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean; auto?: { kind: StaleKind; target: string }; account?: true; ifIdle?: true; effort?: string; requested?: true; queued?: true };
+    type RestartSessionOptions = { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean; auto?: { kind: StaleKind; target: string }; account?: true; teamMode?: true; ifIdle?: true; effort?: string; requested?: true; queued?: true };
     // B-852: sessions whose wrapper exit is an automatic restart, not an exit
     // worth telling a team lead about.
     const autoRestartExits = new Set<string>();
@@ -1570,7 +1569,7 @@ export async function startDaemon(): Promise<void> {
       const result = await exitTeamMode({ home: configuration.happyHomeDir, sessionId: happySessionId, metadata, http });
       const live = [...pidToTrackedSession.values()].some((s) => s.happySessionId === happySessionId && isPidAlive(s.pid));
       if (!result.managed || !live || result.leadStopped || result.alreadyExited) return { ...result, restarted: false };
-      const restart = await restartSession(happySessionId, { keepPublishedPermissionMode: true });
+      const restart = await restartSession(happySessionId, { keepPublishedPermissionMode: true, teamMode: true });
       if (restart.type !== 'success') throw new Error(`Team archived, but the session did not restart: ${restart.type === 'error' ? restart.errorMessage : restart.type}`);
       return { ...result, restarted: true };
     };
@@ -1605,9 +1604,10 @@ export async function startDaemon(): Promise<void> {
             return { type: 'error', errorMessage: `busy:${busy}` };
           }
         }
-        const counts = options?.account ? accountRestartCounts : restartCounts;
+        const { budget, max } = restartBudget(options);
+        const counts = restartCounts[budget];
         const prior = counts.get(happySessionId) ?? 0;
-        const decision = options?.auto || options?.queued ? { allowed: true as const } : decideRestart(prior, options?.account ? DEFAULT_MAX_ACCOUNT_RESTARTS : DEFAULT_MAX_RESTARTS);
+        const decision = options?.auto || options?.queued ? { allowed: true as const } : decideRestart(prior, max);
         if (!decision.allowed) {
           return { type: 'error', errorMessage: `restart:${decision.reason}` };
         }
@@ -2790,7 +2790,7 @@ export async function startDaemon(): Promise<void> {
       live: id => [...pidToTrackedSession.values()].some(s => s.happySessionId === id && isPidAlive(s.pid)),
       // B-962: 「恢复团队」 continues a member in place — a live session (a lead that left team mode) restarts with its team env, a stopped one resumes.
       relaunch: async id => [...pidToTrackedSession.values()].some(s => s.happySessionId === id && isPidAlive(s.pid))
-        ? restartSession(id, { keepPublishedPermissionMode: true })
+        ? restartSession(id, { keepPublishedPermissionMode: true, teamMode: true })
         : resumeSession(id, { keepPublishedPermissionMode: true }),
       ...(accountServiceRef ? { resolveAccount: (agent: 'claude' | 'codex', requested: string | null | undefined) => accountServiceRef!.resolveSpawnAccount(agent, requested) } : {}),
       log: message => logger.debug(`[DAEMON RUN] ${message}`),

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { TeamOperation, TeamState } from '@slopus/happy-wire';
+import { teamRestoreFallbackKind, type TeamOperation, type TeamState } from '@slopus/happy-wire';
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), send: vi.fn(), key: vi.fn(), persisted: vi.fn(), prepare: vi.fn(), resolve: vi.fn(), remove: vi.fn(), archive: vi.fn() }));
 vi.mock('axios', () => ({ default: { create: () => ({ get: mocks.get, post: mocks.post }), isAxiosError: (error: unknown) => !!(error as { isAxiosError?: boolean } | null)?.isAxiosError } }));
 vi.mock('@/configuration', () => ({ configuration: { happyHomeDir: '', serverUrl: '' } }));
@@ -588,23 +588,33 @@ describe('B-962: a restore launch continues the member\'s own session in its own
         expect(relaunchTeamOperationId(home, 'session1', { teamOperationId: 'op1' })).toBe('op2');
     });
     it('falls back to a fresh launch when the session cannot be continued (worktree gone / relaunch fails / unknown here)', async () => {
-        for (const kind of ['gone', 'fails', 'unknown'] as const) {
+        // B-962c: the actual reason reaches the server (the Web lists it) and the fresh prompt.
+        const expected = { gone: 'cwd-missing', fails: 'not-tracked', unknown: 'not-tracked', limit: 'restart-limit' } as const;
+        for (const kind of ['gone', 'fails', 'unknown', 'limit'] as const) {
             vi.clearAllMocks(); spawn.mockReset().mockResolvedValue({ type: 'success', sessionId: 'fresh1' });
             mocks.prepare.mockResolvedValue({ directory: '/isolated', repository: '/repo', branch: 'codex/team-op2' }); mocks.key.mockResolvedValue(new Uint8Array(32));
             rmSync(join(home, 'teams'), { recursive: true, force: true });
             const operation = restoreOp(); setup(operation);
             if (kind !== 'unknown') originalLaunch(join(home, `wt-${kind}`));
             if (kind === 'gone') rmSync(join(home, `wt-${kind}`), { recursive: true, force: true });
-            const relaunch = vi.fn(async () => kind === 'fails' ? { type: 'error' as const, errorMessage: 'resume-precheck:not-tracked: x' } : { type: 'success' as const, sessionId: 'session1' });
+            const relaunch = vi.fn(async () => kind === 'fails' ? { type: 'error' as const, errorMessage: 'resume-precheck:not-tracked: x' }
+                : kind === 'limit' ? { type: 'error' as const, errorMessage: 'restart:restart-limit: this session has already been restarted 3 time(s) this daemon session (max 3). Start a new session instead.' }
+                : { type: 'success' as const, sessionId: 'session1' });
             const worker = start(() => false, { relaunch }); await settled(worker); worker.stop();
             expect(spawn, kind).toHaveBeenCalledTimes(1);
-            expect(relaunch).toHaveBeenCalledTimes(kind === 'fails' ? 1 : 0);
+            expect(relaunch).toHaveBeenCalledTimes(kind === 'fails' || kind === 'limit' ? 1 : 0);
             const receipt = readReceipt(home, 'op2')!;
-            expect(receipt.restoreFallback, kind).toBeTruthy();
+            expect(teamRestoreFallbackKind(receipt.restoreFallback!), kind).toBe(expected[kind]);
+            const completed = mocks.post.mock.calls.map(c => (c[1] as any)?.action).find(a => a?.type === 'complete-operation');
+            expect(completed, kind).toMatchObject({ sessionId: 'fresh1', restoreFallback: receipt.restoreFallback });
             expect(receipt).toMatchObject({ sessionId: 'fresh1', directory: '/isolated' });
             expect(receipt.restoring).toBeUndefined();
             expect(existsSync(join(home, 'teams', 'restored', 'session1.json'))).toBe(false);
-            expect(String(mocks.send.mock.calls[0][2])).toContain('could not be continued');
+            const prompt = String(mocks.send.mock.calls[0][2]);
+            expect(prompt).toContain(`could not be continued (${receipt.restoreFallback})`);
+            expect(prompt).not.toContain('[Very Happy: team restored] continue'); // never「continue where you left off」
+            expect(prompt).toContain('Your task:\n');
+            expect(prompt).not.toContain('in use elsewhere');
         }
     });
     it('after a recorded fallback (daemon restarted), the launch stays fresh: the session is not relaunched again', async () => {

@@ -1,7 +1,7 @@
 vi.mock("@/i18n/useTranslation", () => ({ useTranslation: () => ({ lang: "en" }) }));
 import { describe, expect, it, vi } from "vitest";
 import { TEAM_RESTORE_WINDOW_MS, type TeamState } from "@slopus/happy-wire";
-import { archivedStatusLine, restoreConflicts, TEAM_RESTORE_COPY, teamRestoreView } from "./teamRestore";
+import { archivedStatusLine, restoreConflicts, TEAM_RESTORE_COPY, teamRestoreResult, teamRestoreView } from "./teamRestore";
 
 const at = 1_000_000;
 const archived = (over: Partial<TeamState> = {}): TeamState => ({
@@ -55,5 +55,54 @@ describe("B-962: the machine's restore capability survives the Web's metadata pa
     expect(archivedStatusLine(archived(), at + TEAM_RESTORE_WINDOW_MS + 1, TEAM_RESTORE_COPY.zh, "团队已归档，仅可查看", fmt)).toBe(`团队已归档，仅可查看 · T${at}`);
     expect(archivedStatusLine(archived(), at + TEAM_RESTORE_WINDOW_MS + 1, TEAM_RESTORE_COPY.en, "This team is archived and read-only", fmt)).toBe(`This team is archived and read-only · T${at}`);
     expect(archivedStatusLine(archived({ archivedAt: undefined }), at, TEAM_RESTORE_COPY.en, "x", fmt)).toBeNull();
+  });
+});
+
+describe("B-962c restore result on the live team page", () => {
+  const restoredAt = at + 5000;
+  const bots = [
+    { id: "lead", name: "Lead", root: true }, { id: "a", name: "Alice", root: false }, { id: "b", name: "Bob", root: false },
+  ] as TeamState["bots"];
+  const op = (botId: string, over: Partial<TeamState["operations"][number]> = {}) => ({
+    id: `op-${botId}`, teamId: "t", machineId: "m", taskId: "a", botId, attemptId: "x", generation: 2, type: "spawn" as const, status: "pending" as const,
+    claimId: null, claimedAt: null, error: null, sessionId: null, directory: null, assistant: "claude" as const, prompt: "", createdAt: restoredAt,
+    restoreVersion: 1 as const, resumeSessionId: `s-${botId}`, ...over,
+  });
+  const live = (operations: TeamState["operations"]): TeamState => ({ ...archived({ archivedAt: undefined, archiveHistory: [{ at, source: "web", by: "owner-login", restoredAt }] }), bots, operations });
+
+  it("R77: the lead hit restart-limit on the second restore — the page names it and why, never says all continued", () => {
+    const team = live([
+      op("lead", { status: "completed", sessionId: "s-new", restoreFallback: "restart:restart-limit: max 3" }),
+      op("a", { status: "completed", sessionId: "s-a" }),
+      op("b", { status: "completed", sessionId: "s-b" }),
+    ]);
+    const r = teamRestoreResult(team, restoredAt + 1000)!;
+    expect(r.allContinued).toBe(false);
+    expect(r.notContinued).toEqual([expect.objectContaining({ botId: "lead", root: true, state: "fresh", kind: "restart-limit" })]);
+    expect(TEAM_RESTORE_COPY.zh.reasons["restart-limit"]).toContain("重启次数");
+  });
+  it("pending launches are counted; all continued is said only once everyone did, and only for a while", () => {
+    const pending = live([op("lead", { status: "completed", sessionId: "s-lead" }), op("a")]);
+    expect(teamRestoreResult(pending, restoredAt)).toMatchObject({ pending: 1, total: 2, allContinued: false, notContinued: [] });
+    const done = live([op("lead", { status: "completed", sessionId: "s-lead" }), op("a", { status: "completed", sessionId: "s-a" })]);
+    expect(teamRestoreResult(done, restoredAt)).toMatchObject({ allContinued: true });
+    expect(teamRestoreResult(done, restoredAt + 11 * 60_000)).toBeNull();
+    // A member that started fresh stays listed for a day.
+    const fresh = live([op("a", { status: "completed", sessionId: "other" })]);
+    expect(teamRestoreResult(fresh, restoredAt + 11 * 60_000)?.notContinued[0]).toMatchObject({ state: "fresh", kind: "other" });
+    expect(teamRestoreResult(fresh, restoredAt + 25 * 3600_000)).toBeNull();
+  });
+  it("a skipped member (conflict) is fresh at once; the copy never claims every member continues", () => {
+    const team = live([op("b", { resumeSessionId: undefined, restoreFallback: "conflict: its conversation is in another team now" })]);
+    expect(teamRestoreResult(team, restoredAt)!.notContinued[0]).toMatchObject({ state: "fresh", kind: "conflict" });
+    for (const copy of [TEAM_RESTORE_COPY.en, TEAM_RESTORE_COPY.zh]) {
+      expect(copy.restored).not.toMatch(/continuing their conversations|正在接着原来的对话继续/);
+      expect(copy.restoredSkipped("Bob")).toContain("Bob");
+    }
+    expect(TEAM_RESTORE_COPY.zh.restoredSkipped("Bob")).toContain("新起会话");
+  });
+  it("no result for an archived or never-restored team", () => {
+    expect(teamRestoreResult(archived(), at)).toBeNull();
+    expect(teamRestoreResult(archived({ archivedAt: undefined }), at)).toBeNull();
   });
 });
