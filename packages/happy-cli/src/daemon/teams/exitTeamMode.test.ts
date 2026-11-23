@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { exitTeamMode } from './exitTeamMode';
+import { exitTeamMode, TEAMS_EXIT_REFUSAL } from './exitTeamMode';
 import { archivedLeadMarker, hasExitedTeamMode, teamExitMarkerPath, teamRelaunchEnv, teamScopeFilePath } from './relaunchScope';
 import { writeReceipt } from './journal';
 
@@ -33,7 +33,7 @@ describe('B-877: a team lead leaves team mode and goes on as an ordinary session
         const client = http();
         const result = await exitTeamMode({ home, sessionId: 's1', metadata, http: client });
         expect(result).toEqual({ teamId: 'team-1', managed: true, leadStopped: false });
-        expect(client.post).toHaveBeenCalledWith('/v1/teams/team-1/actions', { requestId: 'team-exit-s1', action: { type: 'archive', keepLeadSession: true } });
+        expect(client.post).toHaveBeenCalledWith('/v1/teams/team-1/actions', { requestId: 'team-exit-s1', action: { type: 'archive', keepLeadSession: true, source: 'cli' } });
         expect(existsSync(file)).toBe(false);
         expect(hasExitedTeamMode(home, 's1')).toBe(true);
         // B-877b: the marker carries what the model is later told (team name, owner's language).
@@ -140,5 +140,25 @@ describe('B-877b (QA49 P2-3): the lead of a team archived the ordinary way can s
         expect(await exitTeamMode({ home, sessionId: 's1', metadata: { teamOperationId: 'op-lead' }, http: client })).toEqual({ teamId: 'team-1', managed: true, leadStopped: false, alreadyExited: true });
         expect(client.get).not.toHaveBeenCalled();
         expect(existsSync(file)).toBe(false);
+    });
+});
+
+describe('B-962: the server archives only for the person on the Web', () => {
+    it('a refused archive (machine token) says to confirm on the Web and leaves this machine in its team', async () => {
+        const file = teamScopeFilePath(home, 'op-lead'); scope(file);
+        const client = http();
+        client.post = vi.fn(async () => { throw Object.assign(new Error('Request failed with status code 403'), { response: { status: 403, data: { error: 'owner_login_required' } } }); });
+        await expect(exitTeamMode({ home, sessionId: 's1', metadata: { teamOperationId: 'op-lead' }, http: client })).rejects.toThrow(TEAMS_EXIT_REFUSAL);
+        expect(existsSync(file)).toBe(true);
+        expect(hasExitedTeamMode(home, 's1')).toBe(false);
+    });
+    it('after the Web archived (keepLeadSession), it only finishes this machine: no archive request', async () => {
+        const file = teamScopeFilePath(home, 'op-lead'); scope(file);
+        const client = http(team({ archivedAt: 5 }));
+        const result = await exitTeamMode({ home, sessionId: 's1', metadata: { teamOperationId: 'op-lead' }, http: client });
+        expect(client.post).not.toHaveBeenCalled();
+        expect(result).toMatchObject({ teamId: 'team-1', leadStopped: false });
+        expect(existsSync(file)).toBe(false);
+        expect(hasExitedTeamMode(home, 's1')).toBe(true);
     });
 });

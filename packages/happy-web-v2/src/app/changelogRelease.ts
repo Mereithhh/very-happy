@@ -148,6 +148,15 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     itemKeys: ['changelog.releases.nov24b.codex', 'changelog.releases.nov24b.subagents', 'changelog.releases.nov24b.restart', 'changelog.releases.nov24b.fixes'],
   },
   {
+    id: '2026-11-24-team-restore',
+    cliVersion: '0.2.225',
+    date: '2026-11-24',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov24a.title',
+    summaryKey: 'changelog.releases.nov24a.summary',
+    itemKeys: ['changelog.releases.nov24a.restore', 'changelog.releases.nov24a.agents', 'changelog.releases.nov24a.cli'],
+  },
+  {
     id: '2026-11-23-codex-edit-delete-retry',
     cliVersion: '0.2.224',
     date: '2026-11-23',

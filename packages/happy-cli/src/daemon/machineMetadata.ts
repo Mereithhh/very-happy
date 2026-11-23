@@ -23,7 +23,7 @@ export function buildInitialMachineMetadata(cliAvailability: CLIAvailability): M
   // share the same hostname and look identical).
   const hostSuffix = process.env.HAPPY_VARIANT === 'dev' ? '-dev' : '';
   return {
-    teamsVersion: 1, teamLaunchVersion: 1, teamRetryVersion: TEAM_RETRY_CAPABILITY_VERSION, worktreeVersion: 1, fsMkdirVersion: FS_MKDIR_CAPABILITY_VERSION,
+    teamsVersion: 1, teamLaunchVersion: 1, /** B-962: 「恢复团队」 launches */ teamRestoreVersion: 1, teamRetryVersion: TEAM_RETRY_CAPABILITY_VERSION, worktreeVersion: 1, fsMkdirVersion: FS_MKDIR_CAPABILITY_VERSION,
     host: os.hostname() + hostSuffix,
     platform: os.platform(),
     happyCliVersion: packageJson.version,

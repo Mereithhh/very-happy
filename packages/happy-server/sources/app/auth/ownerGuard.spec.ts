@@ -32,14 +32,16 @@ describe('B-927a owner guard modes', () => {
 describe('B-927a what a machine may still do on /actions', () => {
     const allowed = [
         { type: 'claim-operation' }, { type: 'complete-operation' }, { type: 'fail-operation' }, { type: 'session-event' }, { type: 'message-delivered' }, { type: 'join' },
-        { type: 'archive', keepLeadSession: true }, { type: 'set-permission-mode', permissionMode: 'default' },
+        { type: 'set-permission-mode', permissionMode: 'default' },
     ];
     const owner = [
         { type: 'accept' }, { type: 'return' }, { type: 'cancel' }, { type: 'handoff' }, { type: 'delegate' }, { type: 'message' }, { type: 'start' }, { type: 'set-defaults' },
         { type: 'set-bot-account' }, { type: 'schedule-create' }, { type: 'schedule-pause' }, { type: 'schedule-resume' }, { type: 'schedule-cancel' },
-        { type: 'reconcile-operation' }, { type: 'retry-operation' }, { type: 'submit' }, { type: 'archive' }, { type: 'set-permission-mode', permissionMode: 'bypassPermissions' },
+        { type: 'reconcile-operation' }, { type: 'retry-operation' }, { type: 'submit' }, { type: 'archive' },
+        // B-962: an agent ran `very-happy teams exit`, whose daemon archived a 16-member team with the machine token.
+        { type: 'archive', keepLeadSession: true }, { type: 'archive', keepLeadSession: true, source: 'cli' }, { type: 'restore' }, { type: 'set-permission-mode', permissionMode: 'bypassPermissions' },
     ];
-    it('daemon bookkeeping, join, archive keeping the Lead, and tightening are open', () => { for (const a of allowed) expect(machineMayAct(a as never), a.type).toBe(true); });
+    it('daemon bookkeeping, join and tightening are open', () => { for (const a of allowed) expect(machineMayAct(a as never), a.type).toBe(true); });
     it('everything else is the owner’s', () => { for (const a of owner) expect(machineMayAct(a as never), JSON.stringify(a)).toBe(false); });
 });
 

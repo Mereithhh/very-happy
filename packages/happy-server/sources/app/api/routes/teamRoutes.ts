@@ -31,13 +31,14 @@ export function teamRoutes(app: Fastify) {
             throw error;
         }
     };
-    app.get('/v1/teams', { preHandler: app.authenticate }, async (request, reply) => handle(reply, async () => ({ teams: await listTeams(request.userId) })));
+    // B-962: `restorable=1` also lists archived teams that can still be restored (「最近归档」); an older server ignores it.
+    app.get('/v1/teams', { preHandler: app.authenticate, schema: { querystring: z.object({ restorable: z.coerce.number().int().min(1).max(1).optional() }) } }, async (request, reply) => handle(reply, async () => ({ teams: await listTeams(request.userId, undefined, { restorable: request.query.restorable === 1 }) })));
     app.post('/v1/teams', { preHandler: app.authenticate, schema: { body: TeamCreateSchema } }, async (request, reply) => {
         if (!guardTeamCreate(request, reply, request.body.launch)) return reply;
         return handle(reply, async () => ({ team: await createTeam(request.userId, request.body) }));
     });
     app.post('/v1/teams/schedules/tick', { preHandler: app.authenticate, schema: { body: z.object({ machineId: z.string().min(1).max(128) }) } }, async (request, reply) => handle(reply, () => tickTeamSchedules(request.userId, request.body.machineId)));
-    app.get('/v1/teams/operations', { preHandler: app.authenticate, schema: { querystring: z.object({ machineId: z.string().min(1).max(128), schedulesVersion: z.coerce.number().int().min(1).max(1).optional(), teamLaunchVersion: z.coerce.number().int().min(1).max(1).optional(), teamArchiveVersion: z.coerce.number().int().min(1).max(1).optional() }) } }, async (request, reply) => handle(reply, async () => {
+    app.get('/v1/teams/operations', { preHandler: app.authenticate, schema: { querystring: z.object({ machineId: z.string().min(1).max(128), schedulesVersion: z.coerce.number().int().min(1).max(1).optional(), teamLaunchVersion: z.coerce.number().int().min(1).max(1).optional(), teamArchiveVersion: z.coerce.number().int().min(1).max(1).optional(), teamRestoreVersion: z.coerce.number().int().min(1).max(1).optional() }) } }, async (request, reply) => handle(reply, async () => {
         const allTeams = await listTeams(request.userId, request.query.machineId);
         const teams = request.query.schedulesVersion === 1 ? allTeams : allTeams.map(team => ({ ...team, messages: team.messages.filter(message => !message.scheduleId) }));
         return { teams, operations: teamPollOperations(teams, request.query) };

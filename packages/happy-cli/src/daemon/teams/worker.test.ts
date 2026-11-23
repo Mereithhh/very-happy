@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { TeamOperation, TeamState } from '@slopus/happy-wire';
@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), send: vi.fn(), ke
 vi.mock('axios', () => ({ default: { create: () => ({ get: mocks.get, post: mocks.post }), isAxiosError: (error: unknown) => !!(error as { isAxiosError?: boolean } | null)?.isAxiosError } }));
 vi.mock('@/configuration', () => ({ configuration: { happyHomeDir: '', serverUrl: '' } }));
 vi.mock('@/persistence', () => ({ readPersistedSessions: mocks.persisted }));
+vi.mock('@/ui/logger', () => ({ logger: { debug: vi.fn() } }));
 vi.mock('@/commands/sessionMessage', () => ({ sendUserMessage: mocks.send, waitForSessionKey: mocks.key }));
 vi.mock('@/sessions/sessionOps', () => ({ archiveSession: mocks.archive }));
 vi.mock('./worktree', () => ({ prepareTeamWorktree: mocks.prepare, resolveTeamRepository: mocks.resolve, removeTeamWorktree: mocks.remove }));
@@ -556,5 +557,61 @@ describe('B-850d team member accounts', () => {
         expect(teamAccountRefusal(() => 'a', { assistant: 'pi-acp', agentProfile: { id: 'a' } })).toMatch(/^agent-profile-unavailable:agent-mismatch/);
         expect(teamAccountRefusal(() => null, { assistant: 'pi-acp' })).toBeNull();
         expect(teamAccountRefusal(() => { throw new Error('network'); }, { assistant: 'claude' })).toBeNull();
+    });
+});
+
+describe('B-962: a restore launch continues the member\'s own session in its own worktree', () => {
+    const restoreOp = (): TeamOperation => ({ ...op(), id: 'op2', restoreVersion: 1, resumeSessionId: 'session1', prompt: 'Task task1\n[Very Happy: team restored] continue' });
+    function originalLaunch(directory: string) {
+        mkdirSync(directory, { recursive: true });
+        writeReceipt(home, { operationId: 'op1', teamId: 'team1', claimId: 'c0', phase: 'completed', sessionId: 'session1', directory, repository: '/repo', branch: 'codex/team-op1', scopeFile: join(home, 'teams', 'scopes', 'op1.json') });
+    }
+    it('relaunches the same session (no new worktree, no spawn), forgets the exit, points relaunches at the new launch, sends only the restore prompt', async () => {
+        const operation = restoreOp(); setup(operation);
+        const worktree = join(home, 'wt-member'); originalLaunch(worktree);
+        mkdirSync(join(home, 'teams', 'exited'), { recursive: true });
+        writeFileSync(join(home, 'teams', 'exited', 'session1.json'), JSON.stringify({ teamId: 'team1' }));
+        const relaunch = vi.fn(async () => ({ type: 'success' as const, sessionId: 'session1' }));
+        const worker = start(() => false, { relaunch }); await settled(worker);
+        expect(relaunch).toHaveBeenCalledWith('session1');
+        expect(spawn).not.toHaveBeenCalled();
+        expect(mocks.prepare).not.toHaveBeenCalled();
+        expect(existsSync(join(home, 'teams', 'exited', 'session1.json'))).toBe(false);
+        expect(JSON.parse(readFileSync(join(home, 'teams', 'restored', 'session1.json'), 'utf8')).operationId).toBe('op2');
+        expect(JSON.parse(readFileSync(join(home, 'teams', 'scopes', 'op2.json'), 'utf8'))).toMatchObject({ scopeToken: 'scoped-test', botId: 'bot1', taskId: 'task1' });
+        expect(mocks.send).toHaveBeenCalledWith('session1', expect.anything(), 'Task task1\n[Very Happy: team restored] continue', 'teams', expect.objectContaining({ localId: 'teams-initial-op2' }));
+        const receipt = readReceipt(home, 'op2')!;
+        expect(receipt).toMatchObject({ phase: 'completed', sessionId: 'session1', directory: worktree, repository: '/repo', branch: 'codex/team-op1', restoring: true });
+        expect(mocks.post).toHaveBeenCalledWith('/v1/teams/team1/actions', expect.objectContaining({ action: expect.objectContaining({ type: 'complete-operation', sessionId: 'session1', workingDirectory: worktree }) }));
+        // Its later relaunches use the restore launch.
+        const { relaunchTeamOperationId } = await import('./relaunchScope');
+        expect(relaunchTeamOperationId(home, 'session1', { teamOperationId: 'op1' })).toBe('op2');
+    });
+    it('falls back to a fresh launch when the session cannot be continued (worktree gone / relaunch fails / unknown here)', async () => {
+        for (const kind of ['gone', 'fails', 'unknown'] as const) {
+            vi.clearAllMocks(); spawn.mockReset().mockResolvedValue({ type: 'success', sessionId: 'fresh1' });
+            mocks.prepare.mockResolvedValue({ directory: '/isolated', repository: '/repo', branch: 'codex/team-op2' }); mocks.key.mockResolvedValue(new Uint8Array(32));
+            rmSync(join(home, 'teams'), { recursive: true, force: true });
+            const operation = restoreOp(); setup(operation);
+            if (kind !== 'unknown') originalLaunch(join(home, `wt-${kind}`));
+            if (kind === 'gone') rmSync(join(home, `wt-${kind}`), { recursive: true, force: true });
+            const relaunch = vi.fn(async () => kind === 'fails' ? { type: 'error' as const, errorMessage: 'resume-precheck:not-tracked: x' } : { type: 'success' as const, sessionId: 'session1' });
+            const worker = start(() => false, { relaunch }); await settled(worker); worker.stop();
+            expect(spawn, kind).toHaveBeenCalledTimes(1);
+            expect(relaunch).toHaveBeenCalledTimes(kind === 'fails' ? 1 : 0);
+            const receipt = readReceipt(home, 'op2')!;
+            expect(receipt.restoreFallback, kind).toBeTruthy();
+            expect(receipt).toMatchObject({ sessionId: 'fresh1', directory: '/isolated' });
+            expect(receipt.restoring).toBeUndefined();
+            expect(existsSync(join(home, 'teams', 'restored', 'session1.json'))).toBe(false);
+            expect(String(mocks.send.mock.calls[0][2])).toContain('could not be continued');
+        }
+    });
+    it('an ordinary launch never takes the restore path', async () => {
+        const operation = op(); setup(operation);
+        const relaunch = vi.fn();
+        const worker = start(() => false, { relaunch }); await settled(worker);
+        expect(relaunch).not.toHaveBeenCalled();
+        expect(spawn).toHaveBeenCalledTimes(1);
     });
 });

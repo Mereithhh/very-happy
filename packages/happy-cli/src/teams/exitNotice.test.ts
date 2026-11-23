@@ -58,7 +58,8 @@ describe('B-877b: one note before the first turn after leaving the team', () => 
         const turn = first.decorate('团队那边现在怎么样了？请继续推进');
         expect(turn).toBe(`${teamExitNoticeText(readTeamExitMarker(home, 's1')!, zh)}\n团队那边现在怎么样了？请继续推进`);
         expect(turn).toMatch(/^\[Very Happy: team mode ended\] Team "qa49-exit-cli" was archived when the user exited team mode\./);
-        expect(turn).toContain('do not wait for or ask the user to restore team access');
+        expect(turn).toContain('do not wait for team access to come back');
+        expect(turn).toContain('「恢复团队」');
         expect(turn).toContain('carry on with the work yourself');
         expect(JSON.parse(readFileSync(teamExitMarkerPath(home, 's1'), 'utf8')).noticeAt).toEqual(expect.any(Number));
         expect(first.decorate('next')).toBe('next');

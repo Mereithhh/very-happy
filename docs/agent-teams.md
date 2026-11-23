@@ -453,23 +453,41 @@ Later restarts and resumes stay ordinary. The lead is told once, before your
 next message, that team mode has ended, and every team tool from then on says
 the team is archived and that it should do the work itself — it no longer asks
 you to wait for team access. A lead whose team was archived the ordinary way and
-which you restore later is treated the same. From a terminal on the lead's
-computer:
+which you restore later is treated the same.
 
-```sh
-very-happy teams exit --session-id <lead-session-id>
-```
-
-Exiting cannot be undone: an archived team cannot be reopened and its members
-do not start again; start a new team to work as a team again. A lead you
-restored after a plain archive can exit too, and can then start a new team.
+Only you can exit team mode or archive a team, on the Web, with a confirmation.
+The server refuses an archive from an agent's team credential and from a
+machine token (the CLI or daemon), and `very-happy teams exit` refuses inside an
+agent or managed session: an agent asked to "restart the team" tells you to
+choose ⋯ → Exit team mode or Archive yourself. Every archive records where it
+came from (Web / command line) and who (signed-in person / machine token).
 
 A plain **Archive team** still stops the lead too. Member sessions cannot exit
 on their own; they end with the team. Requires the lead computer's CLI to
 include this command (B-877); an older server stops the lead anyway, and the
 app says so.
 
-退出团队模式（负责人会话 ⋯ 或团队页 ⋯）：按现有归档逻辑归档团队，但负责人会话不停，保留历史后作为普通会话原地重启，之后不再注入团队说明、不再收团队消息。下一条消息前会告诉负责人一次「团队模式已结束」，之后团队工具都明确回复团队已归档、请自己完成，不会再让你等团队权限恢复；普通归档后再恢复的负责人会话同样处理，也可以执行退出，之后能新建团队。退出不可撤销：归档的团队不能恢复，成员不会再启动。
+退出团队模式（负责人会话 ⋯ 或团队页 ⋯）：按现有归档逻辑归档团队，但负责人会话不停，保留历史后作为普通会话原地重启，之后不再注入团队说明、不再收团队消息。下一条消息前会告诉负责人一次「团队模式已结束」，之后团队工具都明确回复团队已归档、请自己完成，不会再让你等团队权限恢复。退出团队模式和归档只能由你本人在网页确认：agent 的团队凭证、命令行/daemon 的机器 token 都会被服务端拒绝，agent 里执行 `very-happy teams exit` 也会直接拒绝；让 agent「重启团队」时它会请你自己操作。每次归档都记录来源（网页/命令行）和操作者。
+
+### Restore a team (恢复团队)
+
+An archived team — including one that left team mode — can be restored for 7
+days: open it from **Recently archived** on the Teams page and choose **Restore
+team**. Exactly what the archive cancelled comes back: its unfinished tasks
+(running and queued work restarts as a new attempt; submitted work goes back to
+review), its schedules (as they were; for archives made before this version,
+paused) and messages it cancelled before delivery. Finished tasks stay finished.
+Each member continues **its own conversation in its own worktree**, and the lead
+rejoins the team in the conversation it kept (its exit is undone on its
+computer). If a member's conversation can no longer be continued (its worktree
+was removed, the computer no longer tracks it), it starts fresh from the
+repository and is told so. If a conversation is now in another live team,
+restore names it; you can restore without it — that member starts a new session
+and the other team keeps the original untouched. Restoring needs CLI 0.2.225 on
+the team's computer; 7 days because worktrees and session records are kept that
+long with margin (the daemon tracks sessions for 14 days).
+
+恢复团队：归档（含退出团队模式）后 7 天内，在「团队」页「最近归档」里打开团队点「恢复团队」。只恢复这次归档取消的东西：未完成的任务（进行中/排队的开新一轮，待验收的回到待验收）、定时安排、没送达的消息；已完成的不变。每个成员在自己原来的工作目录里接着原来的对话，负责人回到团队。原会话续不上时新起会话并告知；原会话已在另一个团队里时会列出来，可以跳过它们恢复（新起会话，原会话不动）。需要团队电脑的 CLI 0.2.225。
 
 ### Language
 

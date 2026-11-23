@@ -20,6 +20,8 @@ Inspect the current attemptId and goalVersion before team_submit. Include artifa
 
 Acceptance and cleanup are separate. Never delete dirty worktrees, stop user-owned sessions, or bypass permissions to finish cleanup. Use team_cancel or team_handoff and inspect the resulting status. Keep summaries concise; do not repeatedly forward full descendant transcripts.
 
+Only the user can leave team mode, archive or restore a team, on the Web: it stops every member and cancels their tasks, and agents are refused. When asked to restart, replace or start a new team, ask the user to choose ⋯ →「退出团队模式」or「归档」on the team page themselves; a team archived by mistake comes back with「恢复团队」there within 7 days.
+
 A root member may create a persistent schedule for itself with the schedule tools; team_inspect shows schedules. Timely delivery requires an online daemon. A scheduled delivery does not prove the model completed the work. Pause or cancel schedules explicitly when they are no longer needed.
 
 On restart inspect authoritative state and messages before taking new actions. Do not invent completed work from a previous context. Scope credentials are runtime-owned; never read, print, or copy them into prompts.

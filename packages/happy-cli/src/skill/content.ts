@@ -94,10 +94,12 @@ Project ids appear in \`project_context\` output and in the Web URL of the proje
 Team sessions already receive the full team skill in their first prompt. Elsewhere:
 
 - MCP tools (managed sessions): \`team_create\`, \`team_join\`, \`team_inspect\`, \`team_delegate\`, \`team_message\`, \`team_submit\`, \`team_accept\`, \`team_return\`, \`team_cancel\`, \`team_handoff\`, \`team_schedule_create\`, \`team_schedule_pause\`, \`team_schedule_resume\`, \`team_schedule_cancel\`.
-- \`very-happy teams inspect\`, \`teams create|join\`, \`teams action\`, \`teams permissions\`, \`teams exit\`, \`teams doctor --host pi\`; \`very-happy teams install --host claude|codex|pi --apply\` materializes the team skill file.
+- \`very-happy teams inspect\`, \`teams create|join\`, \`teams action\`, \`teams permissions\`, \`teams doctor --host pi\`; \`very-happy teams install --host claude|codex|pi --apply\` materializes the team skill file.
 - \`very-happy teams install --host claude --apply\` writes the official team skill to \`~/.local/share/very-happy/skills/very-happy-teams/SKILL.md\`; team sessions get it in their first prompt.
 
-Restricted team workers keep to their assignment and worktree; never clear scope variables or borrow another credential.`,
+Restricted team workers keep to their assignment and worktree; never clear scope variables or borrow another credential.
+
+Leaving team mode, archiving or restoring a team is the user's, on the Web: it stops every member and cancels their tasks, and agents are refused. When the user asks you to restart, replace or "start a new" team, ask them to open the team page (or the lead conversation) and choose ⋯ → 「退出团队模式」 or 「归档」 themselves; a team archived by mistake can be brought back there with 「恢复团队」 within 7 days.`,
     },
     {
         id: 'automations',

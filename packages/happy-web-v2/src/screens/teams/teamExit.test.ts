@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-const h = vi.hoisted(() => ({ machines: {} as Record<string, unknown>, rpc: vi.fn(), confirm: vi.fn(async () => true), error: vi.fn(), success: vi.fn() }));
+const h = vi.hoisted(() => ({ machines: {} as Record<string, unknown>, rpc: vi.fn(), act: vi.fn(async () => ({ team: {} })), confirm: vi.fn(async () => true), error: vi.fn(), success: vi.fn() }));
 vi.mock("@/sync/apiSocket", () => ({ apiSocket: { machineRPC: h.rpc } }));
 vi.mock("@/modal", () => ({ Modal: { confirm: h.confirm } }));
 vi.mock("@/ui/Toast", () => ({ toast: { error: h.error, success: h.success } }));
 vi.mock("@/text", () => ({ t: (key: string) => key }));
 vi.mock("@/screens/sessions/useTeamNavigation", () => ({ refreshTeamNavigation: () => Promise.resolve() }));
+vi.mock("@/sync/teams", () => ({ actOnTeam: h.act }));
 vi.mock("@/sync/storage", () => ({ storage: { getState: () => ({ machines: h.machines }) } }));
 import type { TeamState } from "@slopus/happy-wire";
 import { confirmExitTeamMode, teamExitOutcome, teamExitSupported, teamExitTarget, teamLeadSessionId } from "./teamExit";
@@ -47,13 +48,24 @@ describe("B-877 exit team mode", () => {
   it("B-877b: an older lead CLI is told at once — no confirm, no RPC, no 15 s wait", async () => {
     h.machines = { old: { daemonState: { startedAt: 10 } }, cur: { daemonState: { startedAt: 10, teamExit: { rpcAvailable: true, detectedAt: 10 } } } };
     h.rpc.mockReset(); h.confirm.mockClear(); h.error.mockClear(); h.success.mockClear();
-    expect(await confirmExitTeamMode("old", "s-lead")).toBe(false);
+    expect(await confirmExitTeamMode("t", "old", "s-lead")).toBe(false);
     expect(h.error).toHaveBeenCalledWith("teams.exitTeamModeOldCli");
     expect(h.confirm).not.toHaveBeenCalled();
     expect(h.rpc).not.toHaveBeenCalled();
     h.rpc.mockResolvedValueOnce({ teamId: "t", restarted: true });
-    expect(await confirmExitTeamMode("cur", "s-lead")).toBe(true);
+    h.act.mockClear();
+    expect(await confirmExitTeamMode("t", "cur", "s-lead")).toBe(true);
+    // B-962: the person archives first (the server refuses the daemon's machine token); the daemon only finishes its side.
+    expect(h.act).toHaveBeenCalledWith("t", { type: "archive", keepLeadSession: true, source: "web" }, expect.any(String));
+    expect(h.act.mock.invocationCallOrder[0]).toBeLessThan(h.rpc.mock.invocationCallOrder[0]);
     expect(h.rpc).toHaveBeenCalledWith("cur", "team-exit-session", { sessionId: "s-lead" }, { timeoutMs: 30_000 });
     expect(h.success).toHaveBeenCalledWith("teams.exitTeamModeDone");
+  });
+  it("B-962: a refused archive stops before the daemon is asked", async () => {
+    h.machines = { cur: { daemonState: { startedAt: 10, teamExit: { rpcAvailable: true, detectedAt: 10 } } } };
+    h.rpc.mockReset(); h.error.mockClear(); h.act.mockRejectedValueOnce(new Error("owner_login_required"));
+    expect(await confirmExitTeamMode("t", "cur", "s-lead")).toBe(false);
+    expect(h.rpc).not.toHaveBeenCalled();
+    expect(h.error).toHaveBeenCalledWith("teams.exitTeamMode: owner_login_required");
   });
 });

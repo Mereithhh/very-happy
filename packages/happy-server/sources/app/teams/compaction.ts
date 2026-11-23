@@ -1,3 +1,4 @@
+import { TEAM_RESTORE_WINDOW_MS } from '@slopus/happy-wire';
 import type { TeamCapacity, TeamCapacityMetric, TeamMessage, TeamOperation, TeamState, TeamTask } from '@slopus/happy-wire';
 
 /**
@@ -155,12 +156,22 @@ function underPressure(team: TeamState): boolean {
     const counted = team.messages.length >= TEAM_LIMITS.messages * TEAM_COMPACT_PRESSURE || team.operations.length >= TEAM_LIMITS.operations * TEAM_COMPACT_PRESSURE || team.tasks.length >= TEAM_LIMITS.tasks * TEAM_COMPACT_PRESSURE;
     return counted || JSON.stringify(team).length >= TEAM_LIMITS.bytes * TEAM_COMPACT_PRESSURE;
 }
+/**
+ * B-962: while an archived team can still be restored, what its archive cancelled stays live — the tasks
+ * that closed at the archive and the messages it cancelled before delivery (「恢复团队」 brings them back).
+ */
+export function restoreHeld(team: Pick<TeamState, 'archivedAt'>, now: number): ((record: { closedAt?: number; cancelledAt?: number; deliveredAt?: number | null }) => boolean) {
+    const at = team.archivedAt;
+    if (at === undefined || now - at > TEAM_RESTORE_WINDOW_MS) return () => false;
+    return record => record.closedAt === at || (record.cancelledAt === at && record.deliveredAt === null);
+}
 function compactOnce(team: TeamState, cutoff: number, now: number): TeamState {
-    const tasks = new Set(team.tasks.filter(t => (t.closedAt ?? now) <= cutoff && taskArchivable(t, team)).map(t => t.id));
+    const held = restoreHeld(team, now);
+    const tasks = new Set(team.tasks.filter(t => (t.closedAt ?? now) <= cutoff && !held(t) && taskArchivable(t, team)).map(t => t.id));
     // B-959: the newest messages of an open task are counted in the pre-removal list; they are never candidates, so they stay.
     const remaining = { tasks: team.tasks.filter(t => !tasks.has(t.id)), bots: team.bots, operations: team.operations, messages: team.messages };
     const repository = repositorySpawnIds(team);
-    const messages = new Set(team.messages.filter(m => Math.max(m.deliveredAt ?? 0, m.cancelledAt ?? 0, m.createdAt) <= cutoff && messageArchivable(m, remaining)).map(m => m.id));
+    const messages = new Set(team.messages.filter(m => Math.max(m.deliveredAt ?? 0, m.cancelledAt ?? 0, m.createdAt) <= cutoff && !(held(m) && !m.scheduleId) && messageArchivable(m, remaining)).map(m => m.id));
     const operations = new Set(team.operations.filter(o => o.createdAt <= cutoff && operationArchivable(o, remaining, repository)).map(o => o.id));
     if (!tasks.size && !messages.size && !operations.size) return team;
     const prior = team.compacted ?? { messages: 0, operations: 0, tasks: 0, at: now };

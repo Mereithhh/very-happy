@@ -38,7 +38,8 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
     throw new TeamsApiError(502, "invalid_response");
   return data as T;
 }
-export const listTeams = () => request<{ teams: TeamState[] }>("");
+/** B-962: `restorable` also lists archived teams that can still be restored (an older server ignores it and lists live teams). */
+export const listTeams = (opts: { restorable?: boolean } = {}) => request<{ teams: TeamState[] }>(opts.restorable ? "?restorable=1" : "");
 export const getTeam = (id: string) =>
   request<{ team: TeamState }>(`/${encodeURIComponent(id)}`);
 export const createTeam = (

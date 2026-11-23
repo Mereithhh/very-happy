@@ -8,12 +8,25 @@ import { installTeamSkill, type TeamSkillHost } from '@/teams/install';
 import { installAutomationSkill } from '@/automations/install';
 import { installVeryHappySkill } from '@/skill/install';
 import { exitDaemonTeamMode } from '@/daemon/controlClient';
+import { TEAMS_EXIT_REFUSAL } from '@/daemon/teams/exitTeamMode';
+
+/**
+ * B-962: the variable that shows this command runs inside an agent (a managed session, a team member, or a
+ * Claude Code / Codex tool call), or null in a person's own terminal. Any one is enough: an agent cannot
+ * prove it is a person, and the server refuses a machine-token archive anyway.
+ */
+export function teamExitAgentEnvironment(env: NodeJS.ProcessEnv): string | null {
+    for (const key of ['VH_TEAM_SCOPE_FILE', 'VH_TEAM_OPERATION_ID', 'HAPPY_SESSION_ID', 'HAPPY_MANAGED', 'HAPPY_SPAWNED_BY', 'VH_PEER_SESSION_ID', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CODEX_THREAD_ID', 'CODEX_SANDBOX', 'CODEX_MANAGED_BY_NPM', 'CODEX_CI']) {
+        if (env[key]) return key;
+    }
+    return null;
+}
 
 export async function handleTeamsCommand(args: string[]): Promise<void> {
     const command = args[0];
     const value = (flag: string) => { const index = args.indexOf(flag); return index < 0 ? undefined : args[index + 1]; };
     if (!command || command === '--help') {
-        console.log('very-happy teams install|uninstall --host claude|codex|pi [--home PATH] [--apply]\nvery-happy teams doctor --host pi\nvery-happy teams migration-preview --file LEDGER_JSON\nvery-happy teams inspect\nvery-happy teams permissions --team-id ID --mode default|bypassPermissions --request-id ID\nvery-happy teams create|join --name NAME [--machine-id ID | --team-id ID] [--session-id ID] [--request-id ID]\nvery-happy teams action --json ACTION_JSON --request-id ID\nvery-happy teams exit --session-id ID   (team lead only: archive the team, keep this session as an ordinary one)\nInstallation previews changes unless --apply is supplied. Managed sessions receive tools automatically.');
+        console.log('very-happy teams install|uninstall --host claude|codex|pi [--home PATH] [--apply]\nvery-happy teams doctor --host pi\nvery-happy teams migration-preview --file LEDGER_JSON\nvery-happy teams inspect\nvery-happy teams permissions --team-id ID --mode default|bypassPermissions --request-id ID\nvery-happy teams create|join --name NAME [--machine-id ID | --team-id ID] [--session-id ID] [--request-id ID]\nvery-happy teams action --json ACTION_JSON --request-id ID\nInstallation previews changes unless --apply is supplied. Managed sessions receive tools automatically.');
         return;
     }
     if (command === 'install' || command === 'uninstall') {
@@ -57,7 +70,11 @@ export async function handleTeamsCommand(args: string[]): Promise<void> {
         return;
     }
     if (command === 'exit') {
-        // B-877: run by the daemon that owns the session (it holds the team scope and restarts the wrapper).
+        // B-962: an agent asked to "restart a new team" ran this and archived a 16-member team. Leaving team
+        // mode is the person's, confirmed on the Web; the server refuses a machine-token archive as well.
+        const agent = teamExitAgentEnvironment(process.env);
+        if (agent) throw new Error(`${TEAMS_EXIT_REFUSAL} (detected: ${agent})`);
+        // A person in a terminal: the team must already be archived on the Web; this only finishes this machine's side.
         const sessionId = value('--session-id') ?? process.env.HAPPY_SESSION_ID;
         if (!sessionId) throw new Error('--session-id is required');
         const result = await exitDaemonTeamMode(sessionId);

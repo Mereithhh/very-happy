@@ -44,6 +44,8 @@ import { teamProjectMenu } from "@/screens/projects/projectChoice";
 import { ChangeTeamProjectModal } from "@/screens/projects/ChangeTeamProjectModal";
 import { TeamDialog } from "./TeamDialog";
 import { LeadReviveNotice } from "./LeadReviveNotice";
+import { TeamRestoreNotice } from "./TeamRestoreNotice";
+import { useTeamRestoreCopy } from "./teamRestore";
 import { acceptBlockedByOpenTasks, leadReviveCopyFor, ownedTasksRefusalCount } from "./leadRevive";
 import { TeamTaskMessages, TeamTaskSummary } from "./TeamTaskDetail";
 import { useWorkspaceCopy } from "./workspaceCopy";
@@ -76,11 +78,12 @@ function TeamsContent() {
   const [changingProject, setChangingProject] = useState(false);
   const c = useWorkspaceCopy();
   const first = useFirstUseCopy();
+  const restoreCopy = useTeamRestoreCopy();
   // B-798 P2-7: the app's standard confirm (title, explanation, 取消 + action),
   // not a full-height TeamDialog sheet with only ✕ to back out.
   async function confirmArchive() {
     if (!await Modal.confirm(tr('teams.archive'), tr('teams.archiveDescription'), { confirmText: tr('teams.archive'), destructive: true })) return;
-    await act({ type: 'archive' });
+    await act({ type: 'archive', source: 'web' });
   }
   const [startingExisting, setStartingExisting] = useState(false);
   const [view, setView] = useState<"overview" | "schedules" | "settings">("overview");
@@ -151,7 +154,7 @@ function TeamsContent() {
       if (teamId) {
         const next = (await getTeam(teamId)).team;
         setTeam((previous) => newestTeam(previous, next));
-      } else setTeams((await listTeams()).teams);
+      } else setTeams((await listTeams({ restorable: true })).teams);
       setUnavailable(false);
       setNotFound(false);
     } catch (e) {
@@ -253,7 +256,7 @@ function TeamsContent() {
             // B-877: archive but keep the lead's session as an ordinary one (runs on the lead's machine).
             ...(team.archivedAt === undefined && teamLeadSessionId(team) ? [{ key: "exit-team-mode", label: tr("teams.exitTeamMode"), icon: LogOut, onSelect: () => {
               const lead = teamLeadSessionId(team)!;
-              void confirmExitTeamMode(storage.getState().sessions[lead]?.metadata?.machineId ?? team.machineId, lead).then((left) => { if (left) void load(); });
+              void confirmExitTeamMode(team.id, storage.getState().sessions[lead]?.metadata?.machineId ?? team.machineId, lead).then((left) => { if (left) void load(); });
             } }] : []),
           ]} />}
           {teamId ? <button aria-label={tr("teams.refresh")} title={tr("teams.refresh")} onClick={() => { setError(""); void load(); }}><RefreshCw size={17} /></button> : <button className="teams-primary" disabled={unavailable} onClick={() => setCreating(true)}><Plus size={16} />{c.create}</button>}
@@ -290,8 +293,14 @@ function TeamsContent() {
             navigate(`/teams/${created.id}?starting=1`);
           }} />
           </TeamDialog>}
-          {!teams.length && !unavailable && <div className="teams-empty"><UsersRound size={36} aria-hidden /><h2>{c.noTeams}</h2><p>{c.noTeamsHint}</p><Link to="/help">{c.guide} →</Link></div>}
-          <div className="teams-list">{teams.map(item => <TeamListCard key={item.id} team={item} archivedSessionIds={archivedMemberSessions} machine={machines.find(m => m.id === item.machineId) ? machineLabel(machines.find(m => m.id === item.machineId)!) : c.unnamedMachine} />)}</div>
+          {!teams.some(item => item.archivedAt === undefined) && !unavailable && <div className="teams-empty"><UsersRound size={36} aria-hidden /><h2>{c.noTeams}</h2><p>{c.noTeamsHint}</p><Link to="/help">{c.guide} →</Link></div>}
+          <div className="teams-list">{teams.filter(item => item.archivedAt === undefined).map(item => <TeamListCard key={item.id} team={item} archivedSessionIds={archivedMemberSessions} machine={machines.find(m => m.id === item.machineId) ? machineLabel(machines.find(m => m.id === item.machineId)!) : c.unnamedMachine} />)}</div>
+          {/* B-962: archived in the last 7 days — open one to restore it. */}
+          {teams.some(item => item.archivedAt !== undefined) && <section className="teams-restorable" aria-labelledby="teams-restorable-title">
+            <h2 id="teams-restorable-title">{restoreCopy.listTitle}</h2>
+            <p>{restoreCopy.listHint}</p>
+            <ul>{teams.filter(item => item.archivedAt !== undefined).map(item => <li key={item.id}><Link to={`/teams/${encodeURIComponent(item.id)}`}>{item.name}</Link><span> · {restoreCopy.archivedAt(new Date(item.archivedAt!).toLocaleString())}</span></li>)}</ul>
+          </section>}
         </>
       )}
       {team && (
@@ -302,6 +311,7 @@ function TeamsContent() {
           {view === "overview" && <>
             {!dispatchReady && <p role="status">{tr("teams.machineRequired")}</p>}
             <LeadReviveNotice team={team} machine={executionMachine} disabled={disabled} act={actApplied} />
+            <TeamRestoreNotice team={team} machine={executionMachine} onRestored={() => void load()} />
             {team.bots.length === 0 && <div className="teams-empty"><h2>{first.setup}</h2><p>{first.setupHint}</p><button className="teams-primary" disabled={disabled} onClick={() => setStartingExisting(true)}>{first.start}</button></div>}
             {['preparing', 'failed'].includes(launchPhase) && <div className="team-launch-state" role="status"><h2>{launchPhase === 'failed' ? first.failed : first.preparing}</h2><p>{launchPhase === 'failed' ? first.failedHint : first.preparingHint}</p>{team.tasks.filter(task => team.bots.some(bot => bot.root && bot.id === task.assigneeBotId)).map(task => <button key={task.id} onClick={() => setSelectedTask(task.id)}>{first.inspect}</button>)}</div>}
             <div className="teams-work-actions">

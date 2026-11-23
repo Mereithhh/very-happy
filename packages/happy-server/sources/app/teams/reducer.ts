@@ -1,7 +1,8 @@
-import { TEAM_OWNED_TASKS_UNFINISHED, teamBotActivity, teamCleanupHoldsSession, teamCleanupIssues, teamLeadReviveBlock, teamMemberCounts, teamOwnedOpenTasks, type TeamOwnedOpenTasks, type TeamAction, type TeamCleanupIssue, type TeamState, type TeamBot, type TeamTask, type TeamOperation, type ProjectAgentProfile } from '@slopus/happy-wire';
+import { archiveRestorable, restoreSessionId, TEAM_RESTORE_WINDOW_MS, TEAM_OWNED_TASKS_UNFINISHED, teamBotActivity, teamCleanupHoldsSession, teamCleanupIssues, teamLeadReviveBlock, teamMemberCounts, teamOwnedOpenTasks, type TeamOwnedOpenTasks, type TeamAction, type TeamArchiveRecord, type TeamCleanupIssue, type TeamState, type TeamBot, type TeamTask, type TeamOperation, type ProjectAgentProfile } from '@slopus/happy-wire';
 
 export type TeamActor = { kind: 'owner' } | { kind: 'agent'; botId: string; generation: number };
 export { TeamError, requireTeam } from './errors';
+export { archiveRestorable, restoreSessionId } from '@slopus/happy-wire';
 import { requireCapacity, requireTeam, TeamError } from './errors';
 import { TEAM_LIMITS, teamCapacity, warnCapacity } from './compaction';
 import { applyScheduleAction, acknowledgeScheduleMessage } from './schedules';
@@ -168,8 +169,24 @@ export function leadReviveGoal(s: TeamState, open: TeamOwnedOpenTasks, leadId: s
     const original = previous ? `\nThe team's goal was: ${previous.goal.slice(0, 2000)}` : '';
     return `Resume as the team lead. The owner relaunched you: your previous lead session was stopped while ${open.total} task(s) you delegated were still open (${open.submitted} submitted and waiting for your review, ${open.queued} queued, ${open.running} running). Run team_inspect first, then review and accept or return each submitted task, keep queued and running work moving, and cancel or hand off what is no longer needed. Submit this task once every task you own is accepted or cancelled.${original}`;
 }
-export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamAction, ctx: { now: number; id: () => string; quiet?: boolean; /** B-902: the team's project accounts on the team's machine */ projectAccounts?: readonly ProjectAgentProfile[] | null }): { team: TeamState; credentialBotId?: string; operationId?: string; taskId?: string; scheduleId?: string } {
-    requireTeam(input.archivedAt === undefined || ['archive', 'claim-operation', 'complete-operation', 'fail-operation', 'reconcile-operation', 'session-event'].includes(action.type), 'team_archived');
+/** B-962: why an archive must be confirmed by the person on the Web — what agents and the CLI are told. */
+export const TEAM_ARCHIVE_HUMAN_HINT = 'Exiting team mode or archiving a team stops every member and cancels their unfinished tasks, so only you can do it: open the team page (or the lead conversation) on the Web, choose ⋯ → 「退出团队模式」 or 「归档」, and confirm. Agents and the CLI cannot do this. 退出团队模式/归档会停掉所有成员、取消未完成的任务，需要你本人在网页团队页（或负责人对话）的 ⋯ 菜单里点「退出团队模式」或「归档」确认；agent 和命令行都不能代为执行。';
+/** B-962: the members a restore relaunches (each assignee of a restored task), lead first. */
+export function restoreBots(team: TeamState): TeamBot[] {
+    const restorable = archiveRestorable(team);
+    if (!restorable) return [];
+    const ids = new Set(restorable.tasks.map(r => team.tasks.find(t => t.id === r.id)?.assigneeBotId).filter((x): x is string => !!x));
+    return team.bots.filter(b => ids.has(b.id)).sort((a, b) => Number(b.root) - Number(a.root));
+}
+/** B-962: the first prompt a member gets when the restore continues its own conversation. */
+export function restoreResumePrompt(task: TeamTask, root: boolean): string {
+    const what = root
+        ? `The owner restored this team after it was archived (exit from team mode). You are its lead again: your team tools work, your members are being relaunched in their own conversations and their tasks are back. Run team_inspect first, then keep the team's work moving: review submitted tasks and follow up on running ones.`
+        : `The owner restored this team after it was archived. Your task ${task.id} is back and your team tools work again (a new attempt: call team_inspect for its attemptId before team_submit). Continue where you left off; the work you already did in this worktree is still here.`;
+    return `Task ${task.id}\n[Very Happy: team restored] ${what}\n\nYour task:\n${task.goal}\nAcceptance:\n${task.acceptance.join('\n')}`;
+}
+export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamAction, ctx: { now: number; id: () => string; quiet?: boolean; /** B-962: who the owner is on this request (Web login or machine token), recorded on an archive. */ ownerBy?: 'owner-login' | 'machine'; /** B-902: the team's project accounts on the team's machine */ projectAccounts?: readonly ProjectAgentProfile[] | null }): { team: TeamState; credentialBotId?: string; operationId?: string; taskId?: string; scheduleId?: string } {
+    requireTeam(input.archivedAt === undefined || ['archive', 'restore', 'claim-operation', 'complete-operation', 'fail-operation', 'reconcile-operation', 'session-event'].includes(action.type), 'team_archived');
     const s = structuredClone(input);
     const { now, id } = ctx;
     const currentBot = actor.kind === 'agent' ? s.bots.find(b => b.id === actor.botId) : undefined;
@@ -262,8 +279,16 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             break;
         }
         case 'archive': {
+            if (actor.kind === 'agent') throw new TeamError('owner_required', 403, { hint: TEAM_ARCHIVE_HUMAN_HINT });
             owner();
             if (s.archivedAt !== undefined) break;
+            // B-962: what this archive cancels, with its state before, so 「恢复团队」 brings back exactly that.
+            const restorable: NonNullable<TeamArchiveRecord['restorable']> = {
+                tasks: s.tasks.filter(t => !['done', 'cancelled'].includes(t.status)).map(t => ({ id: t.id, status: t.status as 'queued' | 'running' | 'submitted', attemptStatus: t.attempts.find(a => a.id === t.currentAttemptId)?.status ?? 'pending' })),
+                schedules: (s.schedules ?? []).filter(x => x.status === 'active' || x.status === 'paused').map(x => ({ id: x.id, status: x.status as 'active' | 'paused', nextRunAt: x.nextRunAt })),
+                messageIds: s.messages.filter(m => m.deliveredAt === null && m.cancelledAt === undefined && !m.scheduleId).map(m => m.id),
+            };
+            s.archive = { at: now, source: action.source ?? 'unknown', by: ctx.ownerBy ?? 'unknown', ...(action.keepLeadSession ? { keepLeadSession: true as const } : {}), restorable };
             for (const schedule of [...(s.schedules ?? [])]) {
                 if (['active', 'paused'].includes(schedule.status)) applyScheduleAction(s, actor, { type: 'schedule-cancel', scheduleId: schedule.id, version: schedule.version }, now, id);
             }
@@ -284,6 +309,56 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                 if (!existingStop) cleanup(task);
             }
             s.archivedAt = now;
+            break;
+        }
+        case 'restore': {
+            // B-962: 「恢复团队」— only what the archive cancelled comes back; members continue their own conversations.
+            owner();
+            requireTeam(s.archivedAt !== undefined, 'team_not_archived');
+            if (now - s.archivedAt > TEAM_RESTORE_WINDOW_MS) throw new TeamError('restore_expired', 409, { archivedAt: s.archivedAt, windowMs: TEAM_RESTORE_WINDOW_MS });
+            const restorable = archiveRestorable(s)!;
+            const bots = restoreBots(s);
+            // A member's cleanup must have finished: its stopped session is the one to continue.
+            for (const bot of bots) {
+                if (s.operations.some(o => o.botId === bot.id && o.type === 'stop' && o.status !== 'completed')) throw new TeamError('restore_cleanup_pending', 409, { botId: bot.id, botName: bot.name });
+            }
+            const skip = new Set(action.skipBotIds ?? []);
+            const archivedAt = s.archivedAt;
+            s.archiveHistory = [...(s.archiveHistory ?? []), { ...(s.archive && s.archive.at === archivedAt ? s.archive : { at: archivedAt, source: 'unknown' as const, by: 'unknown' as const }), restoredAt: now }].slice(-8);
+            delete s.archive; delete s.archivedAt;
+            for (const r of restorable.schedules) {
+                const schedule = s.schedules?.find(x => x.id === r.id);
+                if (!schedule || schedule.status !== 'cancelled') continue;
+                schedule.status = r.status; schedule.nextRunAt = r.status === 'active' ? Math.max(now, r.nextRunAt ?? now) : r.nextRunAt;
+                delete schedule.finishedAt; schedule.version++;
+            }
+            for (const messageId of restorable.messageIds) {
+                const m = s.messages.find(x => x.id === messageId);
+                if (m && m.deliveredAt === null && m.cancelledAt === archivedAt) delete m.cancelledAt;
+            }
+            for (const bot of bots) {
+                const tasks = restorable.tasks.map(r => ({ r, t: s.tasks.find(t => t.id === r.id) })).filter((x): x is { r: typeof x.r; t: TeamTask } => !!x.t && x.t.assigneeBotId === bot.id && x.t.status === 'cancelled');
+                if (!tasks.length) continue;
+                const resume = skip.has(bot.id) || bot.transferredTo ? null : restoreSessionId(bot);
+                releaseBotSession(bot); bot.generation++; assigned(bot);
+                delete bot.lastEvent; delete bot.lastEventAt; delete bot.idleEscalatedAt;
+                let launch: TeamTask | undefined;
+                for (const { r, t } of tasks) {
+                    delete t.closedAt; t.cleanup = 'none';
+                    if (r.status === 'submitted') {
+                        // Back to the owner's review, same attempt and result.
+                        t.status = 'submitted'; t.attempts.find(a => a.id === t.currentAttemptId)!.status = 'submitted';
+                    } else {
+                        t.currentAttemptId = id(); t.status = 'queued';
+                        t.attempts.push({ id: t.currentAttemptId, botId: bot.id, generation: bot.generation, goalVersion: t.goalVersion, status: 'pending', result: null });
+                    }
+                    if (!launch || (launch.status === 'submitted' && t.status !== 'submitted')) launch = t;
+                }
+                const op = operation(launch!, bot, 'spawn');
+                op.restoreVersion = 1;
+                if (resume) { op.resumeSessionId = resume; op.prompt = restoreResumePrompt(launch!, bot.root); }
+                else op.prompt = `[Very Happy: team restored] The owner restored this team after it was archived; your previous conversation could not be continued (it is in use elsewhere), so this is a fresh session in a new worktree. Run team_inspect first.\n\n${op.prompt}`;
+            }
             break;
         }
         case 'join': {
@@ -536,6 +611,8 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                     bot.sessionId = action.sessionId; op.sessionId = action.sessionId; assigned(bot);
                     if (action.workingDirectory) bot.directory = action.workingDirectory;
                     if (t.currentAttemptId === op.attemptId && t.status === 'queued') { t.status = 'running'; t.attempts.find(a => a.id === op.attemptId)!.status = 'running'; }
+                    // B-962: a restored member whose task waits for review is bound again (a return reaches it).
+                    else if (op.restoreVersion === 1 && t.currentAttemptId === op.attemptId && t.status === 'submitted') { /* bound, awaiting review */ }
                     else operation(t, bot, 'stop', op.attemptId);
                 } else {
                     if (t.currentAttemptId === op.attemptId) t.cleanup = 'done';

@@ -422,6 +422,82 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         } finally { await app.close(); }
     });
 
+    it('B-962: through the real routes, agents cannot archive; the person archives (recorded) and restores — conflicts named, compacted tasks taken back', async () => {
+        const { default: fastify } = await import('fastify');
+        const { serializerCompiler, validatorCompiler } = await import('fastify-type-provider-zod');
+        const { teamRoutes } = await import('@/app/api/routes/teamRoutes');
+        const app = fastify(); app.setValidatorCompiler(validatorCompiler); app.setSerializerCompiler(serializerCompiler);
+        app.decorate('authenticate', async (request: any) => { request.userId = accountId; if (!request.headers['x-test-machine']) request.authLoginSessionId = 'login'; }); teamRoutes(app as any);
+        try {
+            const team = await store.createTeam(accountId, { name: 'Restore', machineId, launch: { goal: 'Ship', directory: '/repo', assistant: 'claude' } });
+            const daemon = (requestId: string, action: Record<string, unknown>) => store.actOnTeam(team.id, { accountId, machine: true }, { requestId, action: { machineId, ...action } as never });
+            const read = () => store.readTeam(team.id, { accountId });
+            const claimed = await daemon('c-lead', { type: 'claim-operation', operationId: team.operations[0].id, teamLaunchVersion: 1 });
+            const leadToken = claimed.credential!.token;
+            await daemon('k-lead', { type: 'complete-operation', operationId: team.operations[0].id, claimId: claimed.operation!.claimId!, sessionId, workingDirectory: '/wt/lead' });
+            const memberSession = (await db.session.create({ data: { accountId, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
+            const d1 = await store.actOnTeam(team.id, { token: leadToken }, { requestId: 'd-1', action: { type: 'delegate', goal: 'one', acceptance: ['a'], botName: 'W' } });
+            const spawn = (await read()).operations.find(o => o.taskId === d1.taskId)!;
+            const c1 = await daemon('c-w', { type: 'claim-operation', operationId: spawn.id, teamLaunchVersion: 1 });
+            await daemon('k-w', { type: 'complete-operation', operationId: spawn.id, claimId: c1.operation!.claimId!, sessionId: memberSession, workingDirectory: '/wt/w' });
+            const d2 = await store.actOnTeam(team.id, { token: leadToken }, { requestId: 'd-2', action: { type: 'delegate', goal: 'two', acceptance: ['a'], botName: 'Q' } });
+            const post = (url: string, payload: unknown, headers: Record<string, string> = {}) => app.inject({ method: 'POST', url, headers, payload });
+            const asOwner = (requestId: string, action: Record<string, unknown>, machine = false) => post(`/v1/teams/${team.id}/actions`, { requestId, action }, machine ? { 'x-test-machine': '1' } : {});
+            // The lead's credential (what `team_*` tools carry) and the machine token (`teams exit`) are refused, with the way out.
+            const byAgent = await post(`/v1/teams/${team.id}/agent`, { requestId: 'a-1', action: { type: 'archive', keepLeadSession: true } }, { 'x-happy-team-token': leadToken });
+            expect(byAgent.statusCode).toBe(403);
+            expect(byAgent.json()).toMatchObject({ error: 'owner_required', hint: expect.stringContaining('退出团队模式') });
+            const byMachine = await asOwner('a-2', { type: 'archive', keepLeadSession: true, source: 'cli' }, true);
+            expect(byMachine.statusCode).toBe(403);
+            expect(byMachine.json()).toMatchObject({ error: 'owner_login_required', hint: expect.stringContaining('Web') });
+            expect((await read()).archivedAt).toBeUndefined();
+            // The person on the Web exits team mode.
+            const exit = await asOwner('a-3', { type: 'archive', keepLeadSession: true, source: 'web' });
+            expect(exit.statusCode).toBe(200);
+            let state = await read();
+            expect(state.archive).toMatchObject({ source: 'web', by: 'owner-login', keepLeadSession: true });
+            const stop = state.operations.find(o => o.type === 'stop')!;
+            const cs = await daemon('c-stop', { type: 'claim-operation', operationId: stop.id });
+            await daemon('k-stop', { type: 'complete-operation', operationId: stop.id, claimId: cs.operation!.claimId! });
+            // 「最近归档」 lists it; the plain list does not.
+            const list = await app.inject({ method: 'GET', url: '/v1/teams?restorable=1' });
+            expect(list.json().teams.some((t: any) => t.id === team.id)).toBe(true);
+            expect((await app.inject({ method: 'GET', url: '/v1/teams' })).json().teams.some((t: any) => t.id === team.id)).toBe(false);
+            // Before B-962 compaction could have moved a cancelled task to the archive: simulate it.
+            const row = await db.agentTeam.findUniqueOrThrow({ where: { id: team.id } });
+            const moved = (row.state as any).tasks.find((t: any) => t.id === d2.taskId);
+            await db.$executeRaw`INSERT INTO "TeamArchive" ("teamId","kind","id","state") VALUES (${team.id}, 'task', ${moved.id}, ${JSON.stringify(moved)}::jsonb)`;
+            await db.agentTeam.update({ where: { id: team.id }, data: { state: { ...(row.state as any), tasks: (row.state as any).tasks.filter((t: any) => t.id !== moved.id) } } });
+            // The member's conversation is in another live team now: restore names it, takes nothing.
+            const other = await store.createTeam(accountId, { name: 'Other', machineId });
+            await store.actOnTeam(other.id, { accountId }, { requestId: 'o-join', action: { type: 'join', name: 'Other lead', sessionId: memberSession } });
+            expect((await asOwner('r-m', { type: 'restore' }, true)).statusCode).toBe(403);
+            const conflict = await asOwner('r-1', { type: 'restore' });
+            expect(conflict.statusCode).toBe(409);
+            const w = state.bots.find(b => b.name === 'W')!;
+            expect(conflict.json()).toMatchObject({ error: 'restore_conflict', conflicts: [{ botId: w.id, botName: 'W', teamName: 'Other', sessionId: memberSession }] });
+            expect((await read()).archivedAt).toBeDefined();
+            const restored = await asOwner('r-2', { type: 'restore', skipBotIds: [w.id] });
+            expect(restored.statusCode, JSON.stringify(restored.json())).toBe(200);
+            state = await read();
+            expect(state.archivedAt).toBeUndefined();
+            expect(state.tasks.find(t => t.id === d1.taskId)!.status).toBe('queued');
+            expect(state.tasks.find(t => t.id === d2.taskId)!.status).toBe('queued');
+            const ops = state.operations.filter(o => o.restoreVersion === 1);
+            expect(ops.find(o => o.botId === w.id)!.resumeSessionId).toBeUndefined();
+            expect(ops.find(o => o.botId === state.bots[0].id)!.resumeSessionId).toBe(sessionId);
+            expect(await db.$queryRaw`SELECT 1 FROM "TeamArchive" WHERE "teamId"=${team.id} AND "id"=${moved.id}`).toEqual([]);
+            // The other team keeps its session.
+            expect((await store.readTeam(other.id, { accountId })).bots[0].sessionId).toBe(memberSession);
+            // Only a daemon that runs restore launches sees them.
+            const poll = async (q: string) => (await app.inject({ method: 'GET', url: `/v1/teams/operations?machineId=${machineId}&teamLaunchVersion=1${q}` })).json().operations.filter((o: any) => o.restoreVersion === 1).length;
+            expect(await poll('')).toBe(0);
+            expect(await poll('&teamRestoreVersion=1')).toBe(ops.length);
+            await store.actOnTeam(other.id, { accountId }, { requestId: 'o-archive', action: { type: 'archive' } });
+            await store.actOnTeam(team.id, { accountId }, { requestId: 'r-archive-again', action: { type: 'archive' } });
+        } finally { await app.close(); }
+    });
+
     it('keeps a capacity-blocked Team from stopping other Teams schedule recovery', async () => {
         const makeScheduled = async (name: string) => {
             const team = await store.createTeam(accountId, { name, machineId });
