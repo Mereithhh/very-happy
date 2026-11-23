@@ -583,7 +583,7 @@ describe('runAcp', () => {
     mocks.getUserMessageHandler()!({ content: { text: '' }, localKey: 'attachment-only' });
     await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
     expect(mocks.mockSession.downloadAndDecryptAttachment).toHaveBeenCalledWith('image-ref');
-    expect(mocks.backendState.prompts[0].attachments).toEqual([{ data: new Uint8Array([1, 2, 3]), name: 'sample.png', mimeType: 'image/png' }]);
+    expect(mocks.backendState.prompts[0].attachments).toEqual([{ data: new Uint8Array([1, 2, 3]), name: 'sample.png', mimeType: 'image/png', ref: 'image-ref' }]);
     expect(mocks.backendState.prompts[0].prompt).toContain('/test/uploads/sample.png');
     await mocks.getKillHandler()!();
     await running;
