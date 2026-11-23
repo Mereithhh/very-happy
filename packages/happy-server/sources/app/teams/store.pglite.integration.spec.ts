@@ -568,6 +568,46 @@ describe('agent teams persistent transactions and scoped credentials', () => {
             const archivedRows = await db.$queryRaw<{ kind: string; count: bigint }[]>`SELECT "kind", count(*) AS count FROM "TeamArchive" WHERE "teamId"=${team.id} GROUP BY "kind" ORDER BY "kind"`;
             expect(Object.fromEntries(archivedRows.map(r => [r.kind, Number(r.count)]))).toEqual({ message: after.compacted!.messages, operation: after.compacted!.operations, task: 160 });
         });
+        it('B-959: a team over 2 MB of open-task messages writes, archives all but the newest 50 per task, and reads still show them', async () => {
+            const team = await store.createTeam(accountId, { name: 'Open incident', machineId });
+            const joined = await act(team.id, 'join', { type: 'join', name: 'Lead', sessionId });
+            const leadToken = { token: joined.credential!.token };
+            const { state: stored } = await store.teamStoreTesting.load(db as any, team.id, accountId);
+            const lead = stored.bots[0];
+            const old = Date.now() - 3 * 24 * 60 * 60 * 1000;
+            const root = { id: 'root', parentTaskId: null, goal: 'Run the project', acceptance: ['a'], goalVersion: 1, ownerBotId: null, assigneeBotId: lead.id, status: 'running', attempts: [{ id: 'ra', botId: lead.id, generation: lead.generation, goalVersion: 1, status: 'running', result: null }], currentAttemptId: 'ra', cleanup: 'none' };
+            await db.$executeRaw`UPDATE "AgentTeam" SET "state"=${JSON.stringify({ ...stored, messages: undefined, operations: undefined, projectId: undefined, tasks: [root] })}::jsonb WHERE "id"=${team.id}`;
+            const body = 'y'.repeat(1800);
+            const ids = Array.from({ length: 1200 }, (_, i) => `m${String(i).padStart(4, '0')}`);
+            for (const [i, mid] of ids.entries()) {
+                const m = { id: mid, taskId: 'root', senderBotId: null, recipientBotId: lead.id, body, deliveredAt: old + i, createdAt: old + i };
+                await db.$executeRaw`INSERT INTO "TeamMessage" ("id","teamId","state") VALUES (${m.id},${team.id},${JSON.stringify(m)}::jsonb)`;
+            }
+            const before = await store.readTeam(team.id, { accountId });
+            expect(before.capacity!.metrics.bytes.used).toBeGreaterThan(2_000_000);
+            const after = (await act(team.id, 'after-open-incident', { type: 'message', taskId: 'root', body: 'still there?' })).team;
+            expect(after.capacity!.metrics.bytes.used).toBeLessThan(before.capacity!.metrics.bytes.used / 5);
+            const liveRows = await db.$queryRaw<{ id: string }[]>`SELECT "id" FROM "TeamMessage" WHERE "teamId"=${team.id} AND "state"->>'taskId'='root' ORDER BY "id"`;
+            expect(liveRows.map(r => r.id)).toEqual(expect.arrayContaining(ids.slice(-50)));
+            expect(liveRows).toHaveLength(51); // the newest 50 + the new, undelivered one
+            const archived = await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM "TeamArchive" WHERE "teamId"=${team.id} AND "kind"='message'`;
+            expect(Number(archived[0].count)).toBe(1150);
+            // Every read still shows the open task's whole conversation (team_inspect taskId / full, the Web page).
+            const rootIds = (t: { messages: { id: string; taskId: string | null }[] }) => t.messages.filter(m => m.taskId === 'root').map(m => m.id);
+            expect(rootIds(after).slice(0, 1200)).toEqual(ids);
+            expect(rootIds(after)).toHaveLength(1201);
+            const ownerRead = await store.readTeam(team.id, { accountId });
+            expect(rootIds(ownerRead).slice(0, 1200)).toEqual(ids);
+            expect(ownerRead.capacity!.metrics.bytes.used).toBe(after.capacity!.metrics.bytes.used); // capacity is the live record's
+            expect(ownerRead.capacity!.metrics.messages.used).toBeLessThan(60);
+            expect(rootIds(await store.readTeam(team.id, leadToken)).slice(0, 1200)).toEqual(ids);
+            expect(rootIds((await store.listTeams(accountId)).find(t => t.id === team.id)!)).toHaveLength(1201);
+            expect(rootIds((await store.listTeams(accountId, machineId)).find(t => t.id === team.id)!)).toHaveLength(51); // daemon poll: live only
+            // The next write does not re-insert what the read merged back.
+            await act(team.id, 'after-open-incident-2', { type: 'set-defaults', defaults: { maxParallel: 3 } });
+            const again = await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM "TeamMessage" WHERE "teamId"=${team.id}`;
+            expect(Number(again[0].count)).toBeLessThan(60);
+        });
         it('keeps the spawn a waiting stop cleans up when the daemon claims that stop (P1 repro: reused bot, task > 24 h)', async () => {
             const team = await store.createTeam(accountId, { name: 'Reused', machineId });
             await act(team.id, 'join', { type: 'join', name: 'Lead', sessionId });

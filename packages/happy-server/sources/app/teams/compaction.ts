@@ -7,7 +7,14 @@ import type { TeamCapacity, TeamCapacityMetric, TeamMessage, TeamOperation, Team
  * its delivered or cancelled messages, its finished operations — moves to `TeamArchive`; open work
  * never does. The `*Archivable` predicates are the safety rule (store.persistTransition refuses any
  * other removal); `compactTeam` is the policy (age, then pressure).
+ *
+ * B-959: a long-open task (a lead's root task, a long-running member) kept every delivered message
+ * forever, so a team with 16 open tasks reached 2 MB (1,070 messages) and every write failed with
+ * team_size_limit. Its terminal messages are archived too, except the newest
+ * `TEAM_OPEN_TASK_KEEP_MESSAGES` of each task; reads put them back (store `withOpenTaskArchive`). The
+ * byte size is no longer a write limit, only observed (capacity, the 80% warning).
  */
+/** `bytes` is observed only (capacity, warning, compaction pressure); the counts still refuse new records. */
 export const TEAM_LIMITS: Record<TeamCapacityMetric, number> = { bytes: 2_000_000, messages: 2000, operations: 1000, tasks: 200 };
 /** Closed work stays visible this long before it is archived. */
 export const TEAM_COMPACT_AGE_MS = 24 * 60 * 60 * 1000;
@@ -18,6 +25,8 @@ export const TEAM_COMPACT_MIN_AGE_MS = 10 * 60 * 1000;
 const AGE_TIERS = [TEAM_COMPACT_AGE_MS, 60 * 60 * 1000, TEAM_COMPACT_MIN_AGE_MS];
 export const TEAM_CAPACITY_WARN = 0.8;
 const TEAM_CAPACITY_CLEAR = 0.7;
+/** B-959: an open task keeps at least its newest this many messages live, whatever their age. */
+export const TEAM_OPEN_TASK_KEEP_MESSAGES = 50;
 
 const closed = (task: TeamTask | undefined) => task?.status === 'done' || task?.status === 'cancelled';
 const terminal = (m: TeamMessage) => m.deliveredAt !== null || m.cancelledAt !== undefined;
@@ -30,13 +39,35 @@ export function repositorySpawnIds(team: Pick<TeamState, 'operations'>): Set<str
     for (const o of team.operations) if (o.type === 'spawn' && o.directory && !bots.has(o.botId)) { bots.add(o.botId); ids.add(o.id); }
     return ids;
 }
-/** `team` is the state the message would leave; its task is closed there or already archived. Schedule
- *  messages have their own retention (schedules.pruneScheduleMessages). */
-export function messageArchivable(m: TeamMessage, team: Pick<TeamState, 'tasks'>): boolean {
+/** Messages of each task, newest first (createdAt, then id). Cached per array — compaction and
+ *  persistTransition ask once per message; a changed length recomputes. */
+const newestFirst = (a: TeamMessage, b: TeamMessage) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+const taskMessagesCache = new WeakMap<readonly TeamMessage[], { length: number; byTask: Map<string, TeamMessage[]> }>();
+function taskMessages(messages: readonly TeamMessage[]): Map<string, TeamMessage[]> {
+    const cached = taskMessagesCache.get(messages);
+    if (cached && cached.length === messages.length) return cached.byTask;
+    const byTask = new Map<string, TeamMessage[]>();
+    for (const m of messages) if (m.taskId !== null) { const list = byTask.get(m.taskId); if (list) list.push(m); else byTask.set(m.taskId, [m]); }
+    for (const list of byTask.values()) list.sort(newestFirst);
+    taskMessagesCache.set(messages, { length: messages.length, byTask });
+    return byTask;
+}
+/** How many messages of `m`'s task in `messages` are strictly newer than `m` (whether or not `m` is in it). */
+function newerInTask(m: TeamMessage, messages: readonly TeamMessage[]): number {
+    const list = taskMessages(messages).get(m.taskId!) ?? [];
+    let lo = 0, hi = list.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (newestFirst(list[mid], m) < 0) lo = mid + 1; else hi = mid; }
+    return lo;
+}
+/** `team` is the state the message would leave; its task is closed there or already archived, or (B-959)
+ *  open with at least `TEAM_OPEN_TASK_KEEP_MESSAGES` newer messages still live. Schedule messages have
+ *  their own retention (schedules.pruneScheduleMessages); undelivered ones are never archived. */
+export function messageArchivable(m: TeamMessage, team: Pick<TeamState, 'tasks' | 'messages'>): boolean {
     if (!terminal(m) || m.scheduleId) return false;
     if (m.taskId === null) return true;
     const task = team.tasks.find(t => t.id === m.taskId);
-    return !task || closed(task);
+    if (!task || closed(task)) return true;
+    return newerInTask(m, team.messages) >= TEAM_OPEN_TASK_KEEP_MESSAGES;
 }
 /** The daemon still reads a spawn whose wrapper is bound — its member's current (generation, session),
  *  which recoverScope rebuilds the scope from — or that an unfinished stop cleans up (its worktree
@@ -79,7 +110,10 @@ export function teamCapacity(team: TeamState, bytes = JSON.stringify(team).lengt
     return { metrics, ...(full.length ? { warning: capacityWarning(metrics, full) } : {}) };
 }
 function capacityWarning(metrics: TeamCapacity['metrics'], full: TeamCapacityMetric[]): string {
-    return `Team record near its limits: ${full.map(k => `${k} ${metrics[k].used}/${metrics[k].limit} (${Math.round(metrics[k].used / metrics[k].limit * 100)}%)`).join(', ')}. Closed work is archived automatically, so this is open work: accept, cancel or hand off finished tasks, or ask the owner to archive this team and start a new one before writes are refused. 团队记录接近上限：请验收/取消已完成的任务，或请 Owner 归档本团队并新建。`;
+    // B-959: bytes never refuses a write; only a count that is itself near its limit says so.
+    const counts = full.filter(k => k !== 'bytes');
+    const refusal = counts.length ? ` New ${counts.join(' / ')} are refused at 100%.` : '';
+    return `Team record is large: ${full.map(k => `${k} ${metrics[k].used}/${metrics[k].limit} (${Math.round(metrics[k].used / metrics[k].limit * 100)}%)`).join(', ')}. Closed work and older delivered messages are archived automatically, so this is mostly open work: accept, cancel or hand off finished tasks, or ask the owner to archive this team and start a new one.${refusal} 团队记录较大：请验收/取消已完成的任务，或请 Owner 归档本团队并新建。`;
 }
 
 /**
@@ -114,7 +148,8 @@ function underPressure(team: TeamState): boolean {
 }
 function compactOnce(team: TeamState, cutoff: number, now: number): TeamState {
     const tasks = new Set(team.tasks.filter(t => (t.closedAt ?? now) <= cutoff && taskArchivable(t, team)).map(t => t.id));
-    const remaining = { tasks: team.tasks.filter(t => !tasks.has(t.id)), bots: team.bots, operations: team.operations };
+    // B-959: the newest messages of an open task are counted in the pre-removal list; they are never candidates, so they stay.
+    const remaining = { tasks: team.tasks.filter(t => !tasks.has(t.id)), bots: team.bots, operations: team.operations, messages: team.messages };
     const repository = repositorySpawnIds(team);
     const messages = new Set(team.messages.filter(m => Math.max(m.deliveredAt ?? 0, m.cancelledAt ?? 0, m.createdAt) <= cutoff && messageArchivable(m, remaining)).map(m => m.id));
     const operations = new Set(team.operations.filter(o => o.createdAt <= cutoff && operationArchivable(o, remaining, repository)).map(o => o.id));

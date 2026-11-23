@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { TeamAction, TeamMessage, TeamOperation, TeamState, TeamTask } from '@slopus/happy-wire';
 import { reduceTeam, teamBotRepository, teamView, TeamError, type TeamActor } from './reducer';
-import { compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable, teamCapacity, warnCapacity, TEAM_COMPACT_AGE_MS, TEAM_COMPACT_MIN_AGE_MS, TEAM_LIMITS } from './compaction';
+import { compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable, teamCapacity, warnCapacity, TEAM_COMPACT_AGE_MS, TEAM_COMPACT_MIN_AGE_MS, TEAM_LIMITS, TEAM_OPEN_TASK_KEEP_MESSAGES } from './compaction';
+import { advanceSchedules } from './schedules';
 import { TEAM_CAPACITY_HINT } from './errors';
 
 const HOUR = 60 * 60 * 1000;
@@ -12,8 +13,8 @@ const message = (id: string, taskId: string | null, over: Partial<TeamMessage> =
 const operation = (id: string, taskId: string, over: Partial<TeamOperation> = {}): TeamOperation => ({ id, teamId: 'team', machineId: 'machine', taskId, botId: 'w', attemptId: `${taskId}-a`, generation: 1, type: 'stop', status: 'completed', claimId: 'c', claimedAt: 1, error: null, sessionId: null, directory: null, assistant: 'claude', prompt: '', createdAt: 1, ...over });
 
 describe('B-822 compaction safety predicates', () => {
-    it('never archives an undelivered message, a message of an open task, or a schedule message', () => {
-        const team = { tasks: [task('done'), task('open', { status: 'running' })] };
+    it('never archives an undelivered message, a recent message of an open task, or a schedule message', () => {
+        const team = { tasks: [task('done'), task('open', { status: 'running' })], messages: [] as TeamMessage[] };
         expect(messageArchivable(message('m', 'done'), team)).toBe(true);
         expect(messageArchivable(message('m', 'done', { deliveredAt: null }), team)).toBe(false);
         expect(messageArchivable(message('m', 'done', { deliveredAt: null, cancelledAt: 5 }), team)).toBe(true);
@@ -116,6 +117,90 @@ describe('B-822 compaction policy', () => {
         const compacted = compactTeam(team, 100 * HOUR + TEAM_COMPACT_MIN_AGE_MS);
         expect(compacted.tasks.map(t => t.id)).toEqual(['open']);
         expect(compacted.messages.map(m => m.id)).toEqual(['undelivered']);
+    });
+});
+
+describe('B-959 open tasks', () => {
+    const N = TEAM_OPEN_TASK_KEEP_MESSAGES;
+    const lead = { id: 'lead', name: 'Lead', root: true, managed: false, sessionId: 's', generation: 1, assistant: 'claude' as const, directory: null };
+    it('an open task\'s terminal message is archivable only with ≥ N newer messages of that task left live', () => {
+        const tasks = [task('open', { status: 'running', closedAt: undefined }), task('other', { status: 'running', closedAt: undefined })];
+        const newer = Array.from({ length: N }, (_, i) => message(`n${i}`, 'open', { createdAt: 10 + i }));
+        const old = message('old', 'open', { createdAt: 5 });
+        expect(N).toBe(50);
+        expect(messageArchivable(old, { tasks, messages: newer })).toBe(true); // the state it leaves (persistTransition)
+        expect(messageArchivable(old, { tasks, messages: [old, ...newer] })).toBe(true); // the state before (compaction)
+        expect(messageArchivable(old, { tasks, messages: newer.slice(1) })).toBe(false);
+        // Other tasks' messages and older ones do not count; same createdAt orders by id.
+        expect(messageArchivable(old, { tasks, messages: [...newer.slice(1), message('x', 'other', { createdAt: 99 }), message('a', 'open', { createdAt: 1 })] })).toBe(false);
+        expect(messageArchivable(message('a', 'open', { createdAt: 10 }), { tasks, messages: newer })).toBe(true);
+        expect(messageArchivable(message('z', 'open', { createdAt: 10 }), { tasks, messages: newer })).toBe(false);
+        expect(messageArchivable({ ...old, deliveredAt: null }, { tasks, messages: newer })).toBe(false);
+        expect(messageArchivable({ ...old, deliveredAt: null, cancelledAt: 6 }, { tasks, messages: newer })).toBe(true);
+        expect(messageArchivable({ ...old, scheduleId: 's' }, { tasks, messages: newer })).toBe(false);
+    });
+
+    it('compaction archives an open task\'s delivered messages older than 24 h beyond the newest N; undelivered and young ones stay', () => {
+        const now = 100 * HOUR;
+        const tasks = [task('root', { status: 'running', closedAt: undefined })];
+        const messages = [
+            ...Array.from({ length: 120 }, (_, i) => message(`d${String(i).padStart(3, '0')}`, 'root', { createdAt: HOUR + i, deliveredAt: HOUR + i })),
+            message('undelivered-old', 'root', { createdAt: HOUR - 1, deliveredAt: null }),
+            ...Array.from({ length: 10 }, (_, i) => message(`young${i}`, 'root', { createdAt: now - HOUR + i, deliveredAt: now - HOUR + i })),
+        ];
+        const compacted = compactTeam({ ...base(), tasks, messages }, now);
+        const left = compacted.messages.map(m => m.id);
+        // Newest N of the task: the 10 young ones + the 40 newest old ones; 80 old delivered archived.
+        expect(left).toHaveLength(N + 1);
+        expect(left).toContain('undelivered-old');
+        for (let i = 0; i < 10; i++) expect(left).toContain(`young${i}`);
+        expect(left).toContain('d080'); expect(left).not.toContain('d079');
+        expect(compacted.compacted?.messages).toBe(80);
+        expect(compacted.tasks.map(t => t.id)).toEqual(['root']);
+        // Younger than 24 h without pressure: nothing moves even beyond N.
+        const fresh = messages.map(m => ({ ...m, createdAt: now - HOUR, deliveredAt: m.deliveredAt === null ? null : now - HOUR }));
+        expect(compactTeam({ ...base(), tasks, messages: fresh }, now).messages).toHaveLength(messages.length);
+    });
+
+    it('schedule messages keep their own retention on an open task\'s neighbour (taskId null) and never move here', () => {
+        const now = 100 * HOUR;
+        const team = { ...base(), tasks: [task('root', { status: 'running', closedAt: undefined })], messages: [message('sched', null, { scheduleId: 's', createdAt: HOUR, deliveredAt: HOUR })] };
+        expect(compactTeam(team, now).messages.map(m => m.id)).toEqual(['sched']);
+    });
+
+    // The incident: 16 open tasks, ~1,070 delivered messages, the record just over 2 MB.
+    const incident = () => {
+        const tasks = Array.from({ length: 16 }, (_, i) => task(`open${i}`, { status: 'running', closedAt: undefined, goal: 'g'.repeat(10_000) }));
+        const messages = Array.from({ length: 1070 }, (_, i) => message(`m${String(i).padStart(4, '0')}`, `open${i % 16}`, { body: 'x'.repeat(1700), createdAt: HOUR + i, deliveredAt: HOUR + i }));
+        return { ...base(), bots: [lead], tasks, messages };
+    };
+    it('a team over 2 MB is not refused: the write succeeds and the lead is warned once (observed, not a limit)', () => {
+        const team = incident();
+        expect(JSON.stringify(team).length).toBeGreaterThan(TEAM_LIMITS.bytes);
+        const r = reduceTeam(team, owner, { type: 'message', taskId: 'open0', body: 'still there?', recipientBotId: 'lead' }, { now: 2 * HOUR, id: () => `w${Math.random()}` });
+        expect(r.team.version).toBe(1);
+        const warning = r.team.messages.find(m => m.source === 'system' && m.taskId === null)!;
+        expect(warning.body).toContain('bytes');
+        expect(warning.body).not.toMatch(/refused|fail/i);
+        expect(r.team.capacityWarned).toEqual(['bytes']);
+        expect(teamView(r.team, owner).capacity?.warning).toContain('bytes');
+        // Schedules on the same record fire too (schedules.ts had its own 2 MB refusal).
+        const scheduled = { ...team, schedules: [{ id: 'sch', name: 'S', botId: 'lead', body: 'tick', machineId: 'machine', status: 'active' as const, nextRunAt: 1, intervalMs: null, fireCount: 0, version: 1, createdAt: 0 }] } as unknown as TeamState;
+        expect(advanceSchedules(scheduled, 2 * HOUR).fired).toBe(1);
+    });
+    it('a count near its limit still says new records are refused (they are)', () => {
+        const team = { ...base(), bots: [lead], tasks: Array.from({ length: 170 }, (_, i) => task(`t${i}`, { status: 'running' })) };
+        expect(teamCapacity(team).warning).toContain('New tasks are refused at 100%');
+    });
+    it('the incident team is compacted on its next write: each open task keeps its newest N, the record shrinks', () => {
+        const team = incident();
+        const before = JSON.stringify(team).length;
+        const now = HOUR + 2000 + TEAM_COMPACT_MIN_AGE_MS; // under pressure: the 10 min grace
+        const compacted = compactTeam(team, now);
+        const after = JSON.stringify(compacted).length;
+        expect(after).toBeLessThan(before * 0.85);
+        for (let i = 0; i < 16; i++) expect(compacted.messages.filter(m => m.taskId === `open${i}`)).toHaveLength(N);
+        expect(compacted.messages).toHaveLength(16 * N);
     });
 });
 

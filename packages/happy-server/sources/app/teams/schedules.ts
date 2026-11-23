@@ -79,8 +79,7 @@ export function advanceSchedules(input: TeamState, now: number): { team: TeamSta
         fired++;
     }
     if (fired) team.version++;
-    const bytes = JSON.stringify(team).length;
-    requireCapacity(bytes <= 2_000_000, 'team_size_limit', bytes, 2_000_000);
+    // B-959: no byte-size refusal (it blocked every schedule of a team over 2 MB); the message count above still applies.
     return { team, fired };
 }
 export function acknowledgeScheduleMessage(team: TeamState, messageId: string, now: number): void {
