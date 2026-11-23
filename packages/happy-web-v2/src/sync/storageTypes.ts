@@ -170,7 +170,12 @@ export const MetadataSchema = z.object({
         claudeSessionId: z.string().nullable().optional(),
         at: z.number().optional(),
         state: z.string().optional(),
+        /** B-961 (Codex, state `applied`): the rewound prompt — a web that missed the ack hides from it. */
+        sourceId: z.string().optional(),
+        codexItemId: z.string().optional(),
     }).passthrough().nullable().optional().catch(undefined),
+    /** B-961: web prompts that are not the first of their Codex turn — no edit / delete on them. */
+    codexTurnFollowers: z.array(z.string()).optional().catch(undefined),
     /**
      * B-290: the Claude conversation (claude CLI / desktop / claude.ai
      * transcript) this session was imported from. Written by the CLI at

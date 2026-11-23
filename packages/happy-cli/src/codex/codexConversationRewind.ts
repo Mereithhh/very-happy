@@ -48,6 +48,9 @@ export type CodexRewindRecord = {
     claudeSessionId: string;
     at: number;
     state: 'applied';
+    /** B-961: which prompt — a web that missed the ack hides from it on (its own reconcile). */
+    sourceId?: string;
+    codexItemId?: string;
 };
 
 export type CodexRewindDeps = {
@@ -183,7 +186,10 @@ export function createCodexConversationRewind(deps: CodexRewindDeps) {
             }
             deps.dropTurnsFrom(turnId);
             if (requestId) {
-                await deps.record({ requestId, action, sourceClaudeSessionId: threadId, claudeSessionId: threadId, at: (deps.now ?? Date.now)(), state: 'applied' });
+                await deps.record({
+                    requestId, action, sourceClaudeSessionId: threadId, claudeSessionId: threadId, at: (deps.now ?? Date.now)(), state: 'applied',
+                    ...(sourceId ? { sourceId } : {}), ...(codexItemId ? { codexItemId } : {}),
+                });
             }
             return { ok: true, action, freshConversation: false, dropsLater: true };
         } catch (error) {
@@ -214,29 +220,103 @@ export async function persistCodexRewindRecord(
     }
 }
 
+/** Where the live map survives a wrapper restart (one small JSON file per session). */
+export type CodexTurnStore = { load: () => CodexTurnSources[]; save: (turns: CodexTurnSources[]) => void };
+
+/** Keep the newest turns only; older prompts fall back on the thread text. */
+const MAX_TURNS = 500;
+/** Web prompts that are not the first of their turn, newest last (metadata.codexTurnFollowers). */
+const MAX_FOLLOWERS = 200;
+
+export function fileCodexTurnStore(path: string, fs: {
+    readFileSync: (p: string, e: 'utf8') => string; writeFileSync: (p: string, d: string, o?: { mode?: number }) => void;
+    renameSync: (a: string, b: string) => void; mkdirSync: (p: string, o: { recursive: true }) => unknown;
+}, dirname: (p: string) => string): CodexTurnStore {
+    return {
+        load: () => {
+            try {
+                const raw = JSON.parse(fs.readFileSync(path, 'utf8')) as { v?: unknown; turns?: unknown };
+                if (raw?.v !== 1 || !Array.isArray(raw.turns)) return [];
+                return raw.turns.flatMap((turn: any) => typeof turn?.turnId === 'string' && Array.isArray(turn.sourceIds) && turn.sourceIds.every((id: unknown) => typeof id === 'string')
+                    ? [{ turnId: turn.turnId, sourceIds: turn.sourceIds as string[] }] : []);
+            } catch { return []; }
+        },
+        save: (turns) => {
+            try {
+                fs.mkdirSync(dirname(path), { recursive: true });
+                const tmp = `${path}.${process.pid}.tmp`;
+                fs.writeFileSync(tmp, JSON.stringify({ v: 1, turns }), { mode: 0o600 });
+                fs.renameSync(tmp, path);
+            } catch { /* best effort: the thread text is the fallback */ }
+        },
+    };
+}
+
 /**
  * The live map: turn/start's turn id for each batch the wrapper sent, keyed by
- * the batch's prompts. Insertion order = thread order, so a revert drops the
- * reverted turn and every later one.
+ * the batch's prompts (B-961). Insertion order = thread order, so a revert
+ * drops the reverted turn and every later one. Persisted per session so a
+ * restarted wrapper still knows its turns; the prompts that are not the first
+ * of their turn (batched behind another, steered in) are published so the web
+ * offers no edit / delete on them.
  */
 export class CodexTurnSourceMap {
-    private readonly turns: CodexTurnSources[] = [];
+    private readonly turns: CodexTurnSources[];
+    private lastFollowers = '';
+
+    constructor(private readonly store?: CodexTurnStore, private readonly publishFollowers?: (ids: string[]) => void) {
+        this.turns = store?.load() ?? [];
+    }
 
     started(turnId: string, sourceIds: readonly string[] | undefined): void {
         if (!turnId || !sourceIds?.length) return;
         this.turns.push({ turnId, sourceIds: [...sourceIds] });
+        this.changed();
+    }
+
+    /** A prompt steered into the running turn joins it (never its opening prompt). */
+    steered(turnId: string | null, sourceId: string | undefined): void {
+        if (!turnId || !sourceId) return;
+        const entry = this.turns.find((turn) => turn.turnId === turnId);
+        if (entry) entry.sourceIds.push(sourceId);
+        // A turn Codex opened itself (goal continuation): no web prompt opens it.
+        else this.turns.push({ turnId, sourceIds: ['', sourceId] });
+        this.changed();
     }
 
     of(sourceId: string): CodexTurnSources | null {
         return this.turns.find((turn) => turn.sourceIds.includes(sourceId)) ?? null;
     }
 
+    followers(): string[] {
+        return this.turns.flatMap((turn) => turn.sourceIds.slice(1).filter(Boolean)).slice(-MAX_FOLLOWERS);
+    }
+
     dropFrom(turnId: string): void {
         const index = this.turns.findIndex((turn) => turn.turnId === turnId);
-        if (index >= 0) this.turns.splice(index);
+        if (index < 0) return;
+        this.turns.splice(index);
+        this.changed();
     }
 
     clear(): void {
+        if (this.turns.length === 0) return;
         this.turns.length = 0;
+        this.changed();
+    }
+
+    /** Publish the current followers (wrapper start: a restarted wrapper republishes what it loaded). */
+    publish(): void {
+        const followers = this.followers();
+        const key = followers.join('\n');
+        if (key === this.lastFollowers) return;
+        this.lastFollowers = key;
+        this.publishFollowers?.(followers);
+    }
+
+    private changed(): void {
+        if (this.turns.length > MAX_TURNS) this.turns.splice(0, this.turns.length - MAX_TURNS);
+        this.store?.save(this.turns);
+        this.publish();
     }
 }

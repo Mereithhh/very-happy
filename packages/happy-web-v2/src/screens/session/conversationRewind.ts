@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { randomUUID } from 'expo-crypto';
 import { apiSocket } from '@/sync/apiSocket';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import type { UserTextMessage } from '@/sync/typesMessage';
+import type { Message, UserTextMessage } from '@/sync/typesMessage';
+import type { Session } from '@/sync/storageTypes';
 
 /**
  * B-528: edit or delete one of the user's prompts IN PLACE, like Claude
@@ -97,6 +99,59 @@ export async function rewindConversation(
 ): Promise<void> {
     if (typeof message.seq !== 'number') throw new RewindFailure('unsent', 'unsent');
     const requestId = (deps.newRequestId ?? randomUUID)();
+    applying.add(requestId);
+    try {
+        await rewindWithId(sessionId, message, request, deps, requestId);
+    } finally {
+        applying.delete(requestId);
+    }
+}
+
+/** B-961: rewinds this page is applying itself — its reconcile leaves them alone. */
+const applying = new Set<string>();
+/** B-961: requestIds this page already reconciled. */
+const reconciled = new Set<string>();
+
+/**
+ * B-961: a Codex rewind cannot be switched back (thread/revert), so the
+ * wrapper's `metadata.rewind` (state `applied`, written before its ack) is
+ * the truth: when the prompt it names is still on screen, this page missed
+ * the ack (closed, reloaded, dropped socket) and hides from that prompt on —
+ * the same tombstone the live path writes. Pure.
+ */
+export function codexRewindReconcile(
+    session: Pick<Session, 'metadata' | 'share'> | null | undefined,
+    newestFirst: readonly Message[],
+): { requestId: string; reason: RewindAction; fromSeq: number } | null {
+    const record = session?.metadata?.rewind;
+    if (session?.metadata?.flavor !== 'codex' || session.share || !record || record.state !== 'applied' || !record.requestId) return null;
+    if (!record.sourceId && !record.codexItemId) return null;
+    const target = newestFirst.find((message) => message.kind === 'user-text'
+        && ((record.sourceId && message.localId === record.sourceId) || (record.codexItemId && message.codexItemId === record.codexItemId)));
+    if (!target || typeof target.seq !== 'number') return null;
+    return { requestId: record.requestId, reason: record.action === 'edit' ? 'edit' : 'delete', fromSeq: target.seq };
+}
+
+export function useCodexRewindReconcile(sessionId: string, session: Session | null | undefined, newestFirst: readonly Message[], isLoaded: boolean): void {
+    const next = isLoaded ? codexRewindReconcile(session, newestFirst) : null;
+    const key = next ? `${next.requestId}:${next.fromSeq}` : null;
+    useEffect(() => {
+        if (!next || applying.has(next.requestId) || reconciled.has(next.requestId)) return;
+        reconciled.add(next.requestId);
+        sync.recordTranscriptDrop(sessionId, { fromSeq: next.fromSeq, reason: next.reason, requestId: next.requestId })
+            .catch(() => reconciled.delete(next.requestId));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionId, key]);
+}
+
+async function rewindWithId(
+    sessionId: string,
+    message: Pick<UserTextMessage, 'seq' | 'localId' | 'text'> & { codexItemId?: string },
+    request: { action: 'delete' } | { action: 'edit'; text: string },
+    deps: RewindDeps,
+    requestId: string,
+): Promise<void> {
+    if (typeof message.seq !== 'number') throw new RewindFailure('unsent', 'unsent');
     let raw: unknown;
     try {
         raw = await deps.rpc(sessionId, {

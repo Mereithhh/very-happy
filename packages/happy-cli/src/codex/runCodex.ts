@@ -31,7 +31,7 @@ import packageJson from '../../package.json';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { HeldInput } from '@/utils/heldInput';
 import { projectPath } from '@/projectPath';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
@@ -69,7 +69,8 @@ import { CODEX_IDLE_RELEASE_ENV, CodexIdleReleaseTimer, resolveCodexIdleReleaseM
 import { codexCompactCommand, codexGoalText, enqueueCodexUserText, isCodexClearText, isCodexControlText } from './codexClearCommand';
 import { runCodexCompact } from './codexCompact';
 import { describeGoalTransition, GOAL_PAUSED_ON_STOP, restoreCodexGoal, runCodexGoal, toAgentStateGoal, type CodexThreadGoal } from './codexGoal';
-import { createCodexConversationRewind, CodexTurnSourceMap, persistCodexRewindRecord } from './codexConversationRewind';
+import { createCodexConversationRewind, CodexTurnSourceMap, fileCodexTurnStore, persistCodexRewindRecord } from './codexConversationRewind';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { steerIntoRunningTurn } from './codexSteer';
 import { runCodexSideQuestion } from './codexSideQuestion';
 import { registerSideQuestionHandler } from '@/claude/registerSideQuestionHandler';
@@ -320,7 +321,7 @@ export async function runCodex(opts: {
     // True from dequeue until the turn's finally block; gates the idle release (B-461).
     let turnActive = false;
     // B-961: which turn each web prompt started (conversation-rewind), and the hold a rewind puts on prompts.
-    const turnSources = new CodexTurnSourceMap();
+    let turnSources = new CodexTurnSourceMap();
     let rewindHold: Promise<void> | null = null;
     const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
         api,
@@ -503,7 +504,10 @@ export async function runCodex(opts: {
         withAttachments: appendStagedAttachmentsToPrompt,
         unlink: (path: string) => unlink(path),
         isImage: (file: { mimeType: string }) => CODEX_IMAGE_MIME_TYPES.includes(file.mimeType),
-        onSteered: (text: string) => messageBuffer.addMessage(text, 'user'),
+        onSteered: (text: string, localKey?: string) => {
+            messageBuffer.addMessage(text, 'user');
+            turnSources.steered(client.turnId, localKey);
+        },
         log: (message: string) => logger.debug(message),
     };
     let userMessageDelivery = Promise.resolve();
@@ -901,6 +905,12 @@ export async function runCodex(opts: {
     });
     session.rpcHandlerManager.registerHandler('abort', () => handleAbort('user'));
     // B-961: edit / delete / retry a prompt in place (thread/revert). Advertised as codex-rewind-v1.
+    // The prompt → turn map survives a wrapper restart (HAPPY_HOME/codex-turns/<session>.json).
+    turnSources = new CodexTurnSourceMap(
+        fileCodexTurnStore(join(configuration.happyHomeDir, 'codex-turns', `${session.sessionId.replace(/[^A-Za-z0-9_-]/g, '_')}.json`), { mkdirSync, readFileSync, renameSync, writeFileSync }, dirname),
+        (ids) => session.updateMetadata((metadata) => ({ ...metadata, codexTurnFollowers: ids })),
+    );
+    turnSources.publish();
     session.rpcHandlerManager.registerHandler('conversation-rewind', createCodexConversationRewind({
         threadId: () => client.threadId,
         isBusy: () => turnActive || goalRunning(),

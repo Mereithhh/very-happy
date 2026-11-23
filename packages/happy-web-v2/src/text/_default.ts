@@ -3505,7 +3505,7 @@ export const en = {
                 title: 'Edit, delete and retry messages in Codex sessions',
                 summary: 'Codex sessions now have the same in-place edit and delete as Claude, and both Claude and Codex sessions can retry a message.',
                 codex: 'Under one of your messages in a Codex session, edit replaces it and everything after it, and delete removes it together with everything after it (Codex can only rewind from a message on). Codex forgets them too; no new session is opened. A running turn is stopped first, and an active /goal is paused first.',
-                retry: 'Retry (the circular arrow) drops the replies after that message and sends the same text again. It works in Claude and Codex sessions and asks before it runs.',
+                retry: 'Retry (the circular arrow), on your message or on the latest reply, drops the replies after that message and sends the same text again. It works in Claude and Codex sessions and asks before it runs.',
                 files: 'Only the conversation is rewound: files the agent already changed stay as they are. These actions need the session restarted on CLI 0.2.224; if Codex on that machine is too old, the message says to update Codex.',
             },
             nov23b: {

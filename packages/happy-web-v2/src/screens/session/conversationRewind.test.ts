@@ -125,3 +125,25 @@ describe('B-961 Codex', () => {
         expect(d.send).toHaveBeenCalledWith('s', 'hello');
     });
 });
+
+import { codexRewindReconcile } from './conversationRewind';
+
+describe('B-961 reconcile a Codex rewind whose ack was missed', () => {
+    const msgs = [
+        { kind: 'agent-text', id: 'a', seq: 12 },
+        { kind: 'user-text', id: 'u', seq: 11, localId: 'l11', codexItemId: 'item-11' },
+    ] as any[];
+    const session = (rewind: unknown, extra: Record<string, unknown> = {}) => ({ metadata: { flavor: 'codex', rewind }, ...extra }) as any;
+    it('applied record + its prompt still on screen → hide from that prompt', () => {
+        expect(codexRewindReconcile(session({ requestId: 'r', action: 'delete', state: 'applied', sourceId: 'l11' }), msgs))
+            .toEqual({ requestId: 'r', reason: 'delete', fromSeq: 11 });
+        expect(codexRewindReconcile(session({ requestId: 'r', action: 'edit', state: 'applied', codexItemId: 'item-11' }), msgs))
+            .toEqual({ requestId: 'r', reason: 'edit', fromSeq: 11 });
+    });
+    it('nothing when already hidden, not applied, not Codex, or a grantee', () => {
+        expect(codexRewindReconcile(session({ requestId: 'r', action: 'delete', state: 'applied', sourceId: 'gone' }), msgs)).toBeNull();
+        expect(codexRewindReconcile(session({ requestId: 'r', action: 'delete', state: 'pending', sourceId: 'l11' }), msgs)).toBeNull();
+        expect(codexRewindReconcile({ metadata: { flavor: 'claude', rewind: { requestId: 'r', state: 'applied', sourceId: 'l11' } } } as any, msgs)).toBeNull();
+        expect(codexRewindReconcile(session({ requestId: 'r', state: 'applied', sourceId: 'l11' }, { share: { accessLevel: 'view' } }), msgs)).toBeNull();
+    });
+});

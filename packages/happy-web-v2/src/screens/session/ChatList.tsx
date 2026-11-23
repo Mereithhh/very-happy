@@ -27,6 +27,9 @@ import { TurnActivityView } from './TurnActivityView';
 import { TurnDiffRollup } from './TurnDiffRollup';
 import { CompactionDivider } from './CompactionDivider';
 import { buildChatRows, newestTurnOpenerId } from './chatTurns';
+import { latestRetryTarget } from './rewindSupport';
+import { useCodexRewindReconcile } from './conversationRewind';
+import type { UserTextMessage } from '@/sync/typesMessage';
 import { NO_HELD_TURNS, holdEndedTurn } from './turnHold';
 import {
     nextAwaySnapshot,
@@ -177,6 +180,17 @@ export function ChatList({
         () => buildChatRows(shownChronological, sessionLive, { turnDiffs: true, keepTurnsOpen: heldTurns, liveDraft }),
         [shownChronological, sessionLive, heldTurns, liveDraft],
     );
+    // B-961: a Codex rewind whose ack this page missed — hide what the agent already forgot.
+    useCodexRewindReconcile(sessionId, session, messages, isLoaded);
+    // B-961: 「重试」 on the latest reply (not while a turn runs) resends the prompt that opened its turn.
+    const replyRetry = useMemo(() => {
+        if (sessionLive) return null;
+        const replyAt = messages.findIndex((message) => message.kind === 'agent-text' && !message.isThinking);
+        const target = latestRetryTarget(session, messages);
+        if (replyAt < 0 || !target || target.kind !== 'user-text' || messages.indexOf(target) < replyAt) return null;
+        const targetRow = rows.find((row) => 'message' in row && row.message?.id === target.id) as { attachments?: unknown[] } | undefined;
+        return { replyId: messages[replyAt].id, target: target as UserTextMessage, hasAttachments: (targetRow?.attachments?.length ?? 0) > 0 };
+    }, [messages, rows, session, sessionLive]);
     // B-766 B-1: in the team lead's conversation, 「只看我和负责人」 folds runs of
     // member / system turns into one summary row (leadView.ts). Follow and the
     // unseen badge read the keys on screen, so noise folding in counts as nothing.
@@ -895,6 +909,8 @@ export function ChatList({
                 attachments={row.attachments}
                 optionsActive={row.optionsActive}
                 continueOffer={row.continueOffer === true && canOfferContinue}
+                retryOf={replyRetry?.replyId === row.message.id ? replyRetry.target : undefined}
+                retryHasAttachments={replyRetry?.replyId === row.message.id && replyRetry.hasAttachments}
             />
             {pointers(row)}
             </Fragment>

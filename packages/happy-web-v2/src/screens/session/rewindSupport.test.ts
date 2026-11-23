@@ -28,3 +28,24 @@ describe('B-961 canRewindMessage', () => {
         expect(canRetryMessage(false, false, 'hi')).toBe(false);
     });
 });
+
+import { isCodexTurnFollower, latestRetryTarget } from './rewindSupport';
+
+describe('B-961 turn followers and the reply retry target', () => {
+    const codex = { metadata: { flavor: 'codex', capabilities: ['codex-rewind-v1'], codexTurnFollowers: ['l3'] } } as any;
+    it('a Codex prompt the wrapper reports inside another turn is a follower; Claude never', () => {
+        expect(isCodexTurnFollower(codex, { localId: 'l3' })).toBe(true);
+        expect(isCodexTurnFollower(codex, { localId: 'l2' })).toBe(false);
+        expect(isCodexTurnFollower({ metadata: { flavor: 'claude', codexTurnFollowers: ['l3'] } } as any, { localId: 'l3' })).toBe(false);
+    });
+    it('retry on the latest reply targets the turn opener, skipping followers', () => {
+        const newestFirst = [
+            { kind: 'agent-text', id: 'a' },
+            { kind: 'user-text', id: 'u3', localId: 'l3' },
+            { kind: 'user-text', id: 'u2', localId: 'l2' },
+        ];
+        expect(latestRetryTarget(codex, newestFirst)?.id).toBe('u2');
+        expect(latestRetryTarget({ metadata: { flavor: 'claude' } } as any, newestFirst)?.id).toBe('u3');
+        expect(latestRetryTarget(codex, [{ kind: 'agent-text', id: 'a' }])).toBeNull();
+    });
+});

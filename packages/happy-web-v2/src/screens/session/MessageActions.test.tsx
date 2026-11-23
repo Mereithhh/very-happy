@@ -4,13 +4,13 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UserTextMessage } from '@/sync/typesMessage';
 
-const mocks = vi.hoisted(() => ({ send: vi.fn(), rewind: vi.fn(), flavor: 'claude' as string | undefined, capabilities: undefined as string[] | undefined, codexGoal: undefined as unknown, enterToSend: true }));
+const mocks = vi.hoisted(() => ({ send: vi.fn(), rewind: vi.fn(), flavor: 'claude' as string | undefined, capabilities: undefined as string[] | undefined, codexGoal: undefined as unknown, followers: undefined as string[] | undefined, enterToSend: true }));
 vi.mock('@/sync/sync', () => ({ sync: { sendMessage: mocks.send } }));
 vi.mock('@/sync/apiSocket', () => ({ apiSocket: {} }));
 vi.mock('@/sync/storage', () => ({
     // B-722: DeliverOnResumeHint selects from the store (no session → nothing to say).
     storage: Object.assign((select: (state: unknown) => unknown) => select({ sessionMessages: {}, sessions: {} }), { getState: () => ({ sessionMessages: {}, machines: {} }) }),
-    useSession: () => ({ metadata: { flavor: mocks.flavor, capabilities: mocks.capabilities }, agentState: { codexGoal: mocks.codexGoal } }),
+    useSession: () => ({ metadata: { flavor: mocks.flavor, capabilities: mocks.capabilities, codexTurnFollowers: mocks.followers }, agentState: { codexGoal: mocks.codexGoal } }),
     useSetting: () => mocks.enterToSend,
 }));
 vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ lang: 'en', t: (key: string) => key }) }));
@@ -33,6 +33,7 @@ beforeEach(() => {
     mocks.flavor = 'claude';
     mocks.capabilities = undefined;
     mocks.codexGoal = undefined;
+    mocks.followers = undefined;
     mocks.enterToSend = true;
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
 });
@@ -249,6 +250,26 @@ describe('B-961 Codex sessions', () => {
         expect(text).toContain('Delete this message and everything after it?');
         expect(text).toContain('File changes are not undone.');
         expect(text).toContain('The active /goal is paused first.');
+    });
+});
+
+describe('B-961 Codex turn followers and the reply retry', () => {
+    it('a prompt inside another prompt\'s turn: no edit / delete / retry, a hover hint instead', () => {
+        mocks.flavor = 'codex'; mocks.capabilities = ['codex-rewind-v1'];
+        mocks.followers = ['follow'];
+        render({ ...message, localId: 'follow' });
+        const labels = [...host.querySelectorAll('.msg-actions button')].map(el => el.getAttribute('aria-label'));
+        expect(labels).toEqual(['message.copyMessage', 'Quote']);
+        expect(host.querySelector('[role=note]')?.getAttribute('title')).toContain('same turn as the one before it');
+    });
+    it('the latest reply offers Retry for its prompt and resends that prompt\'s text', async () => {
+        act(() => root.render(<MessageActions text="the answer" sessionId="parent" retryOf={message}><div /></MessageActions>));
+        const labels = [...host.querySelectorAll('.msg-actions button')].map(el => el.getAttribute('aria-label'));
+        expect(labels).toEqual(['message.copyMessage', 'Quote', 'Retry']);
+        await click('Retry');
+        const go = [...host.querySelectorAll('.msg-delete-confirm button')].find(el => el.textContent?.trim() === 'Retry') as HTMLButtonElement;
+        await act(async () => go.click());
+        expect(mocks.rewind).toHaveBeenCalledExactlyOnceWith('parent', message, { action: 'edit', text: 'original' });
     });
 });
 

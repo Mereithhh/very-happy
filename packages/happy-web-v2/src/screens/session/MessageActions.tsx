@@ -1,6 +1,6 @@
 import { useReadOnlyTranscript } from './readOnlyTranscript';
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { GitFork, MessageSquarePlus, Pencil, Quote, RotateCcw, TextQuote, Trash2 } from 'lucide-react';
+import { GitFork, Info, MessageSquarePlus, Pencil, Quote, RotateCcw, TextQuote, Trash2 } from 'lucide-react';
 import { useInRouterContext, useNavigate } from 'react-router-dom';
 import type { Session } from '@/sync/storageTypes';
 import { isMirrorSession } from '@/assistant/assistantSession';
@@ -24,7 +24,7 @@ import type { TurnSendStatus } from './sendStatusModel';
 import { RewindFailure, rewindConversation } from './conversationRewind';
 import { ForkFailure, forkFromMessage, messageForkTarget } from './forkFlow';
 import { forkReasonText, isForkableFlavor } from './forkModel';
-import { canRetryMessage, canRewindMessage } from './rewindSupport';
+import { canRetryMessage, canRewindMessage, isCodexTurnFollower } from './rewindSupport';
 import { sessionCodexGoal } from '@/sync/codexGoal';
 import './messageActions.css';
 
@@ -42,8 +42,10 @@ import './messageActions.css';
  * `thread/revert`. B-961 retry = edit with the same text: drop this prompt's
  * replies and everything after, then send it again.
  */
-export function MessageActions({ text, sessionId, userMessage, createdAt = userMessage?.createdAt, hasAttachments = false, send = null, status, children }: {
+export function MessageActions({ text, sessionId, userMessage, createdAt = userMessage?.createdAt, hasAttachments = false, send = null, status, retryOf, retryHasAttachments = false, children }: {
     text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments?: boolean;
+    /** B-961: on the latest agent reply — the prompt a retry resends (the turn's first one). */
+    retryOf?: UserTextMessage; retryHasAttachments?: boolean;
     /** B-513: not yet confirmed by the server — copy only; a failed turn shows its recovery actions instead of the time. */
     send?: TurnSendStatus | null;
     /** B-766: an always-visible chip before the time (the owner bubble's 「已答 ↗」). */
@@ -51,11 +53,12 @@ export function MessageActions({ text, sessionId, userMessage, createdAt = userM
     children?: ReactNode;
 }) {
     if (useReadOnlyTranscript()) return <>{children}</>;
-    return <EditableMessageActions text={text} sessionId={sessionId} userMessage={userMessage} createdAt={createdAt} hasAttachments={hasAttachments} send={send} status={status}>{children}</EditableMessageActions>;
+    return <EditableMessageActions text={text} sessionId={sessionId} userMessage={userMessage} createdAt={createdAt} hasAttachments={hasAttachments} send={send} status={status} retryOf={retryOf} retryHasAttachments={retryHasAttachments}>{children}</EditableMessageActions>;
 }
 
-function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAttachments, send, status, children }: {
-    text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments: boolean; send: TurnSendStatus | null; status?: ReactNode; children?: ReactNode;
+function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAttachments, send, status, retryOf, retryHasAttachments, children }: {
+    text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments: boolean; send: TurnSendStatus | null; status?: ReactNode;
+    retryOf?: UserTextMessage; retryHasAttachments: boolean; children?: ReactNode;
 }) {
     const { t, lang } = useTranslation();
     const copy = messageActionsCopy(lang);
@@ -79,8 +82,16 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
     const inRouter = useInRouterContext();
 
     // B-619 / B-961: owner only; Claude, and Codex wrappers that advertise codex-rewind-v1.
-    const canRewind = canRewindMessage(session, userMessage, send);
-    const canRetry = canRetryMessage(canRewind, hasAttachments, text);
+    // B-961: a Codex prompt inside another's turn is edited through that one (hint instead of buttons).
+    const follower = isCodexTurnFollower(session, userMessage);
+    const canRewind = canRewindMessage(session, userMessage, send) && !follower;
+    // Retry: on a prompt, or (retryOf) on the latest reply for the prompt that opened its turn.
+    const retryTarget = userMessage ?? retryOf;
+    const canRetry = canRetryMessage(
+        canRewindMessage(session, retryTarget, send) && !isCodexTurnFollower(session, retryTarget),
+        userMessage ? hasAttachments : retryHasAttachments,
+        retryTarget?.text ?? '',
+    );
     // B-961: Stop pauses an active /goal before the rewind (B-953) — say so where it is confirmed.
     const goalNote = sessionCodexGoal(session)?.status === 'active' ? ` ${copy.goalPaused}` : '';
     // B-961: Codex rewinds from a turn to the end (thread/revert) — a delete says so.
@@ -124,13 +135,13 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
         }
         return copy.failed;
     };
-    const run = async (request: { action: 'delete' } | { action: 'edit'; text: string }) => {
-        if (busyRef.current || !userMessage) return;
+    const run = async (request: { action: 'delete' } | { action: 'edit'; text: string }, target: UserTextMessage | undefined = userMessage) => {
+        if (busyRef.current || !target) return;
         busyRef.current = true;
         setBusy(true);
         setError(null);
         try {
-            await rewindConversation(sessionId, userMessage, request);
+            await rewindConversation(sessionId, target, request);
             busyRef.current = false;
             setMode('idle');
         } catch (cause) {
@@ -179,7 +190,7 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
 
     return <>
         {children}
-        {(mode === 'delete' || mode === 'retry') && userMessage
+        {(mode === 'delete' && userMessage) || (mode === 'retry' && retryTarget)
             ? <div className="msg-delete-confirm" role="group" aria-label={mode === 'retry' ? copy.retryTitle : deleteTitle} onKeyDown={event => {
                 if (event.key === 'Escape') { event.preventDefault(); close(mode); }
             }}>
@@ -188,7 +199,7 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
                 <div className="msg-edit-footer">
                     <Button size="sm" onClick={() => close(mode)} disabled={busy} autoFocus>{copy.cancel}</Button>
                     {mode === 'retry'
-                        ? <Button size="sm" variant="primary" loading={busy} onClick={() => void run({ action: 'edit', text: userMessage.text })}>{copy.retry}</Button>
+                        ? <Button size="sm" variant="primary" loading={busy} onClick={() => retryTarget && void run({ action: 'edit', text: retryTarget.text }, retryTarget)}>{copy.retry}</Button>
                         : <Button size="sm" variant="danger" loading={busy} onClick={() => void run({ action: 'delete' })}>{copy.delete}</Button>}
                 </div>
             </div>
@@ -222,6 +233,7 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
                     ><MessageSquarePlus size={14} aria-hidden /><span>{t('session.chat.annotations.annotate')}</span></button>}
                     {canFork && <ForkFromHereButton session={session} message={userMessage} hasAttachments={hasAttachments} onNote={setForkNote} />}
                     {canRewind && <button ref={editButton} type="button" className="msg-action" aria-label={copy.edit} title={copy.edit} onClick={openEditor}><Pencil size={14} aria-hidden /></button>}
+                    {follower && !send && <span className="msg-action msg-action--hint" role="note" aria-label={copy.followerHint} title={copy.followerHint}><Info size={14} aria-hidden /></span>}
                     {canRetry && <button ref={retryButton} type="button" className="msg-action" aria-label={copy.retry} title={copy.retry} onClick={() => { setError(null); setMode('retry'); }}><RotateCcw size={14} aria-hidden /></button>}
                     {canRewind && <button ref={deleteButton} type="button" className="msg-action" aria-label={copy.delete} title={copy.delete} onClick={() => { setError(null); setMode('delete'); }}><Trash2 size={14} aria-hidden /></button>}
                 </div>}

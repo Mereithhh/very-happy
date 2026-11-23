@@ -3663,7 +3663,7 @@ export const zhHans: TranslationStructure = {
                 title: 'Codex 会话也能编辑、删除、重试消息',
                 summary: 'Codex 会话现在和 Claude 一样，可以原地编辑、删除自己发的消息；Claude 和 Codex 会话都新增了「重试」。',
                 codex: '在 Codex 会话里，你发的消息下面：编辑会替换这条和之后的对话，删除会去掉这条和之后的对话（Codex 只能从某条消息起整段撤回），Codex 也会忘掉它们，不再另开新会话。回合进行中会先停下；/goal 进行中会先暂停。',
-                retry: '「重试」（圆形箭头）会撤回这条消息之后的回复，再用原文重新发送。Claude 和 Codex 会话都能用，执行前会先确认。',
+                retry: '「重试」（圆形箭头）在你的消息和最新一条回复上都有：撤回这条消息之后的回复，再用原文重新发送。Claude 和 Codex 会话都能用，执行前会先确认。',
                 files: '只撤回对话，不撤回 Agent 已经改过的文件。需要会话在 CLI 0.2.224 上重启后才有这些操作；机器上的 Codex 版本太旧时，会提示升级 Codex。',
             },
             nov23b: {

@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { mkdtempSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname } from 'node:path';
 import {
+    fileCodexTurnStore,
     CodexRewindError,
     CodexTurnSourceMap,
     createCodexConversationRewind,
@@ -93,7 +96,7 @@ describe('B-961 createCodexConversationRewind', () => {
         expect(calls).toEqual(['hold', 'revert:t2', 'record', 'release']);
         expect(d.readTurns).not.toHaveBeenCalled();
         expect(d.dropTurnsFrom).toHaveBeenCalledWith('t2');
-        expect(d.record).toHaveBeenCalledWith({ requestId: 'req-1', action: 'delete', sourceClaudeSessionId: 'thread-1', claudeSessionId: 'thread-1', at: 1000, state: 'applied' });
+        expect(d.record).toHaveBeenCalledWith({ requestId: 'req-1', action: 'delete', sourceClaudeSessionId: 'thread-1', claudeSessionId: 'thread-1', at: 1000, state: 'applied', sourceId: 'l2' });
     });
     it('edit / retry after a wrapper restart: the thread text finds the turn', async () => {
         const { d, calls } = deps();
@@ -160,5 +163,49 @@ describe('B-961 runCodex wiring', () => {
         expect(source).toContain('while (rewindHold) await rewindHold;');
         expect(source).toContain('heldInput.hold(batch.sourceIds);\n                turnSourceIds = batch.sourceIds;');
         expect(source).toContain('if (client.lastRequestedTurnId && client.lastRequestedTurnId !== requestedBefore) turnSources.started(client.lastRequestedTurnId, turnSourceIds);');
+    });
+});
+
+describe('B-961 the map survives a wrapper restart and tells the web which prompts follow', () => {
+    const fsx = { mkdirSync, readFileSync, renameSync, writeFileSync };
+    it('persists per session; a new map (restarted wrapper) knows the turns and republishes followers', () => {
+        const path = join(mkdtempSync(join(tmpdir(), 'b961-')), 'codex-turns', 's1.json');
+        const published: string[][] = [];
+        const first = new CodexTurnSourceMap(fileCodexTurnStore(path, fsx, dirname), (ids) => published.push(ids));
+        first.started('t1', ['l1']);
+        first.started('t2', ['l2', 'l3']);
+        first.steered('t2', 'l4');
+        expect(published.at(-1)).toEqual(['l3', 'l4']);
+        const again: string[][] = [];
+        const restarted = new CodexTurnSourceMap(fileCodexTurnStore(path, fsx, dirname), (ids) => again.push(ids));
+        restarted.publish();
+        expect(restarted.of('l2')?.turnId).toBe('t2');
+        expect(again).toEqual([['l3', 'l4']]);
+        restarted.dropFrom('t2');
+        expect(new CodexTurnSourceMap(fileCodexTurnStore(path, fsx, dirname)).of('l2')).toBeNull();
+        expect(again.at(-1)).toEqual([]);
+    });
+    it('a goal turn Codex opened itself: a steered prompt is a follower, never an opening', () => {
+        const map = new CodexTurnSourceMap();
+        map.steered('goal-turn', 'l9');
+        expect(map.followers()).toEqual(['l9']);
+        expect(() => liveRewindTurn(map.of('l9'), 'l9')).toThrow(/running turn/);
+    });
+    it('a missing or corrupt file starts empty', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'b961-'));
+        writeFileSync(join(dir, 'bad.json'), '{nope');
+        expect(fileCodexTurnStore(join(dir, 'bad.json'), fsx, dirname).load()).toEqual([]);
+        expect(fileCodexTurnStore(join(dir, 'none.json'), fsx, dirname).load()).toEqual([]);
+    });
+    it('the rewind record names the prompt for the web reconcile', async () => {
+        const { d } = deps({ turnOfSource: () => ({ turnId: 't2', sourceIds: ['l2'] }) });
+        await createCodexConversationRewind(d)({ action: 'delete', sourceId: 'l2', requestId: 'r9' });
+        expect(d.record).toHaveBeenCalledWith(expect.objectContaining({ requestId: 'r9', sourceId: 'l2', state: 'applied' }));
+    });
+    it('runCodex loads the per-session file and steered prompts join the running turn', () => {
+        const source = readFileSync(join(__dirname, 'runCodex.ts'), 'utf8');
+        expect(source).toContain("fileCodexTurnStore(join(configuration.happyHomeDir, 'codex-turns', `${session.sessionId.replace(");
+        expect(source).toContain('(ids) => session.updateMetadata((metadata) => ({ ...metadata, codexTurnFollowers: ids })),');
+        expect(source).toContain('turnSources.steered(client.turnId, localKey);');
     });
 });
