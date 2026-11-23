@@ -24,7 +24,7 @@ describe('rewindConversation (B-528)', () => {
         await rewindConversation('s', message, { action: 'edit', text: 'new' }, d);
         expect(d.rpc).toHaveBeenCalledWith('s', { action: 'edit', sourceId: 'local-10', text: 'hello', requestId: 'req-1' });
         expect(d.recordDrop).toHaveBeenCalledWith('s', { fromSeq: 10, reason: 'edit', requestId: 'req-1' });
-        expect(d.send).toHaveBeenCalledWith('s', 'new');
+        expect(d.send).toHaveBeenCalledWith('s', 'new', undefined);
         const order = [d.rpc, d.recordDrop, d.send].map((fn) => (fn as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]);
         expect(order).toEqual([...order].sort((a, b) => a - b));
     });
@@ -68,7 +68,7 @@ describe('rewindConversation (B-528)', () => {
             await rewindConversation('s', message, { action: 'edit', text: 'new' }, d);
             expect(waitForRewindRecord).toHaveBeenCalledWith('s', 'req-1', 10_000);
             expect(d.recordDrop).toHaveBeenCalledWith('s', { fromSeq: 10, reason: 'edit', requestId: 'req-1' });
-            expect(d.send).toHaveBeenCalledWith('s', 'new');
+            expect(d.send).toHaveBeenCalledWith('s', 'new', undefined);
         });
 
         it('RPC timed out and no record within the window → fails without touching the transcript', async () => {
@@ -122,7 +122,7 @@ describe('B-961 Codex', () => {
         const d = deps();
         await rewindConversation('s', message, { action: 'edit', text: message.text }, d);
         expect(d.recordDrop).toHaveBeenCalledWith('s', { fromSeq: 10, reason: 'edit', requestId: 'req-1' });
-        expect(d.send).toHaveBeenCalledWith('s', 'hello');
+        expect(d.send).toHaveBeenCalledWith('s', 'hello', undefined);
     });
 });
 

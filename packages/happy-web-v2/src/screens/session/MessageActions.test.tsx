@@ -122,7 +122,7 @@ describe('in-place edit (B-528: replaces history)', () => {
         expect(host.querySelector('textarea')?.value).toBe('original');
         expect(document.querySelector('[role="dialog"]')).toBeNull();
         type('revised'); await click('Send');
-        expect(mocks.rewind).toHaveBeenCalledExactlyOnceWith('parent', message, { action: 'edit', text: 'revised' });
+        expect(mocks.rewind).toHaveBeenCalledExactlyOnceWith('parent', message, { action: 'edit', text: 'revised' }, undefined, []);
         // Never the old "send a new message" path directly.
         expect(mocks.send).not.toHaveBeenCalled();
         expect(host.querySelector('textarea')).toBeNull();
@@ -202,7 +202,7 @@ describe('delete (B-528)', () => {
         await click('Delete');
         const confirm = [...host.querySelectorAll('.msg-delete-confirm button')].find(el => el.textContent?.trim() === 'Delete') as HTMLButtonElement;
         await act(async () => confirm.click());
-        expect(mocks.rewind).toHaveBeenCalledExactlyOnceWith('parent', message, { action: 'delete' });
+        expect(mocks.rewind).toHaveBeenCalledExactlyOnceWith('parent', message, { action: 'delete' }, undefined, []);
         expect(host.querySelector('.msg-delete-confirm')).toBeNull();
     });
 });
@@ -218,13 +218,19 @@ describe('B-961 retry', () => {
         await click('Retry');
         const go = [...host.querySelectorAll('.msg-delete-confirm button')].find(el => el.textContent?.trim() === 'Retry') as HTMLButtonElement;
         await act(async () => go.click());
-        expect(mocks.rewind).toHaveBeenCalledExactlyOnceWith('parent', message, { action: 'edit', text: 'original' });
+        expect(mocks.rewind).toHaveBeenCalledExactlyOnceWith('parent', message, { action: 'edit', text: 'original' }, undefined, []);
         expect(host.querySelector('.msg-delete-confirm')).toBeNull();
     });
-    it('is not offered for a prompt with attachments (resending the text would lose them)', () => {
+    it('hides edit and retry on a prompt with attachments when the wrapper cannot re-send them', () => {
         act(() => root.render(<MessageActions text="original" sessionId="parent" userMessage={message} hasAttachments><div /></MessageActions>));
         const labels = [...host.querySelectorAll('.msg-actions button')].map(el => el.getAttribute('aria-label'));
-        expect(labels).toEqual(['message.copyMessage', 'Quote', 'Edit', 'Delete']);
+        expect(labels).toEqual(['message.copyMessage', 'Quote', 'Delete']);
+    });
+    it('edits and retries a prompt with attachments on a wrapper that advertises attachment-reuse-v1', () => {
+        mocks.capabilities = ['attachment-reuse-v1'];
+        act(() => root.render(<MessageActions text="original" sessionId="parent" userMessage={message} hasAttachments><div /></MessageActions>));
+        const labels = [...host.querySelectorAll('.msg-actions button')].map(el => el.getAttribute('aria-label'));
+        expect(labels).toEqual(['message.copyMessage', 'Quote', 'Edit', 'Retry', 'Delete']);
     });
     it('a Codex wrapper that is too old for thread/revert says so', async () => {
         mocks.rewind.mockRejectedValueOnce(new RewindFailure('outdated', 'x'));
@@ -269,7 +275,7 @@ describe('B-961 Codex turn followers and the reply retry', () => {
         await click('Retry');
         const go = [...host.querySelectorAll('.msg-delete-confirm button')].find(el => el.textContent?.trim() === 'Retry') as HTMLButtonElement;
         await act(async () => go.click());
-        expect(mocks.rewind).toHaveBeenCalledExactlyOnceWith('parent', message, { action: 'edit', text: 'original' });
+        expect(mocks.rewind).toHaveBeenCalledExactlyOnceWith('parent', message, { action: 'edit', text: 'original' }, undefined, []);
     });
 });
 

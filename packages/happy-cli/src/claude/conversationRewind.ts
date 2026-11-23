@@ -14,10 +14,11 @@
 
 import { ConversationRewindError, rewindClaudeTranscript, type ConversationRewindAction } from './utils/claudeTranscriptRewind';
 import { ForkSourceMissingError } from './utils/claudeSessionFork';
+import { attachmentGoneMessage, parseRewindAttachments, type RewindAttachmentRef, type RewindAttachmentResult } from '@/utils/attachmentReuse';
 
 export type ConversationRewindResult =
     | { ok: true; action: ConversationRewindAction; freshConversation: boolean }
-    | { ok: false; code: 'invalid' | 'busy' | 'running' | 'no-conversation' | 'not-found' | 'ambiguous' | 'unsafe'; error: string };
+    | { ok: false; code: 'invalid' | 'busy' | 'running' | 'no-conversation' | 'not-found' | 'ambiguous' | 'unsafe' | 'attachment-gone'; error: string };
 
 export type ConversationRewindDeps = {
     claudeSessionId: () => string | null;
@@ -39,6 +40,11 @@ export type ConversationRewindDeps = {
     beginPending?: (record: { requestId: string; action: ConversationRewindAction; sourceClaudeSessionId: string; claudeSessionId: string | null; at: number }) => Promise<void>;
     now?: () => number;
     rewrite?: typeof rewindClaudeTranscript;
+    /**
+     * B-961b: resolve the files an edit / retry re-sends (staged copy or the
+     * server blob) BEFORE anything is rewound. A failure refuses the request.
+     */
+    ensureAttachments?: (refs: readonly RewindAttachmentRef[]) => Promise<RewindAttachmentResult>;
 };
 
 const REQUEST_ID = /^[A-Za-z0-9_-]{1,100}$/;
@@ -58,8 +64,18 @@ export function createConversationRewind(deps: ConversationRewindDeps) {
             return { ok: false, code: 'invalid', error: 'Invalid rewind request' };
         }
         if (inFlight) return { ok: false, code: 'busy', error: 'Another edit is still being applied' };
+        const attachments = parseRewindAttachments(request.attachments);
         inFlight = true;
         try {
+            // B-961b: a file that cannot be resolved refuses the whole request —
+            // nothing is dropped from the conversation for a retry that would
+            // have gone out without it.
+            if (attachments.length > 0 && deps.ensureAttachments) {
+                const resolved = await deps.ensureAttachments(attachments);
+                if (!resolved.ok) {
+                    return { ok: false, code: 'attachment-gone', error: attachmentGoneMessage(resolved.missing) };
+                }
+            }
             if (deps.isThinking()) {
                 await deps.stopTurn();
                 if (!await deps.waitIdle(STOP_WAIT_MS)) {

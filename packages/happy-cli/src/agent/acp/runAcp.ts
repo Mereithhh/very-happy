@@ -1231,7 +1231,7 @@ export async function runAcp(opts: {
   // writing), and it never sees assistant output — so pi-acp's startup banner
   // cannot become a title.
   const titleGenerator = new TitleGenerator(session);
-  registerAgentAttachmentDownloads(session);
+  registerAgentAttachmentDownloads(session, { happyHomeDir: configuration.happyHomeDir });
   let userMessageDelivery = Promise.resolve();
   session.onUserMessage((message) => {
     // B-952: bound to a DeepSeek account that cannot run — not run, and said why.

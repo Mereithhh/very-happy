@@ -1,4 +1,4 @@
-import { AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_GOAL_CAPABILITY, CODEX_REWIND_CAPABILITY, parseCodexGoalCommand, CODEX_LIVE_PERMISSION_CAPABILITY, CODEX_STEER_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, TURN_FAILURE_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort, type TurnFailure } from '@slopus/happy-wire';
+import { AGENT_PROFILE_SESSION_CAPABILITY, ATTACHMENT_REUSE_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_GOAL_CAPABILITY, CODEX_REWIND_CAPABILITY, parseCodexGoalCommand, CODEX_LIVE_PERMISSION_CAPABILITY, CODEX_STEER_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, TURN_FAILURE_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort, type TurnFailure } from '@slopus/happy-wire';
 import { isSessionPeerPrompt } from '@/claude/nonUserPrompt';
 import { codexTurnFailure } from './codexTurnFailure';
 import { issueSessionMetadata } from '@/issues/sessionMetadata';
@@ -9,6 +9,7 @@ import { unlink } from 'node:fs/promises';
 import { announceForkBackfill, FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
 import { readChildThread } from './readChildThread';
 import { registerAgentAttachmentDownloads } from '@/utils/agentAttachments';
+import { ensureRewindAttachments } from '@/utils/attachmentReuse';
 import { appendStagedAttachmentsToPrompt, stageClaudeAttachments, CLAUDE_ATTACHMENT_KINDS } from '@/claude/utils/attachmentContent';
 import type { PendingAttachment } from '@/utils/MessageQueue2';
 import { render } from "ink";
@@ -197,6 +198,8 @@ export async function runCodex(opts: {
     metadata.capabilities = [...metadata.capabilities, CODEX_GOAL_CAPABILITY];
     // B-961: conversation-rewind (thread/revert).
     metadata.capabilities = [...metadata.capabilities, CODEX_REWIND_CAPABILITY];
+    // B-961b: edit / retry re-sends a prompt's attachments by reference.
+    metadata.capabilities = [...new Set([...metadata.capabilities, ATTACHMENT_REUSE_CAPABILITY])];
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
     // B-844c: no sticky model yet (DEFAULT_CODEX_MODEL is undefined); the
@@ -489,7 +492,7 @@ export async function runCodex(opts: {
     // B-844c: what a turn without an explicit model runs (see turnModel.ts).
     let machineDefaultModel: string | undefined;
 
-    registerAgentAttachmentDownloads(session);
+    registerAgentAttachmentDownloads(session, { happyHomeDir: configuration.happyHomeDir });
     const CODEX_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     // B-628: `delivery: 'steer'` → the running turn (codexSteer.ts). `ownsTurn` is true from
     // dequeue to the turn's finally — including the seconds a released app-server takes to
@@ -932,6 +935,17 @@ export async function runCodex(opts: {
         revert: (beforeTurnId) => client.revertThread(beforeTurnId),
         dropTurnsFrom: (turnId) => turnSources.dropFrom(turnId),
         record: (record) => persistCodexRewindRecord(session, record),
+        // B-961b: an edit / retry re-sends the prompt's attachments; a file
+        // that cannot be resolved refuses before thread/revert drops anything.
+        ensureAttachments: (refs) => ensureRewindAttachments({
+            happyHomeDir: configuration.happyHomeDir,
+            sessionId: session.sessionId,
+            download: (ref) => session.downloadAndDecryptAttachment(ref),
+            stage: (attachments) => stageClaudeAttachments(attachments, {
+                happyHomeDir: configuration.happyHomeDir,
+                sessionId: session.sessionId,
+            }),
+        }, refs),
         holdPrompts: () => {
             idleRelease.cancel();
             let release!: () => void;

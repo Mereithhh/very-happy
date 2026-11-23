@@ -84,3 +84,36 @@ describe('conversation-rewind', () => {
         expect(beginPending).not.toHaveBeenCalled();
     });
 });
+
+describe('B-961b: attachments on edit / retry', () => {
+    it('resolves every attachment before anything is rewound', async () => {
+        const order: string[] = [];
+        const ensureAttachments = vi.fn(async () => { order.push('attachments'); return { ok: true as const, attachments: [] }; });
+        const d = deps({ ensureAttachments, rewrite: vi.fn(async () => { order.push('rewrite'); return 'claude-2'; }) });
+        const result = await createConversationRewind(d)({
+            action: 'edit', sourceId: 'web-1', text: 'again', attachments: [{ ref: 'r1', name: 'a.png', mimeType: 'image/png', size: 3 }],
+        });
+        expect(result).toMatchObject({ ok: true });
+        expect(order).toEqual(['attachments', 'rewrite']);
+        expect(ensureAttachments).toHaveBeenCalledWith([{ ref: 'r1', name: 'a.png', mimeType: 'image/png', size: 3 }]);
+    });
+
+    it('refuses with attachment-gone and leaves the conversation alone when a file cannot be resolved', async () => {
+        const d = deps({ ensureAttachments: vi.fn(async () => ({ ok: false as const, missing: ['a.png'] })) });
+        const result = await createConversationRewind(d)({
+            action: 'edit', sourceId: 'web-1', text: 'again', attachments: [{ ref: 'r1', name: 'a.png' }],
+        });
+        expect(result).toMatchObject({ ok: false, code: 'attachment-gone' });
+        expect((result as { error: string }).error).toContain('a.png');
+        expect(d.rewrite).not.toHaveBeenCalled();
+        expect(d.switchConversation).not.toHaveBeenCalled();
+    });
+
+    it('ignores a malformed attachments payload (old web / garbage) instead of failing the rewind', async () => {
+        const ensureAttachments = vi.fn(async () => ({ ok: true as const, attachments: [] }));
+        const d = deps({ ensureAttachments });
+        expect(await createConversationRewind(d)({ action: 'delete', sourceId: 'web-1', attachments: 'nope' })).toMatchObject({ ok: true });
+        expect(await createConversationRewind(d)({ action: 'delete', sourceId: 'web-1', attachments: [{ name: 'no-ref' }] })).toMatchObject({ ok: true });
+        expect(ensureAttachments).not.toHaveBeenCalled();
+    });
+});

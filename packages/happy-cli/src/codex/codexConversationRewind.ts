@@ -30,12 +30,13 @@
  */
 
 import type { ThreadItem, ThreadTurn } from './codexAppServerTypes';
+import { attachmentGoneMessage, parseRewindAttachments, type RewindAttachmentRef, type RewindAttachmentResult } from '@/utils/attachmentReuse';
 
 export type CodexRewindAction = 'edit' | 'delete';
 
 export type CodexRewindResult =
     | { ok: true; action: CodexRewindAction; freshConversation: boolean; dropsLater: true }
-    | { ok: false; code: 'invalid' | 'busy' | 'running' | 'no-conversation' | 'not-found' | 'ambiguous' | 'unsafe' | 'codex-outdated'; error: string };
+    | { ok: false; code: 'invalid' | 'busy' | 'running' | 'no-conversation' | 'not-found' | 'ambiguous' | 'unsafe' | 'codex-outdated' | 'attachment-gone'; error: string };
 
 /** What the wrapper remembers about a turn it started: the prompts (sourceIds) it carried, in order. */
 export type CodexTurnSources = { turnId: string; sourceIds: string[] };
@@ -72,6 +73,8 @@ export type CodexRewindDeps = {
     record: (record: CodexRewindRecord) => Promise<void>;
     /** Holds the next prompt until the returned release runs. */
     holdPrompts: () => () => void;
+    /** B-961b: resolve the files an edit / retry re-sends before anything is rewound. */
+    ensureAttachments?: (refs: readonly RewindAttachmentRef[]) => Promise<RewindAttachmentResult>;
     now?: () => number;
 };
 
@@ -159,9 +162,18 @@ export function createCodexConversationRewind(deps: CodexRewindDeps) {
             return { ok: false, code: 'invalid', error: 'Invalid rewind request' };
         }
         if (inFlight) return { ok: false, code: 'busy', error: 'Another edit is still being applied' };
+        const attachments = parseRewindAttachments(request.attachments);
         inFlight = true;
         const release = deps.holdPrompts();
         try {
+            // B-961b: thread/revert cannot be switched back, so a file that
+            // cannot be resolved must refuse here, before anything is dropped.
+            if (attachments.length > 0 && deps.ensureAttachments) {
+                const resolved = await deps.ensureAttachments(attachments);
+                if (!resolved.ok) {
+                    return { ok: false, code: 'attachment-gone', error: attachmentGoneMessage(resolved.missing) };
+                }
+            }
             if (deps.isBusy()) {
                 await deps.stopTurn();
                 if (!await deps.waitIdle(STOP_WAIT_MS)) {

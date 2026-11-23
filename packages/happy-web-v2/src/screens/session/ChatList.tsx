@@ -28,8 +28,9 @@ import { TurnDiffRollup } from './TurnDiffRollup';
 import { CompactionDivider } from './CompactionDivider';
 import { buildChatRows, newestTurnOpenerId } from './chatTurns';
 import { latestRetryTarget } from './rewindSupport';
+import { reusableAttachmentsFromFileEvents } from './UserAttachments';
 import { useCodexRewindReconcile } from './conversationRewind';
-import type { UserTextMessage } from '@/sync/typesMessage';
+import type { ToolCallMessage, UserTextMessage } from '@/sync/typesMessage';
 import { NO_HELD_TURNS, holdEndedTurn } from './turnHold';
 import {
     nextAwaySnapshot,
@@ -188,8 +189,10 @@ export function ChatList({
         const replyAt = messages.findIndex((message) => message.kind === 'agent-text' && !message.isThinking);
         const target = latestRetryTarget(session, messages);
         if (replyAt < 0 || !target || target.kind !== 'user-text' || messages.indexOf(target) < replyAt) return null;
-        const targetRow = rows.find((row) => 'message' in row && row.message?.id === target.id) as { attachments?: unknown[] } | undefined;
-        return { replyId: messages[replyAt].id, target: target as UserTextMessage, hasAttachments: (targetRow?.attachments?.length ?? 0) > 0 };
+        const targetRow = rows.find((row) => 'message' in row && row.message?.id === target.id) as { attachments?: ToolCallMessage[] } | undefined;
+        // B-961b: retry re-sends the prompt's uploaded files by reference.
+        const files = reusableAttachmentsFromFileEvents(targetRow?.attachments);
+        return { replyId: messages[replyAt].id, target: target as UserTextMessage, hasAttachments: files.length > 0, attachments: files };
     }, [messages, rows, session, sessionLive]);
     // B-766 B-1: in the team lead's conversation, 「只看我和负责人」 folds runs of
     // member / system turns into one summary row (leadView.ts). Follow and the
@@ -911,6 +914,7 @@ export function ChatList({
                 continueOffer={row.continueOffer === true && canOfferContinue}
                 retryOf={replyRetry?.replyId === row.message.id ? replyRetry.target : undefined}
                 retryHasAttachments={replyRetry?.replyId === row.message.id && replyRetry.hasAttachments}
+                retryAttachments={replyRetry?.replyId === row.message.id ? replyRetry.attachments : undefined}
             />
             {pointers(row)}
             </Fragment>

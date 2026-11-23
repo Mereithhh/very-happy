@@ -4,6 +4,7 @@ import { apiSocket } from '@/sync/apiSocket';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import type { Message, UserTextMessage } from '@/sync/typesMessage';
+import type { ReusableAttachment } from '@/sync/attachmentTypes';
 import type { Session } from '@/sync/storageTypes';
 
 /**
@@ -28,7 +29,7 @@ import type { Session } from '@/sync/storageTypes';
 export type RewindAction = 'edit' | 'delete';
 
 export class RewindFailure extends Error {
-    constructor(public readonly kind: 'unsupported' | 'outdated' | 'unsent' | 'agent' | 'record' | 'send', message: string) {
+    constructor(public readonly kind: 'unsupported' | 'outdated' | 'unsent' | 'agent' | 'record' | 'send' | 'attachments', message: string) {
         super(message);
         this.name = 'RewindFailure';
     }
@@ -37,7 +38,8 @@ export class RewindFailure extends Error {
 export type RewindDeps = {
     rpc: (sessionId: string, params: Record<string, unknown>) => Promise<unknown>;
     recordDrop: (sessionId: string, drop: { fromSeq: number; toSeq?: number; reason: RewindAction; requestId?: string }) => Promise<void>;
-    send: (sessionId: string, text: string) => Promise<unknown>;
+    /** B-961b: `attachments` are re-sent by reference (edit keeps them). */
+    send: (sessionId: string, text: string, attachments?: ReusableAttachment[]) => Promise<unknown>;
     /** Seqs of the session's server-confirmed user prompts. */
     userSeqs: (sessionId: string) => number[];
     /** B-544: resolves true once session metadata shows `rewind.requestId === requestId`, false after `ms`. */
@@ -76,7 +78,10 @@ export function waitForRewindRecordInStore(sessionId: string, requestId: string,
 const defaultDeps: RewindDeps = {
     rpc: (sessionId, params) => apiSocket.sessionRPC<unknown, Record<string, unknown>>(sessionId, 'conversation-rewind', params, { timeoutMs: 30_000 }),
     recordDrop: (sessionId, drop) => sync.recordTranscriptDrop(sessionId, drop),
-    send: (sessionId, text) => sync.sendMessage(sessionId, text, { source: 'chat' }),
+    send: (sessionId, text, attachments) => sync.sendMessage(sessionId, text, {
+        source: 'chat',
+        ...(attachments && attachments.length > 0 ? { reuseAttachments: attachments } : {}),
+    }),
     userSeqs: (sessionId) => (storage.getState().sessionMessages[sessionId]?.messages ?? [])
         .flatMap((message) => message.kind === 'user-text' && typeof message.seq === 'number' ? [message.seq] : []),
     waitForRewindRecord: waitForRewindRecordInStore,
@@ -96,12 +101,13 @@ export async function rewindConversation(
     message: Pick<UserTextMessage, 'seq' | 'localId' | 'text'> & { codexItemId?: string },
     request: { action: 'delete' } | { action: 'edit'; text: string },
     deps: RewindDeps = defaultDeps,
+    attachments?: ReusableAttachment[],
 ): Promise<void> {
     if (typeof message.seq !== 'number') throw new RewindFailure('unsent', 'unsent');
     const requestId = (deps.newRequestId ?? randomUUID)();
     applying.add(requestId);
     try {
-        await rewindWithId(sessionId, message, request, deps, requestId);
+        await rewindWithId(sessionId, message, request, deps, requestId, attachments);
     } finally {
         applying.delete(requestId);
     }
@@ -150,6 +156,7 @@ async function rewindWithId(
     request: { action: 'delete' } | { action: 'edit'; text: string },
     deps: RewindDeps,
     requestId: string,
+    attachments?: ReusableAttachment[],
 ): Promise<void> {
     if (typeof message.seq !== 'number') throw new RewindFailure('unsent', 'unsent');
     let raw: unknown;
@@ -161,6 +168,15 @@ async function rewindWithId(
             ...(message.codexItemId ? { codexItemId: message.codexItemId } : {}),
             text: message.text,
             requestId,
+            // B-961b: the wrapper checks these before it rewinds (nothing is
+            // dropped when a file is gone) and re-sends them with the text.
+            ...(attachments && attachments.length > 0 ? { attachments: attachments.map((attachment) => ({
+                ref: attachment.ref,
+                name: attachment.name,
+                size: attachment.size,
+                ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}),
+                ...(attachment.image ? { image: attachment.image } : {}),
+            })) } : {}),
         });
     } catch (error) {
         const text = error instanceof Error ? error.message : String(error);
@@ -178,6 +194,8 @@ async function rewindWithId(
         const text = typeof result.error === 'string' && result.error ? result.error : 'Rewind failed';
         // B-961: the wrapper can rewind, the Codex it runs cannot (no thread/revert).
         if (result.code === 'codex-outdated') throw new RewindFailure('outdated', text);
+        // B-961b: the wrapper could not resolve an attachment — before any rewind.
+        if (result.code === 'attachment-gone') throw new RewindFailure('attachments', text);
         throw new RewindFailure(UNSUPPORTED.test(text) ? 'unsupported' : 'agent', text);
     }
     // B-961: Codex `thread/revert` drops this turn and every later one (`dropsLater`) — hide them all.
@@ -188,7 +206,7 @@ async function rewindWithId(
         throw new RewindFailure('record', error instanceof Error ? error.message : String(error));
     }
     if (request.action === 'edit') {
-        const receipt = await deps.send(sessionId, request.text).catch(() => null);
+        const receipt = await deps.send(sessionId, request.text, attachments).catch(() => null);
         if (!receipt) throw new RewindFailure('send', 'send');
     }
 }

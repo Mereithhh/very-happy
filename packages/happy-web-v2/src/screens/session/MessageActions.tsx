@@ -10,6 +10,7 @@ import { CopyButton } from '@/ui/CopyButton';
 import { Button } from '@/ui/Button';
 import { useSession, useSetting } from '@/sync/storage';
 import type { UserTextMessage } from '@/sync/typesMessage';
+import type { ReusableAttachment } from '@/sync/attachmentTypes';
 import { useImeGuard } from '@/utils/ime';
 import { insertComposerNewline, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
 import { quoteMessage } from './messageQuote';
@@ -24,7 +25,7 @@ import type { TurnSendStatus } from './sendStatusModel';
 import { RewindFailure, rewindConversation } from './conversationRewind';
 import { ForkFailure, forkFromMessage, messageForkTarget } from './forkFlow';
 import { forkReasonText, isForkableFlavor } from './forkModel';
-import { canRetryMessage, canRewindMessage, isCodexTurnFollower } from './rewindSupport';
+import { canRetryMessage, canRewindMessage, isCodexTurnFollower, supportsAttachmentReuse } from './rewindSupport';
 import { sessionCodexGoal } from '@/sync/codexGoal';
 import './messageActions.css';
 
@@ -42,10 +43,14 @@ import './messageActions.css';
  * `thread/revert`. B-961 retry = edit with the same text: drop this prompt's
  * replies and everything after, then send it again.
  */
-export function MessageActions({ text, sessionId, userMessage, createdAt = userMessage?.createdAt, hasAttachments = false, send = null, status, retryOf, retryHasAttachments = false, children }: {
+export function MessageActions({ text, sessionId, userMessage, createdAt = userMessage?.createdAt, hasAttachments = false, attachments, send = null, status, retryOf, retryHasAttachments = false, retryAttachments, children }: {
     text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments?: boolean;
+    /** B-961b: this prompt's uploaded files — edit and retry re-send them by reference. */
+    attachments?: ReusableAttachment[];
     /** B-961: on the latest agent reply — the prompt a retry resends (the turn's first one). */
     retryOf?: UserTextMessage; retryHasAttachments?: boolean;
+    /** B-961b: that prompt's uploaded files. */
+    retryAttachments?: ReusableAttachment[];
     /** B-513: not yet confirmed by the server — copy only; a failed turn shows its recovery actions instead of the time. */
     send?: TurnSendStatus | null;
     /** B-766: an always-visible chip before the time (the owner bubble's 「已答 ↗」). */
@@ -53,12 +58,13 @@ export function MessageActions({ text, sessionId, userMessage, createdAt = userM
     children?: ReactNode;
 }) {
     if (useReadOnlyTranscript()) return <>{children}</>;
-    return <EditableMessageActions text={text} sessionId={sessionId} userMessage={userMessage} createdAt={createdAt} hasAttachments={hasAttachments} send={send} status={status} retryOf={retryOf} retryHasAttachments={retryHasAttachments}>{children}</EditableMessageActions>;
+    return <EditableMessageActions text={text} sessionId={sessionId} userMessage={userMessage} createdAt={createdAt} hasAttachments={hasAttachments} attachments={attachments} send={send} status={status} retryOf={retryOf} retryHasAttachments={retryHasAttachments} retryAttachments={retryAttachments}>{children}</EditableMessageActions>;
 }
 
-function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAttachments, send, status, retryOf, retryHasAttachments, children }: {
+function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAttachments, attachments, send, status, retryOf, retryHasAttachments, retryAttachments, children }: {
     text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments: boolean; send: TurnSendStatus | null; status?: ReactNode;
-    retryOf?: UserTextMessage; retryHasAttachments: boolean; children?: ReactNode;
+    retryOf?: UserTextMessage; retryHasAttachments: boolean;
+    attachments?: ReusableAttachment[]; retryAttachments?: ReusableAttachment[]; children?: ReactNode;
 }) {
     const { t, lang } = useTranslation();
     const copy = messageActionsCopy(lang);
@@ -85,13 +91,20 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
     // B-961: a Codex prompt inside another's turn is edited through that one (hint instead of buttons).
     const follower = isCodexTurnFollower(session, userMessage);
     const canRewind = canRewindMessage(session, userMessage, send) && !follower;
+    // B-961b: an edit re-sends this prompt's files — only a wrapper that can
+    // resolve them may offer it; an older one would drop them silently.
+    const canEdit = canRewind && (!hasAttachments || supportsAttachmentReuse(session));
     // Retry: on a prompt, or (retryOf) on the latest reply for the prompt that opened its turn.
     const retryTarget = userMessage ?? retryOf;
+    const retryFiles = userMessage ? (attachments ?? []) : (retryAttachments ?? []);
     const canRetry = canRetryMessage(
         canRewindMessage(session, retryTarget, send) && !isCodexTurnFollower(session, retryTarget),
         userMessage ? hasAttachments : retryHasAttachments,
         retryTarget?.text ?? '',
+        supportsAttachmentReuse(session),
     );
+    // B-961b: an edit keeps this prompt's files; they ride along by reference.
+    const ownFiles = attachments ?? [];
     // B-961: Stop pauses an active /goal before the rewind (B-953) — say so where it is confirmed.
     const goalNote = sessionCodexGoal(session)?.status === 'active' ? ` ${copy.goalPaused}` : '';
     // B-961: Codex rewinds from a turn to the end (thread/revert) — a delete says so.
@@ -131,6 +144,7 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
             if (cause.kind === 'unsent') return copy.unsent;
             if (cause.kind === 'send') return copy.sendFailed;
             if (cause.kind === 'record') return copy.recordFailed;
+            if (cause.kind === 'attachments') return copy.attachmentGone;
             return `${copy.failed} ${cause.message}`;
         }
         return copy.failed;
@@ -140,8 +154,11 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
         busyRef.current = true;
         setBusy(true);
         setError(null);
+        // B-961b: edit and retry re-send the prompt's own files; the wrapper
+        // resolves them from the machine (or refuses, naming them).
+        const files = request.action === 'edit' ? (target === retryOf ? retryFiles : ownFiles) : [];
         try {
-            await rewindConversation(sessionId, target, request);
+            await rewindConversation(sessionId, target, request, undefined, files);
             busyRef.current = false;
             setMode('idle');
         } catch (cause) {
@@ -232,7 +249,7 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
                         }}
                     ><MessageSquarePlus size={14} aria-hidden /><span>{t('session.chat.annotations.annotate')}</span></button>}
                     {canFork && <ForkFromHereButton session={session} message={userMessage} hasAttachments={hasAttachments} onNote={setForkNote} />}
-                    {canRewind && <button ref={editButton} type="button" className="msg-action" aria-label={copy.edit} title={copy.edit} onClick={openEditor}><Pencil size={14} aria-hidden /></button>}
+                    {canEdit && <button ref={editButton} type="button" className="msg-action" aria-label={copy.edit} title={copy.edit} onClick={openEditor}><Pencil size={14} aria-hidden /></button>}
                     {follower && !send && <span className="msg-action msg-action--hint" role="note" aria-label={copy.followerHint} title={copy.followerHint}><Info size={14} aria-hidden /></span>}
                     {canRetry && <button ref={retryButton} type="button" className="msg-action" aria-label={copy.retry} title={copy.retry} onClick={() => { setError(null); setMode('retry'); }}><RotateCcw size={14} aria-hidden /></button>}
                     {canRewind && <button ref={deleteButton} type="button" className="msg-action" aria-label={copy.delete} title={copy.delete} onClick={() => { setError(null); setMode('delete'); }}><Trash2 size={14} aria-hidden /></button>}

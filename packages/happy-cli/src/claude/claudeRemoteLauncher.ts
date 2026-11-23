@@ -29,6 +29,7 @@ import { applyClaudeResultLifecycle } from './utils/remoteResultLifecycle';
 import { applyClaudeRunFacts, applyClaudeSdkMetadata } from './claudeSdkMetadata';
 import { createTurnSteeringController } from './turnSteering';
 import { appendStagedAttachmentsToPrompt, chatAttachmentDirectory, stageClaudeAttachments } from './utils/attachmentContent';
+import { ensureRewindAttachments } from '@/utils/attachmentReuse';
 import { configuration } from '@/configuration';
 import { ensurePrivateDirectory } from '@/utils/secureFiles';
 import { isClaudeEdeOnlySdkError, isClaudeInterruptSentinelContent } from './utils/interruptNoise';
@@ -275,6 +276,17 @@ export async function claudeRemoteLauncher(
         },
         switchConversation,
         beginPending: (record) => rewindReconciler.begin(record),
+        // B-961b: edit / retry re-sends the prompt's attachments — resolve each
+        // (staged copy, else the uploaded blob) before anything is rewound.
+        ensureAttachments: (refs) => ensureRewindAttachments({
+            happyHomeDir: configuration.happyHomeDir,
+            sessionId: session.client.sessionId,
+            download: (ref) => session.client.downloadAndDecryptAttachment(ref),
+            stage: (attachments) => stageClaudeAttachments(attachments, {
+                happyHomeDir: configuration.happyHomeDir,
+                sessionId: session.client.sessionId,
+            }),
+        }, refs),
     }));
     // Removed catch-all stdin handler - now handled by RemoteModeDisplay keyboard handlers
 

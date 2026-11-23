@@ -13,6 +13,8 @@ export const messageActionsCopy = (lang: string) => lang.startsWith('zh') ? {
     unsent: '这条消息还没送达，稍后再试。',
     recordFailed: 'Agent 已改写对话，但页面记录没保存成功：刷新后重试删除。',
     sendFailed: '对话已回退，但新消息没发出去：在输入框重新发送。',
+    attachmentGone: '没能重发：附件已不在这台机器上，请重新附上文件再发送。',
+    attachmentsKept: '会带上原来的附件一起发送。',
     // ForkOrigin's link when the source session is not loaded.
     parent: '返回原会话',
 } : {
@@ -30,6 +32,8 @@ export const messageActionsCopy = (lang: string) => lang.startsWith('zh') ? {
     unsent: 'This message has not been delivered yet. Try again in a moment.',
     recordFailed: 'The agent rewound, but the page could not save it. Refresh and delete again.',
     sendFailed: 'The conversation was rewound, but the new message was not sent. Send it again from the composer.',
+    attachmentGone: 'Not resent: the attachments are no longer on this machine. Attach the files again and send.',
+    attachmentsKept: 'The original attachments are sent with it.',
     // ForkOrigin's link when the source session is not loaded.
     parent: 'Back to original session',
 };

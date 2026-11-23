@@ -1,4 +1,4 @@
-import { CODEX_REWIND_CAPABILITY } from '@slopus/happy-wire';
+import { ATTACHMENT_REUSE_CAPABILITY, CODEX_REWIND_CAPABILITY } from '@slopus/happy-wire';
 import type { Session } from '@/sync/storageTypes';
 import type { UserTextMessage } from '@/sync/typesMessage';
 import type { TurnSendStatus } from './sendStatusModel';
@@ -50,7 +50,19 @@ export function latestRetryTarget<M extends { kind: string; localId?: string | n
     return null;
 }
 
-/** Retry resends the prompt's text only — a prompt with attachments would lose them. */
-export function canRetryMessage(canRewind: boolean, hasAttachments: boolean, text: string): boolean {
-    return canRewind && !hasAttachments && text.trim().length > 0;
+/**
+ * B-961b: a prompt with attachments is retried / edited only on wrappers that
+ * can re-send them by reference (`attachment-reuse-v1`). An older wrapper
+ * keeps hiding the actions — it would drop the files silently.
+ */
+export function supportsAttachmentReuse(
+    session: Pick<Session, 'metadata'> | null | undefined,
+): boolean {
+    return session?.metadata?.capabilities?.includes(ATTACHMENT_REUSE_CAPABILITY) === true;
+}
+
+/** Retry resends the prompt's text and its original attachments (B-961b). */
+export function canRetryMessage(canRewind: boolean, hasAttachments: boolean, text: string, attachmentsReusable = false): boolean {
+    if (!canRewind || text.trim().length === 0) return false;
+    return !hasAttachments || attachmentsReusable;
 }
