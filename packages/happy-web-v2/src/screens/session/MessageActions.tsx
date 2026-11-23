@@ -144,7 +144,8 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
             if (cause.kind === 'unsent') return copy.unsent;
             if (cause.kind === 'send') return copy.sendFailed;
             if (cause.kind === 'record') return copy.recordFailed;
-            if (cause.kind === 'attachments') return copy.attachmentGone;
+            // B-961c: say which files.
+            if (cause.kind === 'attachments') return cause.files.length > 0 ? copy.attachmentGoneFiles(cause.files.join(', ')) : copy.attachmentGone;
             return `${copy.failed} ${cause.message}`;
         }
         return copy.failed;

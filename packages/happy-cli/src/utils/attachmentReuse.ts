@@ -124,3 +124,18 @@ export function attachmentGoneMessage(missing: readonly string[]): string {
         ? 'The attachments are no longer available on this machine'
         : `The attachments are no longer available on this machine: ${missing.join(', ')}`;
 }
+
+/**
+ * B-961c: one prompt carries a ref once. An older Web re-sent a retried
+ * prompt's file events doubled (the old ones stayed on screen and joined the
+ * new run), and every copy went to the model. Pure.
+ */
+export function uniqueAttachmentsByRef(attachments: DownloadedAttachment[]): DownloadedAttachment[] {
+    const seen = new Set<string>();
+    return attachments.filter((attachment) => {
+        if (!attachment.ref) return true;
+        if (seen.has(attachment.ref)) return false;
+        seen.add(attachment.ref);
+        return true;
+    });
+}

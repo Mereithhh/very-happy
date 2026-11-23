@@ -104,7 +104,16 @@ export function extractUserAttachments(messages: Message[]): {
         while (end < messages.length && isFileEvent(messages[end])) end += 1;
         const owner = messages[end];
         if (owner && owner.kind === 'user-text' && rendersUserBubble(owner)) {
-            attachments.set(owner.id, messages.slice(i, end) as ToolCallMessage[]);
+            // B-961c: the same ref twice is one file — a turn an older rewind
+            // left doubled (its old `file` events stayed visible) shows it once.
+            const seenRefs = new Set<string>();
+            attachments.set(owner.id, (messages.slice(i, end) as ToolCallMessage[]).filter((file) => {
+                const ref = typeof file.tool.input?.ref === 'string' ? file.tool.input.ref : null;
+                if (!ref) return true;
+                if (seenRefs.has(ref)) return false;
+                seenRefs.add(ref);
+                return true;
+            }));
         } else {
             // orphan run (nothing sent with it) — leave it in the transcript so
             // the file is still visible somewhere

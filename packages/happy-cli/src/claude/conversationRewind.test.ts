@@ -103,7 +103,8 @@ describe('B-961b: attachments on edit / retry', () => {
         const result = await createConversationRewind(d)({
             action: 'edit', sourceId: 'web-1', text: 'again', attachments: [{ ref: 'r1', name: 'a.png' }],
         });
-        expect(result).toMatchObject({ ok: false, code: 'attachment-gone' });
+        // B-961c: the Web names the files from `missing`.
+        expect(result).toMatchObject({ ok: false, code: 'attachment-gone', missing: ['a.png'] });
         expect((result as { error: string }).error).toContain('a.png');
         expect(d.rewrite).not.toHaveBeenCalled();
         expect(d.switchConversation).not.toHaveBeenCalled();
