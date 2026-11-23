@@ -441,7 +441,7 @@ describe('agent teams persistent transactions and scoped credentials', () => {
             const c1 = await daemon('c-w', { type: 'claim-operation', operationId: spawn.id, teamLaunchVersion: 1 });
             await daemon('k-w', { type: 'complete-operation', operationId: spawn.id, claimId: c1.operation!.claimId!, sessionId: memberSession, workingDirectory: '/wt/w' });
             const d2 = await store.actOnTeam(team.id, { token: leadToken }, { requestId: 'd-2', action: { type: 'delegate', goal: 'two', acceptance: ['a'], botName: 'Q' } });
-            const post = (url: string, payload: unknown, headers: Record<string, string> = {}) => app.inject({ method: 'POST', url, headers, payload });
+            const post = (url: string, payload: Record<string, unknown>, headers: Record<string, string> = {}) => app.inject({ method: 'POST', url, headers, payload });
             const asOwner = (requestId: string, action: Record<string, unknown>, machine = false) => post(`/v1/teams/${team.id}/actions`, { requestId, action }, machine ? { 'x-test-machine': '1' } : {});
             // The lead's credential (what `team_*` tools carry) and the machine token (`teams exit`) are refused, with the way out.
             const byAgent = await post(`/v1/teams/${team.id}/agent`, { requestId: 'a-1', action: { type: 'archive', keepLeadSession: true } }, { 'x-happy-team-token': leadToken });
