@@ -9,7 +9,7 @@ import { inTx, type Tx } from '@/storage/inTx';
 import { encryptString, decryptString } from '@/modules/encrypt';
 import { advanceSchedules } from './schedules';
 import { escalateIdleMembers } from './teamIdle';
-import { compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable } from './compaction';
+import { compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable, mergeArchivedMessages } from './compaction';
 import { requireCapacity } from './errors';
 import { machineJoinRefusal, ownerGuardMode } from '@/app/auth/ownerGuard';
 import { OWNER_LOGIN_REQUIRED } from '@/app/auth/tokenKind';
@@ -105,9 +105,7 @@ async function withOpenTaskArchive(tx: Tx, state: TeamState): Promise<TeamState>
     if (!open.length) return state;
     const rows = await tx.$queryRaw<{ state: TeamMessage }[]>`SELECT "state" FROM "TeamArchive" WHERE "teamId"=${state.id} AND "kind"='message' AND "state"->>'taskId' IN (SELECT jsonb_array_elements_text(${JSON.stringify(open)}::jsonb))`;
     if (!rows.length) return state;
-    const live = new Set(state.messages.map(m => m.id));
-    const archived = rows.map(r => r.state).filter(m => !live.has(m.id)).sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-    return { ...state, messages: [...archived, ...state.messages] };
+    return { ...state, messages: mergeArchivedMessages(state.messages, rows.map(r => r.state)) };
 }
 const readView = async (tx: Tx, state: TeamState, actor: TeamActor) => teamView(await withOpenTaskArchive(tx, state), actor, state);
 async function principal(tx: Tx, teamId: string, auth: { accountId: string } | { token: string }): Promise<Principal> {
