@@ -3501,6 +3501,13 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov23c: {
+                title: 'Edit, delete and retry messages in Codex sessions',
+                summary: 'Codex sessions now have the same in-place edit and delete as Claude, and both Claude and Codex sessions can retry a message.',
+                codex: 'Under one of your messages in a Codex session, edit replaces it and everything after it, and delete removes it together with everything after it (Codex can only rewind from a message on). Codex forgets them too; no new session is opened. A running turn is stopped first, and an active /goal is paused first.',
+                retry: 'Retry (the circular arrow) drops the replies after that message and sends the same text again. It works in Claude and Codex sessions and asks before it runs.',
+                files: 'Only the conversation is rewound: files the agent already changed stay as they are. These actions need the session restarted on CLI 0.2.224; if Codex on that machine is too old, the message says to update Codex.',
+            },
             nov23b: {
                 title: 'A DeepSeek account works as soon as you add it',
                 summary: 'Once you add a DeepSeek Harness account, new dsh sessions use it right away when this machine has no DeepSeek key of its own; no need to change the default first.',

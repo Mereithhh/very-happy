@@ -102,3 +102,26 @@ describe('rewindConversation (B-528)', () => {
         });
     });
 });
+
+describe('B-961 Codex', () => {
+    it('forwards the Codex item id so the wrapper finds the turn; nothing changes on screen when Codex is too old', async () => {
+        const d = deps({ rpc: vi.fn(async () => ({ ok: false, code: 'codex-outdated', error: 'This Codex version cannot rewind a conversation' })) });
+        await expect(rewindConversation('s', { ...message, codexItemId: 'item-7' }, { action: 'delete' }, d)).rejects.toMatchObject({ kind: 'outdated' });
+        expect(d.rpc).toHaveBeenCalledWith('s', { action: 'delete', sourceId: 'local-10', codexItemId: 'item-7', text: 'hello', requestId: 'req-1' });
+        expect(d.recordDrop).not.toHaveBeenCalled();
+        expect(d.send).not.toHaveBeenCalled();
+    });
+
+    it('a Codex delete hides from this prompt to the end — thread/revert dropped the later turns too (dropsLater)', async () => {
+        const d = deps({ rpc: vi.fn(async () => ({ ok: true, action: 'delete', freshConversation: false, dropsLater: true })) });
+        await rewindConversation('s', message, { action: 'delete' }, d);
+        expect(d.recordDrop).toHaveBeenCalledWith('s', { fromSeq: 10, reason: 'delete', requestId: 'req-1' });
+    });
+
+    it('retry is an edit with the same text: hide from this prompt on, send it again', async () => {
+        const d = deps();
+        await rewindConversation('s', message, { action: 'edit', text: message.text }, d);
+        expect(d.recordDrop).toHaveBeenCalledWith('s', { fromSeq: 10, reason: 'edit', requestId: 'req-1' });
+        expect(d.send).toHaveBeenCalledWith('s', 'hello');
+    });
+});

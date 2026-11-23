@@ -1,4 +1,4 @@
-import { AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_GOAL_CAPABILITY, parseCodexGoalCommand, CODEX_LIVE_PERMISSION_CAPABILITY, CODEX_STEER_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, TURN_FAILURE_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort, type TurnFailure } from '@slopus/happy-wire';
+import { AGENT_PROFILE_SESSION_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_GOAL_CAPABILITY, CODEX_REWIND_CAPABILITY, parseCodexGoalCommand, CODEX_LIVE_PERMISSION_CAPABILITY, CODEX_STEER_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, TURN_FAILURE_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort, type TurnFailure } from '@slopus/happy-wire';
 import { isSessionPeerPrompt } from '@/claude/nonUserPrompt';
 import { codexTurnFailure } from './codexTurnFailure';
 import { issueSessionMetadata } from '@/issues/sessionMetadata';
@@ -69,6 +69,7 @@ import { CODEX_IDLE_RELEASE_ENV, CodexIdleReleaseTimer, resolveCodexIdleReleaseM
 import { codexCompactCommand, codexGoalText, enqueueCodexUserText, isCodexClearText, isCodexControlText } from './codexClearCommand';
 import { runCodexCompact } from './codexCompact';
 import { describeGoalTransition, GOAL_PAUSED_ON_STOP, restoreCodexGoal, runCodexGoal, toAgentStateGoal, type CodexThreadGoal } from './codexGoal';
+import { createCodexConversationRewind, CodexTurnSourceMap, persistCodexRewindRecord } from './codexConversationRewind';
 import { steerIntoRunningTurn } from './codexSteer';
 import { runCodexSideQuestion } from './codexSideQuestion';
 import { registerSideQuestionHandler } from '@/claude/registerSideQuestionHandler';
@@ -193,6 +194,8 @@ export async function runCodex(opts: {
     metadata.capabilities = [...metadata.capabilities, TURN_FAILURE_CAPABILITY];
     // B-953: `/goal` runs through thread/goal/*; the goal is mirrored in agentState.codexGoal.
     metadata.capabilities = [...metadata.capabilities, CODEX_GOAL_CAPABILITY];
+    // B-961: conversation-rewind (thread/revert).
+    metadata.capabilities = [...metadata.capabilities, CODEX_REWIND_CAPABILITY];
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
     // B-844c: no sticky model yet (DEFAULT_CODEX_MODEL is undefined); the
@@ -316,6 +319,9 @@ export async function runCodex(opts: {
     let abortInProgress: Promise<void> | null = null;
     // True from dequeue until the turn's finally block; gates the idle release (B-461).
     let turnActive = false;
+    // B-961: which turn each web prompt started (conversation-rewind), and the hold a rewind puts on prompts.
+    const turnSources = new CodexTurnSourceMap();
+    let rewindHold: Promise<void> | null = null;
     const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
         api,
         sessionTag,
@@ -894,6 +900,40 @@ export async function runCodex(opts: {
         catch (error) { return {error:error instanceof Error ? error.message : 'Child read failed'}; }
     });
     session.rpcHandlerManager.registerHandler('abort', () => handleAbort('user'));
+    // B-961: edit / delete / retry a prompt in place (thread/revert). Advertised as codex-rewind-v1.
+    session.rpcHandlerManager.registerHandler('conversation-rewind', createCodexConversationRewind({
+        threadId: () => client.threadId,
+        isBusy: () => turnActive || goalRunning(),
+        stopTurn: () => handleAbort('user'),
+        waitIdle: async (ms) => {
+            const deadline = Date.now() + ms;
+            while (turnActive || abortInProgress || client.hasUnrequestedTurn()) {
+                if (Date.now() >= deadline) return false;
+                await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+            return true;
+        },
+        turnOfSource: (sourceId) => turnSources.of(sourceId),
+        readTurns: async () => {
+            const threadId = client.threadId;
+            if (!threadId) return [];
+            return (await client.readThread({ threadId, includeTurns: true })).thread.turns ?? [];
+        },
+        revert: (beforeTurnId) => client.revertThread(beforeTurnId),
+        dropTurnsFrom: (turnId) => turnSources.dropFrom(turnId),
+        record: (record) => persistCodexRewindRecord(session, record),
+        holdPrompts: () => {
+            idleRelease.cancel();
+            let release!: () => void;
+            const held = new Promise<void>((resolve) => { release = resolve; });
+            rewindHold = held;
+            return () => {
+                if (rewindHold === held) rewindHold = null;
+                release();
+                if (!turnActive) idleRelease.arm();
+            };
+        },
+    }));
     // B-867c: a live mode change (operator controls) — the mode the next turn runs
     // with, published like a message-meta override. Advertised as codex-live-permission-v1.
     session.rpcHandlerManager.registerHandler<{ mode?: unknown }, { mode: PermissionMode }>('set-permission-mode', async (request) => {
@@ -1451,6 +1491,7 @@ export async function runCodex(opts: {
             logActiveHandles('loop-top');
             let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[] } | null = pending;
             pending = null;
+            let turnSourceIds: string[] | undefined;
             if (!message) {
                 // Capture the current signal to distinguish idle-abort from queue close
                 const waitSignal = abortController.signal;
@@ -1466,12 +1507,15 @@ export async function runCodex(opts: {
                 }
                 message = batch;
                 heldInput.hold(batch.sourceIds);
+                turnSourceIds = batch.sourceIds;
             }
 
             // Defensive check for TS narrowing
             if (!message) {
                 break;
             }
+            // B-961: a rewind in flight decides which history this prompt joins.
+            while (rewindHold) await rewindHold;
 
             // B-913: a new prompt — the last turn's failure is over.
             turnFailure = null;
@@ -1496,6 +1540,7 @@ export async function runCodex(opts: {
                 logger.debug('[Codex] Handling /clear command - resetting Codex thread state');
                 heldInput.delivered();
                 client.clearThreadState();
+                turnSources.clear();
                 blockedResumeThreadId = null;
                 currentTurnId = null;
                 codexStartedSubagents = new Set<string>();
@@ -1657,6 +1702,7 @@ export async function runCodex(opts: {
                     logger.debug('[Codex] Session is ending; not starting the turn');
                     continue;
                 }
+                const requestedBefore = client.lastRequestedTurnId;
                 const result = await client.sendTurnAndWait(appendStagedAttachmentsToPrompt(turnPrompt, staged), {
                     images: staged.filter((file) => ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.mimeType)).map((file) => file.path),
                     model: turnModel,
@@ -1670,6 +1716,8 @@ export async function runCodex(opts: {
                 });
                 reportModeFacts();
                 first = false;
+                // B-961: the turn this batch started — before turnActive drops, so a rewind waiting on it sees it.
+                if (client.lastRequestedTurnId && client.lastRequestedTurnId !== requestedBefore) turnSources.started(client.lastRequestedTurnId, turnSourceIds);
                 if (!result.aborted) clearCrashStreak();
                 if (includeAppendSystemPrompt) {
                     appendSystemPromptInjected = true;

@@ -204,6 +204,7 @@ export class CodexAppServerClient {
     // Session state
     private _threadId: string | null = null;
     private _turnId: string | null = null;
+    private _lastRequestedTurnId: string | null = null;
     /**
      * B-844d: the model the thread really runs. Codex keeps a thread's model
      * (thread/start, thread/resume, a turn/start that named one) for every
@@ -308,6 +309,11 @@ export class CodexAppServerClient {
 
     get turnId(): string | null {
         return this._turnId;
+    }
+
+    /** B-961: the id `turn/start` returned for the newest turn this client asked for. */
+    get lastRequestedTurnId(): string | null {
+        return this._lastRequestedTurnId;
     }
 
     /** B-844d: the model the current thread runs for turns that name none (null = unknown). */
@@ -1158,6 +1164,17 @@ export class CodexAppServerClient {
         return await this.request('thread/rollback', params) as RollbackConversationResponse;
     }
 
+    /**
+     * B-961: `thread/revert` — the loaded thread's history becomes the prefix
+     * before `beforeTurnId` (that turn and every later one are gone, files are
+     * not touched). Codex without the method answers `Method not found`.
+     */
+    async revertThread(beforeTurnId: string): Promise<void> {
+        await this.ensureConnected();
+        await this.request('thread/revert', { threadId: this.requireThreadId(), beforeTurnId });
+        this._turnId = null;
+    }
+
     async injectItems(opts: {
         threadId: string;
         items: unknown[];
@@ -1541,6 +1558,7 @@ export class CodexAppServerClient {
         const turnId = result?.turn?.id;
         if (typeof turnId === 'string' && turnId.length > 0) {
             this._turnId = turnId;
+            this._lastRequestedTurnId = turnId;
             if (this.pendingTurnCompletion) {
                 this.pendingTurnCompletion.turnId = turnId;
             }

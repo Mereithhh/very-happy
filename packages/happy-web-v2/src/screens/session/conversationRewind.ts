@@ -26,7 +26,7 @@ import type { UserTextMessage } from '@/sync/typesMessage';
 export type RewindAction = 'edit' | 'delete';
 
 export class RewindFailure extends Error {
-    constructor(public readonly kind: 'unsupported' | 'unsent' | 'agent' | 'record' | 'send', message: string) {
+    constructor(public readonly kind: 'unsupported' | 'outdated' | 'unsent' | 'agent' | 'record' | 'send', message: string) {
         super(message);
         this.name = 'RewindFailure';
     }
@@ -91,7 +91,7 @@ export function deleteRange(seq: number, userSeqs: readonly number[]): { fromSeq
 
 export async function rewindConversation(
     sessionId: string,
-    message: Pick<UserTextMessage, 'seq' | 'localId' | 'text'>,
+    message: Pick<UserTextMessage, 'seq' | 'localId' | 'text'> & { codexItemId?: string },
     request: { action: 'delete' } | { action: 'edit'; text: string },
     deps: RewindDeps = defaultDeps,
 ): Promise<void> {
@@ -102,6 +102,8 @@ export async function rewindConversation(
         raw = await deps.rpc(sessionId, {
             action: request.action,
             ...(message.localId ? { sourceId: message.localId } : {}),
+            // B-961: a Codex wrapper finds the turn by it (prompts mirrored from Codex); Claude ignores it.
+            ...(message.codexItemId ? { codexItemId: message.codexItemId } : {}),
             text: message.text,
             requestId,
         });
@@ -119,9 +121,12 @@ export async function rewindConversation(
     const result = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
     if (result.ok !== true) {
         const text = typeof result.error === 'string' && result.error ? result.error : 'Rewind failed';
+        // B-961: the wrapper can rewind, the Codex it runs cannot (no thread/revert).
+        if (result.code === 'codex-outdated') throw new RewindFailure('outdated', text);
         throw new RewindFailure(UNSUPPORTED.test(text) ? 'unsupported' : 'agent', text);
     }
-    const range = request.action === 'delete' ? deleteRange(message.seq, deps.userSeqs(sessionId)) : { fromSeq: message.seq };
+    // B-961: Codex `thread/revert` drops this turn and every later one (`dropsLater`) — hide them all.
+    const range = request.action === 'delete' && result.dropsLater !== true ? deleteRange(message.seq, deps.userSeqs(sessionId)) : { fromSeq: message.seq };
     try {
         await deps.recordDrop(sessionId, { ...range, reason: request.action, requestId });
     } catch (error) {
