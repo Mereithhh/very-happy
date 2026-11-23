@@ -607,6 +607,15 @@ describe('B-962: a restore launch continues the member\'s own session in its own
             expect(String(mocks.send.mock.calls[0][2])).toContain('could not be continued');
         }
     });
+    it('after a recorded fallback (daemon restarted), the launch stays fresh: the session is not relaunched again', async () => {
+        const operation = { ...restoreOp(), status: 'claimed' as const, claimId: 'claim1' }; setup(operation);
+        originalLaunch(join(home, 'wt-again'));
+        writeReceipt(home, { operationId: 'op2', teamId: 'team1', claimId: 'claim1', phase: 'prepared', restoreFallback: 'its worktree is gone' });
+        const relaunch = vi.fn(async () => ({ type: 'success' as const, sessionId: 'session1' }));
+        const worker = start(() => false, { relaunch }); await settled(worker);
+        expect(relaunch).not.toHaveBeenCalled();
+        expect(spawn).toHaveBeenCalledTimes(1);
+    });
     it('an ordinary launch never takes the restore path', async () => {
         const operation = op(); setup(operation);
         const relaunch = vi.fn();

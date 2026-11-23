@@ -40,3 +40,11 @@ describe("B-962 restore view", () => {
     expect(Object.keys(TEAM_RESTORE_COPY.zh).sort()).toEqual(Object.keys(TEAM_RESTORE_COPY.en).sort());
   });
 });
+
+describe("B-962: the machine's restore capability survives the Web's metadata parse", () => {
+  it("MachineMetadataSchema keeps teamRestoreVersion (an unknown key would be stripped and every restore read as an old CLI)", async () => {
+    const { MachineMetadataSchema } = await import("@/sync/storageTypes");
+    const parsed = MachineMetadataSchema.parse({ host: "h", platform: "linux", happyCliVersion: "1", happyHomeDir: "/h", homeDir: "/h", teamLaunchVersion: 1, teamRestoreVersion: 1 });
+    expect(teamRestoreView(archived(), { active: true, metadata: parsed }, at)?.availability).toBe("ready");
+  });
+});
