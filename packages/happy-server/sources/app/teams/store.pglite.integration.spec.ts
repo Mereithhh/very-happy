@@ -568,6 +568,28 @@ describe('agent teams persistent transactions and scoped credentials', () => {
             const archivedRows = await db.$queryRaw<{ kind: string; count: bigint }[]>`SELECT "kind", count(*) AS count FROM "TeamArchive" WHERE "teamId"=${team.id} GROUP BY "kind" ORDER BY "kind"`;
             expect(Object.fromEntries(archivedRows.map(r => [r.kind, Number(r.count)]))).toEqual({ message: after.compacted!.messages, operation: after.compacted!.operations, task: 160 });
         });
+        it('B-959b: reads order an open task\'s merged conversation by time; an old undelivered live message is not pushed after the archive', async () => {
+            const team = await store.createTeam(accountId, { name: 'Order', machineId });
+            await act(team.id, 'join', { type: 'join', name: 'Lead', sessionId });
+            const { state: stored } = await store.teamStoreTesting.load(db as any, team.id, accountId);
+            const lead = stored.bots[0];
+            const old = Date.now() - 3 * 24 * 60 * 60 * 1000;
+            const root = { id: 'root', parentTaskId: null, goal: 'Run the project', acceptance: ['a'], goalVersion: 1, ownerBotId: null, assigneeBotId: lead.id, status: 'running', attempts: [{ id: 'ra', botId: lead.id, generation: lead.generation, goalVersion: 1, status: 'running', result: null }], currentAttemptId: 'ra', cleanup: 'none' };
+            await db.$executeRaw`UPDATE "AgentTeam" SET "state"=${JSON.stringify({ ...stored, messages: undefined, operations: undefined, projectId: undefined, tasks: [root] })}::jsonb WHERE "id"=${team.id}`;
+            const ids = Array.from({ length: 80 }, (_, i) => `o${String(i).padStart(4, '0')}`);
+            const rows = ids.map((id, i) => ({ id, taskId: 'root', senderBotId: null, recipientBotId: lead.id, body: 'b', deliveredAt: old + i * 10, createdAt: old + i * 10 }));
+            rows.push({ id: 'ou0010', taskId: 'root', senderBotId: null, recipientBotId: lead.id, body: 'b', deliveredAt: null as any, createdAt: old + 105 });
+            for (const m of rows) await db.$executeRaw`INSERT INTO "TeamMessage" ("id","teamId","state") VALUES (${m.id},${team.id},${JSON.stringify(m)}::jsonb)`;
+            const after = (await act(team.id, 'order-write', { type: 'message', taskId: 'root', body: 'new' })).team;
+            const archived = await db.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM "TeamArchive" WHERE "teamId"=${team.id} AND "kind"='message'`;
+            expect(Number(archived[0].count)).toBe(30); // o0000..o0029; ou0010 stays live (undelivered)
+            const expected = [...ids.slice(0, 11), 'ou0010', ...ids.slice(11)];
+            const rootIds = (t: { messages: { id: string; taskId: string | null }[] }) => t.messages.filter(m => m.taskId === 'root').map(m => m.id);
+            for (const read of [after, await store.readTeam(team.id, { accountId }), (await store.listTeams(accountId)).find(t => t.id === team.id)!]) {
+                expect(rootIds(read).slice(0, 81)).toEqual(expected);
+                expect(rootIds(read)).toHaveLength(82);
+            }
+        });
         it('B-959: a team over 2 MB of open-task messages writes, archives all but the newest 50 per task, and reads still show them', async () => {
             const team = await store.createTeam(accountId, { name: 'Open incident', machineId });
             const joined = await act(team.id, 'join', { type: 'join', name: 'Lead', sessionId });
