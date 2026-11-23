@@ -1224,7 +1224,7 @@ export const zhHans: TranslationStructure = {
                 budgetLimited: '目标已停止：token 预算用完',
                 complete: '目标已完成',
             },
-            goalTokens: ({ usage }: { usage: string }) => `${usage} tokens`,
+            goalTokens: ({ usage }: { usage: string }) => `累计 ${usage} tokens`,
             goalPause: '暂停',
             goalResume: '继续',
             goalClear: '清除',
@@ -3666,6 +3666,7 @@ export const zhHans: TranslationStructure = {
                 codex: 'Codex 会话输入框下面显示当前占用的 token 和 Codex 报的窗口大小。压缩后会下降，刷新页面或恢复会话后仍在。',
                 subagents: '子代理详情里显示它自己的「上下文 已用 / 窗口」，Claude 和 Codex 都有，取代原来没有说明的 token 数。',
                 restart: '需要会话在 CLI 0.2.225 上重启。重启前，Codex 会话不显示数字，Claude 子代理仍显示原来的数。在 Codex 会话里撤回消息后，数字会留空，下一次回复后更新。',
+                fixes: 'Claude 会话执行 /context 这类本地命令后，上下文读数不再变成 0。Codex 目标横幅上的 token 数标明是「累计」，不是上下文占用。',
             },
             nov23c: {
                 title: 'Codex 会话也能编辑、删除、重试消息',

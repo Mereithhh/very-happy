@@ -1640,6 +1640,10 @@ function allocateId() {
 }
 
 function processUsageData(state: ReducerState, usage: UsageData, point: UsagePoint, model?: string) {
+    // B-963: a line the model never answered (a local command such as
+    // `/context`) carries an all-zero usage: not a measurement. Clear and
+    // compaction empty the meter through their events (resetUsageAt).
+    if (!usage.input_tokens && !usage.output_tokens && !usage.cache_creation_input_tokens && !usage.cache_read_input_tokens) return;
     // Only update if this is newer than the current latest usage and than the
     // latest reset/compaction (B-937: history pages arrive newest first).
     if (state.usageResetAt && !isLaterPoint(point, state.usageResetAt)) {

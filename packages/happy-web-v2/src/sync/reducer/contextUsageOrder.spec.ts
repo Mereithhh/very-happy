@@ -27,6 +27,36 @@ function event(id: string, seq: number, createdAt: number, message: 'Compaction 
     return { id, localId: null, createdAt, seq, role: 'event', isSidechain: false, content: { type: 'message', message } };
 }
 
+describe('B-963：全 0 的 usage 不是一次测量', () => {
+    const zero = (id: string, seq: number, createdAt: number) =>
+        assistant(id, seq, createdAt, 0, { usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }, model: '<synthetic>' });
+
+    it('/context 之后的全 0 用量不清掉读数和模型，下一条真实用量照常更新', () => {
+        const state = createReducer();
+        reducer(state, [assistant('a1', 10, 1000, 26_224), zero('z1', 20, 2000)]);
+        expect(state.latestUsage).toMatchObject({ contextSize: 26_224, model: MODEL });
+        reducer(state, [assistant('a2', 30, 3000, 27_000)]);
+        expect(state.latestUsage?.contextSize).toBe(27_000);
+    });
+
+    for (const kind of ['Compaction completed', 'Context was reset'] as const) {
+        it(`「${kind}」照常归零，其后的全 0 用量不改变它，也不让更早的用量顶回来`, () => {
+            const state = createReducer();
+            reducer(state, [assistant('a1', 10, 1000, 900_000)]);
+            reducer(state, [event('c1', 20, 2000, kind)]);
+            expect(state.latestUsage?.contextSize).toBe(0);
+            reducer(state, [zero('z1', 30, 3000), assistant('a0', 5, 500, 800_000)]);
+            expect(state.latestUsage).toMatchObject({ contextSize: 0, model: MODEL });
+        });
+    }
+
+    it('只有部分字段为 0 的用量仍然算数', () => {
+        const state = createReducer();
+        reducer(state, [assistant('a1', 10, 1000, 50_000), assistant('a2', 20, 2000, 0, { usage: { input_tokens: 0, output_tokens: 3 } })]);
+        expect(state.latestUsage?.contextSize).toBe(0);
+    });
+});
+
 describe('B-937：上下文用量不被更早的事件或消息覆盖', () => {
     for (const kind of ['Compaction completed', 'Context was reset'] as const) {
         it(`乱序批次：新页先到，旧页里的「${kind}」后到，不把最新用量清零`, () => {

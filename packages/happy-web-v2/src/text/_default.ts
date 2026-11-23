@@ -1016,7 +1016,7 @@ export const en = {
                 budgetLimited: 'Goal stopped: token budget reached',
                 complete: 'Goal complete',
             },
-            goalTokens: ({ usage }: { usage: string }) => `${usage} tokens`,
+            goalTokens: ({ usage }: { usage: string }) => `${usage} tokens in total`,
             goalPause: 'Pause',
             goalResume: 'Resume',
             goalClear: 'Clear',
@@ -3508,6 +3508,7 @@ export const en = {
                 codex: 'The meter under the composer in a Codex session shows the tokens in context now against the window Codex reports. It drops after a compaction and is still there after a reload or resume.',
                 subagents: 'A sub-agent’s details show “Context used / window” for that sub-agent alone, for Claude and Codex. It replaces the unlabeled token count.',
                 restart: 'Both need the session restarted on CLI 0.2.225. Until then Codex sessions show no figure, and Claude sub-agents keep the old count. Right after you rewind a Codex conversation the figure is blank until the next reply.',
+                fixes: 'In Claude sessions the meter no longer drops to 0 after a local command such as /context. The token count on a Codex goal now says it is a total, not context.',
             },
             nov23c: {
                 title: 'Edit, delete and retry messages in Codex sessions',
