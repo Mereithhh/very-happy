@@ -14,6 +14,7 @@ import {
     accountsForAgent,
     agentHasAccounts,
     machineHasAgentAccounts,
+    machineLoginFallback,
     readMachineAgentProfiles,
     projectSpawnAccount,
     resolveSpawnAccount,
@@ -64,7 +65,11 @@ export function spawnDefaultOptionLabel(state: AgentProfilesState, agent: string
         return t('accounts.projectDefault', { label: account?.label ?? snapshot ?? fromProject.id });
     }
     const id = state.defaults[agent];
-    if (!id) return t('accounts.draftDefaultMachineLogin');
+    if (!id) {
+        // B-960: the machine login has no key here, so the daemon starts it on this account.
+        const fallback = machineLoginFallback(state, agent);
+        return fallback ? t('accounts.draftDefaultFallback', { label: fallback.label }) : t('accounts.draftDefaultMachineLogin');
+    }
     const account = state.accounts.find((a) => a.id === id && a.agent === agent);
     return t('accounts.draftDefault', { label: account?.label ?? '?' });
 }

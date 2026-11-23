@@ -35,6 +35,7 @@ import { daemonEndpointsMatch } from './ui/doctorReadiness'
 import { missingPiPrerequisites, parsePiRunnerArgs, piAdapterMissingHint, piSetupMessage } from '@/agent/acp/piRunnerArgs'
 import { commandOnPath, nodeVersionOnPath } from '@/utils/detectCLI'
 import { dshFailureHint, dshPrerequisiteProblem, dshSetupMessage } from '@/agent/acp/dshRunner'
+import { dshHintContext } from '@/agentProfiles/dshAccount'
 import { CLAUDE_OPTIONS_HELP, DAEMON_STOP_HELP } from './commands/helpFacts'
 import { errorReason, installExitReasonFallback, recordExitReason } from './utils/exitReason'
 import { exitAfterFlush } from './utils/exitAfterFlush'
@@ -491,7 +492,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
     // same argv shape as `very-happy pi` so the daemon spawns it like any backend.
     let hintPrinted = false;
     const printHint = (detail: string | undefined) => {
-      const hint = dshFailureHint(detail);
+      const hint = dshFailureHint(detail, /no API key|MISSING_CREDENTIAL/i.test(detail ?? '') ? dshHintContext(configuration.happyHomeDir, { profile: null }) : {});
       if (hint && !hintPrinted) {
         hintPrinted = true;
         console.error(chalk.yellow(hint));

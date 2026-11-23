@@ -1484,13 +1484,16 @@ it('keeps the session usable after cancelling an in-flight turn', async () => {
     }
   });
 
-  it('B-952: a dsh turn that fails for a missing key says how to add one', async () => {
+  it('B-952/B-960: a dsh turn that fails for a missing key says how to fix it, once (the failed turn-end reason only)', async () => {
     mocks.backendState.sendPromptScript = async () => { throw Object.assign(new Error('Internal error: turn failed: llm-deepseek: no API key for provider route "deepseek-official"'), { code: -32603 }); };
     const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'dsh', command: 'dsh', args: ['--profile', 'acp'] });
     try {
       await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
       mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'hi' } });
-      await vi.waitFor(() => expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: expect.stringContaining('Add a DeepSeek account under Settings') }));
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.some(([m]) => m.ev.t === 'turn-end' && m.ev.status === 'failed' && String(m.ev.error).includes('Add a DeepSeek account under Settings'))).toBe(true));
+      // Not dsh's words + the fix + dsh's words again (B-960): no separate service lines.
+      const lines = mocks.mockSession.sendSessionEvent.mock.calls.map((call: unknown[]) => (call[0] as { message?: string }).message ?? '');
+      expect(lines.filter((m: string) => /no API key/.test(m))).toEqual([]);
     } finally {
       mocks.backendState.sendPromptScript = null;
       await mocks.getKillHandler()!();

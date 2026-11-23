@@ -18,6 +18,7 @@ import {
     AGENT_PROFILE_FEATURE_LAUNCH,
     AgentProfileSummarySchema,
     readSessionAgentProfile as readWireSessionAgentProfile,
+    machineLoginFallbackAccount,
     resolveLaunchAgentProfile,
     type AgentProfileSummary,
     type ProjectAgentProfile,
@@ -59,6 +60,8 @@ const AgentProfilesStateSchema = z.object({
     codexProviders: z.array(z.unknown()).optional(),
     /** B-850d: what else the daemon honours ('launch-accounts'). */
     features: z.array(z.unknown()).optional(),
+    /** B-960: agent → the machine login has a key (boolean only). */
+    machineLoginKey: z.record(z.string(), z.unknown()).optional(),
 });
 
 export interface AgentProfilesState {
@@ -72,6 +75,8 @@ export interface AgentProfilesState {
     codexProviders: CodexProviderOption[];
     /** B-850d: e.g. 'launch-accounts'; empty on a B-850a/b daemon. */
     features: string[];
+    /** B-960: agent → does the machine login have a key? Absent agent / older daemon = unknown. */
+    machineLoginKey: Record<string, boolean>;
 }
 
 const V1_KINDS = ['claude-subscription', 'claude-api'];
@@ -104,7 +109,9 @@ export function parseAgentProfilesState(raw: unknown): AgentProfilesState | null
     // B-850a daemon: Claude only, so its Codex section stays 「本机登录 · 升级 CLI」.
     const kinds = parsed.data.kinds ?? V1_KINDS;
     const features = (parsed.data.features ?? []).filter((f): f is string => typeof f === 'string');
-    return { daemonPid: parsed.data.daemonPid, updatedAt: parsed.data.updatedAt, accounts, defaults, kinds, codexProviders, features };
+    const machineLoginKey: Record<string, boolean> = {};
+    for (const [agent, has] of Object.entries(parsed.data.machineLoginKey ?? {})) if (typeof has === 'boolean') machineLoginKey[agent] = has;
+    return { daemonPid: parsed.data.daemonPid, updatedAt: parsed.data.updatedAt, accounts, defaults, kinds, codexProviders, features, machineLoginKey };
 }
 
 /**
@@ -243,7 +250,7 @@ export type SpawnAccountResolution =
     /** old CLI / agent without accounts: send nothing, the machine login runs */
     | { kind: 'unsupported' }
     | { kind: 'machine'; explicit: boolean; fromProject?: true }
-    | { kind: 'account'; account: AgentProfileSummary; status: AccountDisplayStatus; fromDefault: boolean; fromProject?: true }
+    | { kind: 'account'; account: AgentProfileSummary; status: AccountDisplayStatus; fromDefault: boolean; fromProject?: true; /** B-960: the machine login has no key, so the daemon uses this account. */ fromFallback?: true }
     /** Q3: stop before creating — the user must pick another. */
     | { kind: 'blocked'; reason: 'missing' | 'expired' | 'invalid' | 'missing-secret'; label: string | null; fromDefault: boolean; fromProject?: true };
 
@@ -293,12 +300,27 @@ export function resolveSpawnAccount(state: AgentProfilesState | null, agent: str
     if (choice === null) return { kind: 'machine', explicit: true };
     const fromDefault = choice === undefined;
     const id = fromDefault ? state.defaults[agent] : choice;
-    if (!id) return { kind: 'machine', explicit: false };
+    if (!id) {
+        // B-960: same rule as the daemon (an unchosen spawn, machine login without a key).
+        const fallback = machineLoginFallback(state, agent);
+        if (fallback) return { kind: 'account', account: fallback, status: accountDisplayStatus(fallback, now), fromDefault: true, fromFallback: true };
+        return { kind: 'machine', explicit: false };
+    }
     const account = state.accounts.find((a) => a.id === id && a.agent === agent);
     if (!account) return { kind: 'blocked', reason: 'missing', label: null, fromDefault };
     const status = accountDisplayStatus(account, now);
     if (!accountUsable(status)) return { kind: 'blocked', reason: status as 'expired' | 'invalid' | 'missing-secret', label: account.label, fromDefault };
     return { kind: 'account', account, status, fromDefault };
+}
+
+/**
+ * B-960: the account an unchosen new session starts on because the machine
+ * login has no key (default = machine login), or null. Only a daemon that
+ * reports `machineLoginKey` can say so; an older one keeps the old display.
+ */
+export function machineLoginFallback(state: AgentProfilesState, agent: string): AgentProfileSummary | null {
+    const id = machineLoginFallbackAccount(state, agent);
+    return id ? state.accounts.find((a) => a.id === id) ?? null : null;
 }
 
 /**

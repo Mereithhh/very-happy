@@ -24,6 +24,7 @@ import {
     accountStatusTone,
     accountsForAgent,
     machineHasAgentAccounts,
+    machineLoginFallback,
     machineTakesDshBaseUrl,
     readMachineAgentProfiles,
     type AgentProfileSummary,
@@ -33,6 +34,8 @@ import { agentProfileList, agentProfileRemove, agentProfileRename, agentProfileS
 import { accountDetailText, accountErrorText, accountKindText, accountStatusText, accountTestFailureText } from './accountText';
 import { AddAccountDialog } from './AddAccountDialog';
 import './accounts.css';
+
+type T = ReturnType<typeof useTranslation>['t'];
 
 const AGENT_TITLES: Record<string, string> = { claude: 'Claude', codex: 'Codex', dsh: 'DeepSeek Harness' };
 const MACHINE_LOGIN = '__machine__';
@@ -140,6 +143,9 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
             if (!machineHasAgentAccounts(state, agent)) return agent === 'dsh' ? null : upgradeGroup(agent);
             const accounts = accountsForAgent(state, agent);
             const defaultId = state.defaults[agent] ?? null;
+            // B-960: the daemon says the machine login has no key (dsh) — say what new sessions use.
+            const fallback = !defaultId ? machineLoginFallback(state, agent) : null;
+            const machineLoginSubtitle = machineLoginSubtitleText(state, agent, fallback, t);
             const defaultOptions = [
                 { value: MACHINE_LOGIN, label: t('accounts.machineLogin') },
                 ...accounts.map((a) => ({ value: a.id, label: a.label, meta: accountKindText(a.kind, t) })),
@@ -154,8 +160,8 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
                         options={defaultOptions} />
                 } />
                 <Item title={<span className="acc-title">{t('accounts.machineLogin')}{!defaultId && <span className="acc-tag">{t('accounts.defaultBadge')}</span>}</span>}
-                    subtitle={agent === 'codex' ? t('accounts.machineLoginSubtitleCodex') : agent === 'dsh' ? t('accounts.machineLoginSubtitleDsh') : t('accounts.machineLoginSubtitle')} />
-                {accounts.map((account) => <AccountRow key={account.id} account={withLegacyTest(account, legacyTests[account.id])} isDefault={defaultId === account.id} now={now}
+                    subtitle={machineLoginSubtitle} />
+                {accounts.map((account) => <AccountRow key={account.id} account={withLegacyTest(account, legacyTests[account.id])} isDefault={defaultId === account.id} isFallback={fallback?.id === account.id} now={now}
                     online={online} busy={busy} onTest={test} onRename={rename} onRemove={remove}
                     onSetDefault={(a) => void setDefault(agent, a.id)} onRelogin={(a) => setRelogin({ accountId: a.id, label: a.label, kind: a.kind, agent })} />)}
                 <Item title={<span className="acc-add" data-testid={`account-add-${agent}`}><Plus size={15} aria-hidden="true" />{t('accounts.add')}</span>} disabled={!online} onClick={() => setAdding(agent)} />
@@ -167,15 +173,29 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
     </>;
 }
 
+/**
+ * B-960: the 「本机登录」 row's subtitle. A daemon reporting that the machine
+ * login has no key (dsh) says which account new sessions use instead, or that
+ * one is needed; otherwise (has a key / older daemon) where the login comes from.
+ */
+export function machineLoginSubtitleText(state: AgentProfilesState, agent: string, fallback: AgentProfileSummary | null, t: T): string {
+    if (agent === 'dsh' && state.machineLoginKey.dsh === false) {
+        return fallback ? t('accounts.machineLoginNoKeyFallback', { label: fallback.label }) : t('accounts.machineLoginNoKeyAdd');
+    }
+    return agent === 'codex' ? t('accounts.machineLoginSubtitleCodex') : agent === 'dsh' ? t('accounts.machineLoginSubtitleDsh') : t('accounts.machineLoginSubtitle');
+}
+
 /** Pure: a legacy account shows its last test result (the daemon keeps it 'unverified'). */
 export function withLegacyTest(account: AgentProfileSummary, tested: AgentProfileSummary | undefined): AgentProfileSummary {
     if (!account.legacy || !tested) return account;
     return { ...account, status: tested.status, statusDetail: tested.statusDetail, checkedAt: tested.checkedAt };
 }
 
-function AccountRow({ account, isDefault, now, online, busy, onTest, onRename, onRemove, onSetDefault, onRelogin }: {
+function AccountRow({ account, isDefault, isFallback, now, online, busy, onTest, onRename, onRemove, onSetDefault, onRelogin }: {
     account: AgentProfileSummary;
     isDefault: boolean;
+    /** B-960: new sessions use it because the machine login has no key. */
+    isFallback?: boolean;
     now: number;
     online: boolean;
     busy: string | null;
@@ -204,6 +224,7 @@ function AccountRow({ account, isDefault, now, online, busy, onTest, onRename, o
             <span className="acc-name">{account.label}</span>
             <span className="acc-tag">{accountKindText(account.kind, t)}</span>
             {isDefault && <span className="acc-tag">{t('accounts.defaultBadge')}</span>}
+            {isFallback && <span className="acc-tag" data-testid="account-fallback-badge">{t('accounts.fallbackBadge')}</span>}
         </span>}
         subtitle={<Badge tone={accountAddressFailed(account) ? 'err' : accountStatusTone(status)} data-testid="account-status">{accountStatusText(status, account, t, now)}</Badge>}
         detail={detail || undefined}

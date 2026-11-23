@@ -9,7 +9,7 @@ import { summarizeCompactionTurn, type CompactionSummary } from './compaction';
 import { turnDiffSummary, type TurnDiff } from './turnDiffs';
 import { continueOfferStopId, isUserStopEvent } from './continueOffer';
 import { userAbortedAt } from './subagentAbort';
-import { parseGoalNotice } from './goalNotice';
+import { parseDshKeyHint, parseGoalNotice } from './goalNotice';
 import { LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_INTERRUPTED_EVENT_KIND, LONG_CONTEXT_REFUSED_EVENT_KIND } from '@slopus/happy-wire';
 
 export type LeafRow =
@@ -204,6 +204,8 @@ function isPinnedNotice(message: Message): boolean {
 function isTurnFailure(message: Message): boolean {
     if (message.kind !== 'agent-event' || message.event.type !== 'message') return false;
     if (message.event.kind && ACCOUNT_ACTION_EVENT_KINDS.has(message.event.kind)) return true;
+    // B-960: the dsh "no key" hint is the failed turn's one line.
+    if (message.event.kind === undefined && parseDshKeyHint(message.event.message)) return true;
     const kind = presentServiceEvent(message.event.message).kind;
     // B-901: the crash-loop card carries the only way out — never folded away.
     return kind === 'error' || kind === 'agent-error' || kind === 'claude-auth' || kind === 'codex-crash-loop';

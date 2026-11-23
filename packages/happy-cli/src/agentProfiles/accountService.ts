@@ -17,9 +17,10 @@ import {
     type AgentProfileLoginStatus,
     type AgentProfileSummary,
     type AgentProfilesState,
+    pickMachineLoginFallback,
 } from '@slopus/happy-wire';
 import { checkApiAccount, checkDshAccount, checkSubscriptionAccount } from './checkAccount';
-import { dshBaseUrlProblem } from './dshAccount';
+import { dshBaseUrlProblem, dshMachineLoginHasKey } from './dshAccount';
 import { SetupTokenLoginManager, type SpawnPty } from './setupTokenLogin';
 import { baseCodexHome, readCodexProviders } from './codexConfig';
 import { syncCodexOverlay } from './codexHome';
@@ -94,6 +95,8 @@ export type AccountServiceDeps = {
     onChanged?: () => void;
     /** B-850b: the agent a session runs (from its tracked flavor); unknown → no check. */
     sessionAgent?: (sessionId: string) => string | null | undefined;
+    /** B-960: test seam — does dsh's machine login have a key here (boolean only)? */
+    dshMachineKey?: () => boolean;
     /** Test seam for the 1-token checks. */
     check?: (record: AccountRecord, secret: string) => Promise<AccountCheck>;
 };
@@ -122,8 +125,13 @@ export class AccountService {
         const codexProviders = readCodexProviders(this.env).map((p) => ({ id: p.id, ...(p.name ? { name: p.name } : {}), ...(p.baseUrl ? { baseUrl: p.baseUrl } : {}), ...(p.envKey ? { envKey: p.envKey } : {}) }));
         // B-850d: project / team / automation / fork accounts are honoured (and refuse when unusable).
         // B-957: a dsh-api account keeps an optional baseUrl.
-        const withFeatures = { ...state, features: [AGENT_PROFILE_FEATURE_LAUNCH, AGENT_PROFILE_FEATURE_DSH_BASE_URL] };
+        // B-960: whether dsh's machine login has a key — a boolean, never the value.
+        const withFeatures = { ...state, features: [AGENT_PROFILE_FEATURE_LAUNCH, AGENT_PROFILE_FEATURE_DSH_BASE_URL], machineLoginKey: { dsh: this.dshMachineKey() } };
         return codexProviders.length > 0 ? { ...withFeatures, codexProviders } : withFeatures;
+    }
+
+    private dshMachineKey(): boolean {
+        return this.deps.dshMachineKey ? this.deps.dshMachineKey() : dshMachineLoginHasKey(this.env);
     }
 
     private summary(id: string): AgentProfileSummary {
@@ -183,7 +191,10 @@ export class AccountService {
             ...(Object.keys(contextWindows).length > 0 ? { contextWindows } : {}),
         };
         if (req.key.source === 'paste') writeAccountSecret(this.home, id, req.key.value);
+        // B-960: the first DeepSeek account on a machine whose own login has no key becomes the default.
+        const firstDsh = req.agent === 'dsh' && !file.defaults.dsh && !Object.values(readAccounts(this.home).accounts).some((a) => a.agent === 'dsh');
         file.accounts[id] = record;
+        if (firstDsh && !this.dshMachineKey()) file.defaults.dsh = id;
         writeAccountsFile(this.home, file);
         this.changed();
         return this.test(id);
@@ -570,7 +581,9 @@ export class AccountService {
 
     /**
      * Spawn-time choice → the account a NEW session starts on.
-     *   undefined → the machine default for this agent (none = machine login)
+     *   undefined → the machine default for this agent (none = machine login);
+     *               B-960: for dsh, a machine login without a key → a usable
+     *               account instead (pickMachineLoginFallback), else machine login
      *   null      → machine login
      *   id        → that account; must exist and be usable (Q3: never fall back)
      */
@@ -579,7 +592,13 @@ export class AccountService {
             throw new AccountError('invalid-params', 'agentProfileId must be a string or null');
         }
         const file = readAccounts(this.home);
-        const id = requested === undefined ? file.defaults[agent] ?? null : requested;
+        let id = requested === undefined ? file.defaults[agent] ?? null : requested;
+        if (requested === undefined && !id && agent === 'dsh' && !this.dshMachineKey()) {
+            // Only unchosen spawns: an explicit machine login (null) stays the machine login.
+            const probe = defaultSecretProbe(this.env);
+            const summaries = Object.entries(file.accounts).map(([accountId, record]) => summarizeAccount(this.home, accountId, record, probe, this.now()));
+            id = pickMachineLoginFallback(summaries, agent);
+        }
         if (id === null || id === '') return null;
         const record = file.accounts[id];
         if (!record) throw new AccountError('agent-profile-unavailable', `agent-profile-unavailable:missing: no account "${id}" on this machine`);

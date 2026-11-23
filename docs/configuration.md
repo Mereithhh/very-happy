@@ -366,6 +366,17 @@ environment, or add a DeepSeek account under Settings → Models & accounts — 
 key is kept 0600 under `$HAPPY_HOME_DIR/accounts/` and handed only to the dsh
 process of sessions bound to that account. dsh needs Node.js 24.9 or newer.
 
+**No key on the machine (CLI 0.2.223+).** The daemon reports whether dsh's own
+login has a key — `DEEPSEEK_API_KEY` in its environment, or a key dsh saved in
+`$DSH_HOME/.credentials.yaml` / `$DSH_HOME/.env` (default `~/.dsh`) — as a
+yes/no only, never the value. When it has none and this machine's DeepSeek
+default is still the machine login, a new session that names no account starts
+on a DeepSeek account instead: a usable one, preferring one whose last test
+passed, then the most recently added. Settings → Models & accounts and the
+new-session account picker say which. Choosing 「this machine's login」
+explicitly still uses it (and shows the missing-key hint). The first DeepSeek
+account added on such a machine also becomes its default.
+
 **Base URL (gateway).** A DeepSeek account can also name an optional Base URL
 (B-957, CLI 0.2.222+): a gateway with an Anthropic Messages compatible API,
 for example your company's model gateway, used with a key that gateway issued.

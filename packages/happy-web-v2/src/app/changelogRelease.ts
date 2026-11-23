@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-23-dsh-account-without-machine-key',
+    cliVersion: '0.2.223',
+    date: '2026-11-23',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov23b.title',
+    summaryKey: 'changelog.releases.nov23b.summary',
+    itemKeys: ['changelog.releases.nov23b.fallback', 'changelog.releases.nov23b.error'],
+  },
+  {
     id: '2026-11-23-dsh-account-base-url',
     cliVersion: '0.2.222',
     date: '2026-11-23',

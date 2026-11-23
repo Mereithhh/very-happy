@@ -1,5 +1,5 @@
 import { VERY_HAPPY_DISCOVERY } from '@/skill/discovery';
-import { loadDshWrapperAccount, MACHINE_DSH_ACCOUNT, type DshWrapperAccount } from '@/agentProfiles/dshAccount';
+import { dshHintContext, loadDshWrapperAccount, MACHINE_DSH_ACCOUNT, type DshWrapperAccount } from '@/agentProfiles/dshAccount';
 import { SPAWN_ACCOUNT_ENV } from '@/agentProfiles/store';
 import { DSH_SESSION_NOTICE, dshAutoApproves, dshFailureHint } from './dshRunner';
 import { isSessionPeerPrompt } from '@/claude/nonUserPrompt';
@@ -1578,16 +1578,15 @@ export async function runAcp(opts: {
         // B-629: a failed turn is this turn's failure, not the session's (Orca: a rejected
         // send). Say what the agent said; keep the session; the next message runs anew.
         const failure = describeAcpTurnFailure(opts.agentName, error);
-        session.sendSessionEvent({ type: 'message', message: failure.message });
         // B-952: a missing / rejected DeepSeek key gets the fix, not only dsh's words.
-        if (opts.agentName === 'dsh') {
-          const hint = dshFailureHint(failure.message);
-          if (hint) session.sendSessionEvent({ type: 'message', message: hint });
-        }
+        // B-960: and only the fix — one line (the failed turn-end's reason), not
+        // dsh's words + the fix + dsh's words again; the raw error goes to the log.
+        const hint = opts.agentName === 'dsh' ? dshFailureHint(failure.message, dshHintContext(configuration.happyHomeDir, dshAccount)) : null;
+        if (!hint) session.sendSessionEvent({ type: 'message', message: failure.message });
         // B-854: failed before the prompt reached the agent (restart, mode / model
         // switch, prompt building): 「未执行」 with put-back under the error line.
         heldInput.drop('failed');
-        sendEnvelopes(sessionManager.endTurn('failed', failure.error));
+        sendEnvelopes(sessionManager.endTurn('failed', hint ?? failure.error));
         streamRelay.endTurn();
         setThinking(false);
         session.sendSessionEvent({ type: 'ready' });

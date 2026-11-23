@@ -112,3 +112,36 @@ export const DSH_SESSION_NOTICE = 'DeepSeek Harness session: replies appear one 
 export function isDshSessionNotice(message: string): boolean {
     return message.trim() === DSH_SESSION_NOTICE;
 }
+
+/**
+ * B-960: the dsh wrapper's "no API key" hint (dshRunner.ts dshMissingKeyHint,
+ * CLI 0.2.223), plus the B-952 line of older CLIs. `label` = the DeepSeek
+ * account on that machine the user can switch to; null = none (add one).
+ */
+export type DshKeyHint = { label: string | null };
+const DSH_NO_KEY_ADD = [
+    'DeepSeek Harness has no API key on this machine. Add a DeepSeek account under Settings → Models & accounts, or set DEEPSEEK_API_KEY in the daemon\'s environment.',
+    'DeepSeek Harness has no API key. Add a DeepSeek account under Settings → Models & accounts on this machine, or set DEEPSEEK_API_KEY in the daemon\'s environment.',
+];
+const DSH_NO_KEY_USE = /^DeepSeek Harness has no API key: this session runs on the machine login, which has no DeepSeek key on this machine\. Set this machine's DeepSeek default to "(.+)" under Settings → Models & accounts, or pick it when starting a session\.$/;
+
+export function parseDshKeyHint(message: string): DshKeyHint | null {
+    const text = message.trim();
+    if (DSH_NO_KEY_ADD.includes(text)) return { label: null };
+    const use = DSH_NO_KEY_USE.exec(text);
+    return use ? { label: use[1] } : null;
+}
+
+/**
+ * B-960: dsh's own "no key" words (`dsh error: … llm-deepseek: no API key …`
+ * and the failed turn's bare reason). Every CLI that sends them also sends
+ * the hint above, so the web shows the hint only: one line, not three.
+ */
+const DSH_RAW_NO_KEY = /llm-deepseek: no API key for provider route|\bMISSING_CREDENTIAL\b/;
+export function isDshRawNoKeyLine(message: string): boolean {
+    return DSH_RAW_NO_KEY.test(message) && parseDshKeyHint(message) === null;
+}
+
+export function dshKeyHintText(hint: DshKeyHint, t: Translate): string {
+    return hint.label ? t('session.chat.dshNoKeyUseAccount', { label: hint.label }) : t('session.chat.dshNoKeyAddAccount');
+}

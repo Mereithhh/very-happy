@@ -14,10 +14,12 @@
  * daemon's env, or dsh's own credentials store).
  */
 import { readFileSync } from 'node:fs';
-import type { SessionAgentProfile } from '@slopus/happy-wire';
-import { DSH_API_KEY_ENV, DSH_BASE_URL_ENV } from '@/agent/acp/dshRunner';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { pickMachineLoginFallback, type SessionAgentProfile } from '@slopus/happy-wire';
+import { DSH_API_KEY_ENV, DSH_BASE_URL_ENV, type DshHintContext } from '@/agent/acp/dshRunner';
 import { shouldRecordSpawnAccount, unavailableNotice } from './wrapperAccount';
-import { accountSecretPath, expandHome, readAccounts, readSessionBindings, writeSessionBinding, type AccountsFile, type SessionAccountsFile } from './store';
+import { accountSecretPath, defaultSecretProbe, expandHome, readAccounts, summarizeAccount, readSessionBindings, writeSessionBinding, type AccountsFile, type SessionAccountsFile } from './store';
 
 export type DshAccountResolution =
     | { kind: 'machine' }
@@ -106,4 +108,44 @@ export function dshBaseUrlProblem(url: string): string | null {
     if (parsed.username || parsed.password) return 'baseUrl must not contain credentials';
     if (parsed.search || parsed.hash) return 'baseUrl must not contain a query or fragment';
     return null;
+}
+
+/**
+ * B-960: does dsh's own (machine) login have a DeepSeek key here? A boolean
+ * only — the value is never returned, logged or sent. dsh (0.2.2) resolves
+ * DEEPSEEK_API_KEY from, in order: `<harness home>/.credentials.yaml`
+ * (`refs.DEEPSEEK_API_KEY`, or the pre-`version` flat form), the launching
+ * environment, `./.env`, `<harness home>/.env`; harness home = $DSH_HOME, else
+ * ~/.dsh. `./.env` depends on the session's directory and is not counted.
+ */
+export function dshMachineLoginHasKey(env: Record<string, string | undefined>, readFile: (path: string) => string | null = readTextOrNull): boolean {
+    if (env[DSH_API_KEY_ENV]?.trim()) return true;
+    const dshHome = env.DSH_HOME?.trim() || join(env.HOME || homedir(), '.dsh');
+    const credentials = readFile(join(dshHome, '.credentials.yaml'));
+    if (credentials && /^\s*DEEPSEEK_API_KEY:[ \t]*\S/m.test(credentials)) return true;
+    const dotenv = readFile(join(dshHome, '.env'));
+    if (dotenv && /^\s*(?:export\s+)?DEEPSEEK_API_KEY[ \t]*=[ \t]*["']?[^\s"'#]/m.test(dotenv)) return true;
+    return false;
+}
+
+function readTextOrNull(path: string): string | null {
+    try { return readFileSync(path, 'utf8'); } catch { return null; }
+}
+
+/**
+ * B-960: for dsh's "no API key" — the account the user could switch this
+ * machine-login session to (same rule as the daemon's fallback), so the hint
+ * names it instead of asking to add one. A session on an account: nothing.
+ */
+export function dshHintContext(happyHome: string, account: Pick<DshWrapperAccount, 'profile'>, env: NodeJS.ProcessEnv = process.env, now = Date.now()): DshHintContext {
+    if (account.profile) return {};
+    try {
+        const accounts = readAccounts(happyHome).accounts;
+        const probe = defaultSecretProbe(env);
+        const summaries = Object.entries(accounts).map(([id, record]) => summarizeAccount(happyHome, id, record, probe, now));
+        const id = pickMachineLoginFallback(summaries, 'dsh');
+        return { accountLabel: id ? accounts[id]?.label ?? null : null };
+    } catch {
+        return {};
+    }
 }

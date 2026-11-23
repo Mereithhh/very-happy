@@ -122,8 +122,41 @@ export const AgentProfilesStateSchema = z.object({
      * account, else the machine login — the Web says so next to the picker.
      */
     features: z.array(z.string()).optional(),
+    /**
+     * B-960: agent → whether this machine's own login has a key (a boolean only,
+     * never the value). Only `dsh` today: DEEPSEEK_API_KEY in the daemon's
+     * environment, or a key dsh saved itself. `false` + no default + a usable
+     * account = new sessions start on that account (machineLoginFallbackAccount).
+     * Absent (older daemon) = unknown: the Web shows what it showed before.
+     */
+    machineLoginKey: z.record(z.string(), z.boolean()).optional(),
 });
 export type AgentProfilesState = z.infer<typeof AgentProfilesStateSchema>;
+
+/** Agents whose machine login may have no key, so an unchosen new session falls back to an account (B-960). */
+export const MACHINE_LOGIN_FALLBACK_AGENTS: readonly string[] = ['dsh'];
+
+/**
+ * B-960: the account a new session starts on when nothing was chosen, the
+ * machine default is the machine login, and the machine login has no key.
+ * Rule: a usable account of this agent (not missing-secret / expired /
+ * invalid); one whose last check passed ('ok') before an unchecked one; the
+ * most recently added among those. null = none (the machine login runs and
+ * fails with its own "no key" message). The daemon and the Web share it.
+ */
+export function pickMachineLoginFallback(accounts: readonly Pick<AgentProfileSummary, 'id' | 'agent' | 'status' | 'createdAt'>[], agent: string): string | null {
+    if (!MACHINE_LOGIN_FALLBACK_AGENTS.includes(agent)) return null;
+    const usable = accounts.filter((a) => a.agent === agent && a.status !== 'missing-secret' && a.status !== 'expired' && a.status !== 'invalid');
+    usable.sort((x, y) => Number(y.status === 'ok') - Number(x.status === 'ok') || (y.createdAt ?? 0) - (x.createdAt ?? 0) || x.id.localeCompare(y.id));
+    return usable[0]?.id ?? null;
+}
+
+/** B-960: the fallback account a daemon state implies for an unchosen new session, or null. */
+export function machineLoginFallbackAccount(state: { accounts: readonly Pick<AgentProfileSummary, 'id' | 'agent' | 'status' | 'createdAt'>[]; defaults: Record<string, string>; machineLoginKey?: Record<string, boolean> }, agent: string): string | null {
+    if (state.machineLoginKey?.[agent] !== false) return null;
+    if (state.defaults[agent]) return null;
+    return pickMachineLoginFallback(state.accounts, agent);
+}
 
 /**
  * `metadata.agentProfile`, written by the wrapper with what it ACTUALLY runs on:
