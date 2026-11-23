@@ -1,7 +1,7 @@
 vi.mock("@/i18n/useTranslation", () => ({ useTranslation: () => ({ lang: "en" }) }));
 import { describe, expect, it, vi } from "vitest";
 import { TEAM_RESTORE_WINDOW_MS, type TeamState } from "@slopus/happy-wire";
-import { restoreConflicts, TEAM_RESTORE_COPY, teamRestoreView } from "./teamRestore";
+import { archivedStatusLine, restoreConflicts, TEAM_RESTORE_COPY, teamRestoreView } from "./teamRestore";
 
 const at = 1_000_000;
 const archived = (over: Partial<TeamState> = {}): TeamState => ({
@@ -46,5 +46,14 @@ describe("B-962: the machine's restore capability survives the Web's metadata pa
     const { MachineMetadataSchema } = await import("@/sync/storageTypes");
     const parsed = MachineMetadataSchema.parse({ host: "h", platform: "linux", happyCliVersion: "1", happyHomeDir: "/h", homeDir: "/h", teamLaunchVersion: 1, teamRestoreVersion: 1 });
     expect(teamRestoreView(archived(), { active: true, metadata: parsed }, at)?.availability).toBe("ready");
+  });
+  it("B-962b: the heading says restorable-until within the window, read-only past it (both languages)", () => {
+    const fmt = (ms: number) => `T${ms}`;
+    const until = `T${at + TEAM_RESTORE_WINDOW_MS}`;
+    expect(archivedStatusLine(archived(), at + 1000, TEAM_RESTORE_COPY.zh, "团队已归档，仅可查看", fmt)).toBe(`已归档 · 可恢复（截至 ${until}）`);
+    expect(archivedStatusLine(archived(), at + TEAM_RESTORE_WINDOW_MS, TEAM_RESTORE_COPY.en, "read-only", fmt)).toBe(`Archived · restorable until ${until}`);
+    expect(archivedStatusLine(archived(), at + TEAM_RESTORE_WINDOW_MS + 1, TEAM_RESTORE_COPY.zh, "团队已归档，仅可查看", fmt)).toBe(`团队已归档，仅可查看 · T${at}`);
+    expect(archivedStatusLine(archived(), at + TEAM_RESTORE_WINDOW_MS + 1, TEAM_RESTORE_COPY.en, "This team is archived and read-only", fmt)).toBe(`This team is archived and read-only · T${at}`);
+    expect(archivedStatusLine(archived({ archivedAt: undefined }), at, TEAM_RESTORE_COPY.en, "x", fmt)).toBeNull();
   });
 });

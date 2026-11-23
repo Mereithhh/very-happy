@@ -35,6 +35,16 @@ export function teamRestoreView(team: TeamState, machine: MachineLike, now: numb
   };
 }
 
+/**
+ * B-962b: the heading's archived line. Within the restore window it says the team can still be
+ * restored and until when (the page also shows 「恢复团队」), so it must not say 「仅可查看」; past the
+ * window it keeps the read-only wording with the archive time.
+ */
+export function archivedStatusLine(team: Pick<TeamState, "archivedAt">, now: number, copy: TeamRestoreCopy, readOnly: string, fmt: (ms: number) => string = ms => new Date(ms).toLocaleString()): string | null {
+  if (team.archivedAt === undefined) return null;
+  return teamRestoreBlock(team, now) ? `${readOnly} · ${fmt(team.archivedAt)}` : copy.restorableUntil(fmt(team.archivedAt + TEAM_RESTORE_WINDOW_MS));
+}
+
 /** The conflicts a `restore_conflict` refusal names (members whose conversation another live team holds). */
 export function restoreConflicts(details: unknown): TeamRestoreConflict[] {
   const list = (details as { conflicts?: unknown } | null | undefined)?.conflicts;
@@ -62,6 +72,7 @@ const en = {
   listTitle: "Recently archived",
   listHint: "Teams archived in the last 7 days. Open one to restore it.",
   archivedAt: (at: string) => `archived ${at}`,
+  restorableUntil: (at: string) => `Archived · restorable until ${at}`,
   refusals: {
     restore_expired: "This team was archived more than 7 days ago and can no longer be restored.",
     restore_cleanup_pending: "Members are still stopping. Try again in a minute.",
@@ -90,6 +101,7 @@ const zh: typeof en = {
   listTitle: "最近归档",
   listHint: "7 天内归档的团队，打开后可以恢复。",
   archivedAt: (at) => `归档于 ${at}`,
+  restorableUntil: (at) => `已归档 · 可恢复（截至 ${at}）`,
   refusals: {
     restore_expired: "这个团队归档已超过 7 天，不能再恢复。",
     restore_cleanup_pending: "成员还在停止中，请一分钟后再试。",
