@@ -1,7 +1,7 @@
 // B-960: the machine login has no DeepSeek key — the Web says which account new sessions use.
 import { describe, expect, it } from 'vitest';
 import { installBrowserTestGlobals } from '@/testing/browserTestGlobals';
-import { parseAgentProfilesState, resolveSpawnAccount, spawnAgentProfileParam } from '@/sync/agentProfiles';
+import { dshHelpAccountLink, parseAgentProfilesState, resolveSpawnAccount, spawnAgentProfileParam } from '@/sync/agentProfiles';
 import { zhHans } from '@/text/translations/zh-Hans';
 import { en } from '@/text/_default';
 
@@ -58,5 +58,37 @@ describe('B-960 accounts page: 本机登录 row', () => {
         expect(zhHans.accounts.machineLoginNoKeyFallback({ label: 'dsh_coding' })).toBe('这台机器没有 DeepSeek key，新会话会改用 dsh_coding');
         expect(en.accounts.machineLoginNoKeyFallback({ label: 'dsh_coding' })).toContain('dsh_coding');
         expect(zhHans.accounts.draftDefaultFallback({ label: 'dsh_coding' })).toBe('机器默认 · dsh_coding（本机没有 key）');
+    });
+});
+
+describe('B-960b copy follows the actual state', () => {
+    it('new-session dsh help: 「管理账号」 once an account exists, 「添加为账号」 only with none', () => {
+        expect(dshHelpAccountLink(stateOf({ machineLoginKey: { dsh: false } }))).toBe('manage');
+        expect(dshHelpAccountLink(stateOf({ machineLoginKey: { dsh: false } }, [dsh({ status: 'unverified' })], { dsh: 'dsh-coding' }))).toBe('manage');
+        expect(dshHelpAccountLink(stateOf({}, []))).toBe('add');
+        expect(dshHelpAccountLink(null)).toBe('add');
+        expect(dshHelpAccountLink(stateOf({}, [{ ...dsh(), id: 'c1', agent: 'claude', kind: 'anthropic-api' }]))).toBe('add');
+    });
+
+    it('本机登录 row: an account set as default is named, never 「需要在下面添加账号」', () => {
+        // QA R75 P3-2: default set to an unverified account, machine without a key.
+        const withDefault = stateOf({ machineLoginKey: { dsh: false } }, [dsh({ status: 'unverified' })], { dsh: 'dsh-coding' });
+        expect(machineLoginSubtitleText(withDefault, 'dsh', null, t)).toBe('accounts.machineLoginNoKeyDefault:{"label":"dsh_coding"}');
+        // Accounts exist but none usable, no default: fix one below, not add one.
+        const unusable = stateOf({ machineLoginKey: { dsh: false } }, [dsh({ status: 'invalid' })]);
+        expect(machineLoginSubtitleText(unusable, 'dsh', null, t)).toBe('accounts.machineLoginNoKeyPick');
+        // A default pointing at a removed account falls through to the remaining state.
+        expect(machineLoginSubtitleText(stateOf({ machineLoginKey: { dsh: false } }, [], { dsh: 'gone' }), 'dsh', null, t)).toBe('accounts.machineLoginNoKeyAdd');
+    });
+
+    it('has Chinese and English text', () => {
+        expect(zhHans.newSessionModal.dshManageLink).toBe('管理账号');
+        expect(en.newSessionModal.dshManageLink).toBe('Manage accounts');
+        expect(zhHans.newSessionModal.dshHelp).not.toContain('API key');
+        expect(en.newSessionModal.dshHelp).not.toContain('API key');
+        expect(zhHans.accounts.machineLoginNoKeyDefault({ label: 'dsh_coding' })).toBe('这台机器没有 DeepSeek key，新会话用默认账号 dsh_coding');
+        expect(en.accounts.machineLoginNoKeyDefault({ label: 'dsh_coding' })).toContain('dsh_coding');
+        expect(zhHans.accounts.machineLoginNoKeyPick).not.toContain('添加');
+        expect(en.accounts.machineLoginNoKeyPick).not.toMatch(/add an account/i);
     });
 });

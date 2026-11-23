@@ -324,6 +324,14 @@ export function machineLoginFallback(state: AgentProfilesState, agent: string): 
 }
 
 /**
+ * B-960b: the new-session dsh help line links to the accounts page — 「添加为账号」
+ * only while this machine has no DeepSeek account yet, 「管理账号」 once it has one.
+ */
+export function dshHelpAccountLink(state: AgentProfilesState | null): 'add' | 'manage' {
+    return accountsForAgent(state, 'dsh').length > 0 ? 'manage' : 'add';
+}
+
+/**
  * The `agentProfileId` spawn param. Only an explicit choice is sent (undefined
  * lets the daemon apply its own default, same as an old Web), and never to an
  * old CLI or an agent this daemon has no accounts for (a B-850a daemon rejects a Codex id).

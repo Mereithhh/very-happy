@@ -175,12 +175,17 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
 
 /**
  * B-960: the 「本机登录」 row's subtitle. A daemon reporting that the machine
- * login has no key (dsh) says which account new sessions use instead, or that
- * one is needed; otherwise (has a key / older daemon) where the login comes from.
+ * login has no key (dsh) says which account new sessions use instead (the
+ * default, else the fallback), that one below must be fixed, or that one is needed; otherwise (has a key / older daemon) where the login comes from.
  */
 export function machineLoginSubtitleText(state: AgentProfilesState, agent: string, fallback: AgentProfileSummary | null, t: T): string {
     if (agent === 'dsh' && state.machineLoginKey.dsh === false) {
-        return fallback ? t('accounts.machineLoginNoKeyFallback', { label: fallback.label }) : t('accounts.machineLoginNoKeyAdd');
+        // B-960b: a set default (or any account) means nothing needs adding.
+        const accounts = accountsForAgent(state, agent);
+        const defaultAccount = accounts.find((a) => a.id === state.defaults[agent]);
+        if (defaultAccount) return t('accounts.machineLoginNoKeyDefault', { label: defaultAccount.label });
+        if (fallback) return t('accounts.machineLoginNoKeyFallback', { label: fallback.label });
+        return accounts.length > 0 ? t('accounts.machineLoginNoKeyPick') : t('accounts.machineLoginNoKeyAdd');
     }
     return agent === 'codex' ? t('accounts.machineLoginSubtitleCodex') : agent === 'dsh' ? t('accounts.machineLoginSubtitleDsh') : t('accounts.machineLoginSubtitle');
 }

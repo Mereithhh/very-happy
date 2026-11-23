@@ -8,7 +8,7 @@ import { createInterface } from 'node:readline/promises';
 import { configuration } from '@/configuration';
 import { getDaemonAgentProfiles, listDaemonSessions, restartDaemonSession } from '@/daemon/controlClient';
 import { AccountError, AccountService, bindResultMessages, localRestartFailure } from '@/agentProfiles/accountService';
-import type { AgentProfileSummary } from '@slopus/happy-wire';
+import { machineLoginFallbackAccount, type AgentProfileSummary } from '@slopus/happy-wire';
 
 export const ACCOUNT_HELP = `Usage:
   very-happy account list [--json]
@@ -145,6 +145,31 @@ export function parseAccountArgs(args: string[]): AccountArgs {
 }
 
 /** Pure: one line per account for `account list`. */
+const AGENT_NAMES: Record<string, string> = { claude: 'Claude', codex: 'Codex', dsh: 'DeepSeek Harness' };
+
+/**
+ * B-960b: what new sessions start on, one line per agent that has accounts
+ * (a dsh default no longer reads as "machine login, no default account").
+ */
+export function newSessionDefaultLines(state: { accounts: readonly AgentProfileSummary[]; defaults: Record<string, string>; machineLoginKey?: Record<string, boolean> }): string[] {
+    const agents = [...new Set(state.accounts.map((a) => a.agent))]
+        .sort((x, y) => Object.keys(AGENT_NAMES).indexOf(x) - Object.keys(AGENT_NAMES).indexOf(y));
+    return agents.map((agent) => {
+        const name = AGENT_NAMES[agent] ?? agent;
+        const defaultId = state.defaults[agent];
+        if (defaultId) {
+            const account = state.accounts.find((a) => a.id === defaultId && a.agent === agent);
+            return account
+                ? `New ${name} sessions use the default account ${account.label}.`
+                : `New ${name} sessions: the default account ${defaultId} is gone; pick another.`;
+        }
+        const fallbackId = machineLoginFallbackAccount(state, agent);
+        const fallback = fallbackId ? state.accounts.find((a) => a.id === fallbackId) : undefined;
+        if (fallback) return `New ${name} sessions use ${fallback.label} (this machine has no DeepSeek key; no default account).`;
+        return `New ${name} sessions use the machine login (no default account).`;
+    });
+}
+
 export function formatAccountLine(a: AgentProfileSummary, isDefault: boolean, now: number): string {
     const kind = ({ 'claude-subscription': 'subscription', 'claude-api': 'api', 'codex-chatgpt': 'codex chatgpt', 'codex-provider': 'codex provider', 'dsh-api': 'deepseek' } as Record<string, string>)[a.kind] ?? a.kind;
     const extra: string[] = [];
@@ -257,7 +282,7 @@ export async function handleAccountCommand(args: string[]): Promise<void> {
                 if (!daemonState && state.accounts.some((a) => a.keySource === 'env')) {
                     console.log(chalk.dim('Daemon not running: --key-env accounts were checked against THIS shell\'s environment; the daemon\'s may differ.'));
                 }
-                if (!state.defaults.claude) console.log(chalk.dim('New sessions use the machine login (no default account).'));
+                for (const line of newSessionDefaultLines(state)) console.log(chalk.dim(line));
                 return;
             }
             case 'login': {
