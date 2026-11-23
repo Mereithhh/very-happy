@@ -27,3 +27,16 @@ export type UploadedAttachment = {
     height: number;
     thumbhash?: string;
 };
+
+/**
+ * B-961b: an attachment already uploaded by an earlier send, carried by its
+ * file event — edit/retry re-emits it verbatim (same `ref`), so the machine
+ * never needs the user to pick the file again.
+ */
+export type ReusableAttachment = {
+    ref: string;
+    name: string;
+    size: number;
+    mimeType?: string;
+    image?: { width: number; height: number; thumbhash?: string };
+};

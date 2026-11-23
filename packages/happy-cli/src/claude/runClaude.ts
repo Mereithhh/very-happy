@@ -25,10 +25,11 @@ import type { EnhancedMode, PermissionMode } from './loop';
 import type { MessageMeta } from '@/api/types';
 import type { QueueDiscardEntry } from '@/utils/MessageQueue2';
 import { spawnOriginTags } from '@/utils/createSessionMetadata';
-import { AGENT_PROFILE_SESSION_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, TURN_FAILURE_CAPABILITY, restoredEffort, restoredModel } from '@slopus/happy-wire';
+import { AGENT_PROFILE_SESSION_CAPABILITY, ATTACHMENT_REUSE_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, ISSUE_SESSION_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, TURN_FAILURE_CAPABILITY, restoredEffort, restoredModel } from '@slopus/happy-wire';
 import { recordRunIntents, registerRunIntentRpc, withoutEffort } from '@/utils/runIntent';
 import { announceForkBackfill, FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
 import { configuration } from '@/configuration';
+import { resolveFileEventAttachment } from '@/utils/attachmentReuse';
 import { loadWrapperAccount, type WrapperAccount } from '@/agentProfiles/wrapperAccount';
 import { SPAWN_ACCOUNT_ENV } from '@/agentProfiles/store';
 import { checkDaemonHibernation, notifyDaemonSessionStarted } from '@/daemon/controlClient';
@@ -260,7 +261,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // a brand-new session cannot pick a PDF until after sending once.
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
         queueCancellation: true,
-        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', 'claude-fable-5-2-v1', 'claude-sonnet-5-5-v1', 'claude-haiku-5-5-v1', PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY],
+        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', 'claude-fable-5-2-v1', 'claude-sonnet-5-5-v1', 'claude-haiku-5-5-v1', PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, AUTO_RESTART_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, CLAUDE_CONFIG_MODEL_CAPABILITY, AGENT_PROFILE_SESSION_CAPABILITY, ATTACHMENT_REUSE_CAPABILITY],
         // B-849b: this session's model / thinking choice (wrapper is the sole
         // writer; a reconnect keeps the server copy). A spawn-time model is a choice.
         modelIntent: options.model ?? null,
@@ -1067,20 +1068,21 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     session.onFileEvent((fileEvent) => {
         const ev = fileEvent.content.data.ev;
         logger.debug(`[loop] File event received: ${ev.name} (${ev.size} bytes, ref: ${ev.ref})`);
-        const downloadPromise = (async (): Promise<{ data: Uint8Array; mimeType: string; name: string } | null> => {
-            try {
-                const decrypted = await session.downloadAndDecryptAttachment(ev.ref);
-                if (!decrypted) {
-                    logger.debug(`[loop] Failed to decrypt attachment: ${ev.name}`);
-                    return null;
-                }
-                logger.debug(`[loop] Attachment decrypted: ${ev.name} (${decrypted.length} bytes)`);
-                return { data: decrypted, mimeType: ev.mimeType ?? 'image/jpeg', name: ev.name };
-            } catch (error) {
-                logger.debug(`[loop] Failed to download attachment: ${ev.name}`, { error });
-                return null;
-            }
-        })();
+        // B-961b: a ref this machine already staged (an edit / retry re-sends
+        // it) reuses the staged copy instead of downloading it again.
+        const downloadPromise = resolveFileEventAttachment({
+            happyHomeDir: configuration.happyHomeDir,
+            sessionId: session.sessionId,
+            download: (ref) => session.downloadAndDecryptAttachment(ref),
+        }, {
+            ref: ev.ref,
+            name: ev.name,
+            ...(ev.mimeType ? { mimeType: ev.mimeType } : {}),
+        }).then((resolved) => {
+            if (!resolved) logger.debug(`[loop] Failed to resolve attachment: ${ev.name}`);
+            else logger.debug(`[loop] Attachment ready: ${ev.name}${resolved.path ? ' (staged copy)' : ''}`);
+            return resolved;
+        });
         session.trackAttachmentDownload(downloadPromise);
     });
 

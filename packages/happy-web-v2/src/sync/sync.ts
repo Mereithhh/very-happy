@@ -92,7 +92,7 @@ import { soundEventOfNotifType } from './notificationInbox';
 import { dispatchKvChanges } from './kvUpdates';
 import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta, type MessageModeMeta } from './messageMeta';
-import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
+import type { AttachmentPreview, ReusableAttachment, UploadedAttachment } from './attachmentTypes';
 import { preserveSessionBatchActivityFromStore } from './sessionSnapshot';
 import { decodeSessionRows, type EncryptedSessionRow } from './sessionDecode';
 import { decodeInChunks, rowsToDecode } from './unarchivedApply';
@@ -260,6 +260,12 @@ type SendMessageOptions = {
      * before anything is queued; the caller hands text + files back.
      */
     strictAttachments?: boolean;
+    /**
+     * B-961b: attachments an earlier send already uploaded (edit / retry).
+     * Their file events are re-emitted with the same refs — no upload and no
+     * user action; the wrapper resolves the blob (or its staged copy) itself.
+     */
+    reuseAttachments?: ReusableAttachment[];
 };
 
 class Sync {
@@ -1665,11 +1671,16 @@ class Sync {
             queuedAt,
         });
 
+        // B-961b: files an earlier send uploaded are re-sent as their own file
+        // events (same ref) — the retry/edit path never re-uploads or asks the
+        // user to pick them again.
+        const reuseAttachments = options?.reuseAttachments ?? [];
+
         // B-722: a text-only turn is shown in the click stack — encryption
         // (async WebCrypto) used to sit between the click and the bubble. It is
         // tracked before it is shown, encrypted after, and enters the outbox in
         // send order (encryptIntoOutbox); a failed encryption shows as failed.
-        if (!effectiveAttachments || effectiveAttachments.length === 0) {
+        if ((!effectiveAttachments || effectiveAttachments.length === 0) && reuseAttachments.length === 0) {
             const normalizedText = normalizeRawMessage(localId, localId, Date.now(), content);
             this.trackOutboxItems(sessionId, [localId], [''], group, [content]);
             if (normalizedText) this.applyOptimistic(sessionId, normalizedText);
@@ -1679,8 +1690,8 @@ class Sync {
         }
 
         // Upload attachments and queue file events before the text message.
-        if (effectiveAttachments && effectiveAttachments.length > 0) {
-            const { uploaded, failed } = await this.uploadAttachmentsForSession(sessionId, effectiveAttachments);
+        if ((effectiveAttachments && effectiveAttachments.length > 0) || reuseAttachments.length > 0) {
+            const { uploaded, failed } = await this.uploadAttachmentsForSession(sessionId, effectiveAttachments ?? []);
             if (failed > 0 && options?.strictAttachments) throw new AttachmentSendError('upload-failed');
 
             if (failed > 0) {
@@ -1691,13 +1702,26 @@ class Sync {
                 );
             }
 
-            if (uploaded.length === 0 && text.trim().length === 0) {
+            if (uploaded.length === 0 && reuseAttachments.length === 0 && text.trim().length === 0) {
                 throw new Error('All attachments failed to upload');
             }
 
-            if (uploaded.length > 0) {
+            const fileEvents: UploadedAttachment[] = [
+                ...uploaded,
+                ...reuseAttachments.map((att) => ({
+                    ref: att.ref,
+                    name: att.name,
+                    size: att.size,
+                    mimeType: att.mimeType ?? 'application/octet-stream',
+                    width: att.image?.width ?? 0,
+                    height: att.image?.height ?? 0,
+                    ...(att.image?.thumbhash ? { thumbhash: att.image.thumbhash } : {}),
+                })),
+            ];
 
-                for (const att of uploaded) {
+            if (fileEvents.length > 0) {
+
+                for (const att of fileEvents) {
                     const fileRecord: RawRecord = {
                         role: 'session',
                         ...(queuedAt !== undefined ? { meta: { queuedAt } } : {}),

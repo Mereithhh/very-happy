@@ -12,6 +12,7 @@ import { ImagePreview } from '@/components/ImagePreview';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { ToolCallMessage } from '@/sync/typesMessage';
 import type { AttachedFileRef } from './attachedFiles';
+import type { ReusableAttachment } from '@/sync/attachmentTypes';
 import { acquireAttachmentUrl, cachedAttachmentUrl, forgetAttachmentUrl, isPreviewableImage, loadAttachmentUrl } from './attachmentPreview';
 import './attachments.css';
 
@@ -37,6 +38,39 @@ export function attachmentsFromFileEvents(tools: readonly ToolCallMessage[]): At
         size: typeof message.tool.input?.size === 'number' ? message.tool.input.size : null,
         ref: asString(message.tool.input?.ref),
     }));
+}
+
+/**
+ * B-961b：`file` 事件 → 重试/编辑时原样重发的引用。
+ * 只保留带 `ref` 的（web 上传的），它们是服务端 blob，机器侧不用再问用户要文件。
+ */
+export function reusableAttachmentsFromFileEvents(tools: readonly ToolCallMessage[] | undefined): ReusableAttachment[] {
+    if (!tools || tools.length === 0) return [];
+    const out: ReusableAttachment[] = [];
+    for (const message of tools) {
+        const ref = asString(message.tool.input?.ref);
+        if (!ref) continue;
+        const name = asString(message.tool.input?.name) ?? 'attachment';
+        const size = typeof message.tool.input?.size === 'number' ? message.tool.input.size : 0;
+        const mimeType = asString(message.tool.input?.mimeType) ?? undefined;
+        const image = message.tool.input?.image;
+        const width = typeof image?.width === 'number' ? image.width : 0;
+        const height = typeof image?.height === 'number' ? image.height : 0;
+        out.push({
+            ref,
+            name,
+            size,
+            ...(mimeType ? { mimeType } : {}),
+            ...(width > 0 && height > 0 ? {
+                image: {
+                    width,
+                    height,
+                    ...(asString(image?.thumbhash) ? { thumbhash: asString(image.thumbhash)! } : {}),
+                },
+            } : {}),
+        });
+    }
+    return out;
 }
 
 /**

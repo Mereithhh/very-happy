@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { rename, unlink, writeFile } from 'node:fs/promises';
+import { rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { PendingAttachment } from '@/utils/MessageQueue2';
 import { MAX_CHAT_ATTACHMENT_SOURCE_BYTES } from '@/utils/attachmentLimits';
 import { ensurePrivateDirectory, hardenPrivateFile } from '@/utils/secureFiles';
+import { recordMachineAttachment } from '@/utils/attachmentRegistry';
 
 /** Keep legacy native kinds so older Web builds still expose image/PDF. */
 export const CLAUDE_ATTACHMENT_KINDS = [
@@ -56,6 +57,22 @@ export async function stageClaudeAttachments(
 
     const staged: StagedAttachment[] = [];
     for (const attachment of attachments) {
+        // B-961b: a retry / edit already resolved this ref to a staged copy —
+        // reuse it rather than writing a second file for the same bytes.
+        if (attachment.path) {
+            const info = await stat(attachment.path).catch(() => null);
+            if (info?.isFile()) {
+                const reused = {
+                    path: attachment.path,
+                    name: attachment.name || safeFileName(attachment.path.split('/').pop() || 'file'),
+                    mimeType: attachment.mimeType || 'application/octet-stream',
+                    size: info.size,
+                };
+                await recordMachineAttachment(options.happyHomeDir, options.sessionId, attachment.ref, reused);
+                staged.push(reused);
+                continue;
+            }
+        }
         if (attachment.data.length > MAX_CHAT_ATTACHMENT_SOURCE_BYTES) {
             throw new Error(`Attachment exceeds the ${MAX_CHAT_ATTACHMENT_SOURCE_BYTES / 1024 / 1024} MB limit`);
         }
@@ -71,12 +88,14 @@ export async function stageClaudeAttachments(
             await unlink(tempPath).catch(() => {});
             throw error;
         }
-        staged.push({
+        const stagedAttachment = {
             path: targetPath,
             name: attachment.name || name,
             mimeType: attachment.mimeType || 'application/octet-stream',
             size: attachment.data.length,
-        });
+        };
+        await recordMachineAttachment(options.happyHomeDir, options.sessionId, attachment.ref, stagedAttachment);
+        staged.push(stagedAttachment);
     }
     return staged;
 }

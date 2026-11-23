@@ -25,6 +25,16 @@ export const CODEX_STEER_CAPABILITY = 'codex-steer-v1';
 export const CODEX_REWIND_CAPABILITY = 'codex-rewind-v1';
 
 /**
+ * B-961b: the wrapper can re-send a prompt with attachments that were uploaded
+ * earlier (edit keeps them, retry reuses them) — it resolves each `ref` from
+ * the machine's staged copy or re-fetches the blob, and refuses with a reason
+ * when the file is truly gone. Older wrappers ignore the field, so the web
+ * hides retry/edit on a prompt with attachments unless this is advertised
+ * (AGENTS #14: capabilities, never CLI versions).
+ */
+export const ATTACHMENT_REUSE_CAPABILITY = 'attachment-reuse-v1';
+
+/**
  * The Codex wrapper runs a standalone `/compact` itself (app-server
  * `thread/compact/start`) instead of sending the text to the model. Older Codex
  * wrappers do not, so the web marks /compact unavailable on them (AGENTS #14).

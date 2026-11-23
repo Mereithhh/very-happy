@@ -103,6 +103,19 @@ function httpStatusOf(error: unknown): number | undefined {
     return typeof status === 'number' ? status : undefined;
 }
 
+/**
+ * B-961b: a `file` event resolved to bytes on this machine. `ref` names the
+ * server blob; `path` is set when the machine already staged those bytes (the
+ * staging step then reuses the file instead of writing a copy).
+ */
+export type DownloadedAttachment = {
+    data: Uint8Array;
+    mimeType: string;
+    name: string;
+    ref?: string;
+    path?: string;
+};
+
 export class ApiSessionClient extends EventEmitter {
     /**
      * B-512: the session socket now connects before the runner has attached its
@@ -619,7 +632,7 @@ export class ApiSessionClient extends EventEmitter {
      * events that arrive after the swap go into a fresh bucket bound to the
      * next user-text message.
      */
-    trackAttachmentDownload(promise: Promise<{ data: Uint8Array; mimeType: string; name: string } | null>): void {
+    trackAttachmentDownload(promise: Promise<DownloadedAttachment | null>): void {
         this.pendingDownloads.push(promise);
     }
 
@@ -628,12 +641,12 @@ export class ApiSessionClient extends EventEmitter {
      * to resolve, and return the successful ones. The swap-then-await order
      * guarantees that a late-arriving file event cannot leak into this batch.
      */
-    async drainAttachmentsForUserMessage(): Promise<Array<{ data: Uint8Array; mimeType: string; name: string }>> {
+    async drainAttachmentsForUserMessage(): Promise<DownloadedAttachment[]> {
         const downloads = this.pendingDownloads;
         this.pendingDownloads = [];
         if (downloads.length === 0) return [];
         const results = await Promise.all(downloads);
-        return results.filter((x): x is { data: Uint8Array; mimeType: string; name: string } => x !== null);
+        return results.filter((x): x is DownloadedAttachment => x !== null);
     }
 
     private authHeaders() {

@@ -1,6 +1,11 @@
 import { logger } from "@/ui/logger";
 
-export type PendingAttachment = { data: Uint8Array; mimeType: string; name: string };
+/**
+ * B-961b: `ref` is the server blob the attachment came from and `path` a copy
+ * this machine already staged for it. Retry / edit re-sends the same ref, so
+ * staging reuses `path` instead of writing a duplicate file.
+ */
+export type PendingAttachment = { data: Uint8Array; mimeType: string; name: string; ref?: string; path?: string };
 
 interface QueueItem<T> {
     message: string;

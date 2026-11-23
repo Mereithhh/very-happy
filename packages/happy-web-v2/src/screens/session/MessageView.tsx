@@ -31,7 +31,7 @@ import { accountEventKind, machineLoginCardApplies } from './sessionAccount';
 import { AUTO_UPDATED_EVENT_KIND, parseAutoUpdatedLine, parseRestartedOnRequestLine, RESTARTED_ON_REQUEST_EVENT_KIND } from '@/app/autoRestartPolicy';
 import { LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_INTERRUPTED_EVENT_KIND, LONG_CONTEXT_REFUSED_EVENT_KIND, suggestionOptionLocalId } from '@slopus/happy-wire';
 import { parseAttachedFiles, stripAttachedFiles } from './attachedFiles';
-import { attachmentsFromFileEvents, attachmentsFromManifest, UserAttachments, type AttachmentItem } from './UserAttachments';
+import { attachmentsFromFileEvents, attachmentsFromManifest, reusableAttachmentsFromFileEvents, UserAttachments, type AttachmentItem } from './UserAttachments';
 import { discardedReasonKey } from './discardedInput';
 import { MessageActions } from './MessageActions';
 import { MessageTime } from './MessageTime';
@@ -51,6 +51,7 @@ import { isMirrorSession } from '@/assistant/assistantSession';
 import { composerGate } from '@/app/sessionRestoreRules';
 import { DraftScopeProvider } from './DraftBlock';
 import { splitEditedDrafts, stripEditedDrafts } from '@/sync/editableDrafts';
+import type { ReusableAttachment } from '@/sync/attachmentTypes';
 
 function UserText({ message, sessionId, attachments }: { message: UserTextMessage; sessionId: string; attachments?: ToolCallMessage[] }) {
     const { t } = useTranslation();
@@ -141,7 +142,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
             )}
             <UserAttachments sessionId={sessionId} items={attachmentItems} />
             <div className={`msg-bubble-wrap vh-copyhost${send ? ' msg-bubble-wrap--unsent' : ''}`}>
-                <MessageActions text={text} sessionId={sessionId} userMessage={message} hasAttachments={attachmentItems.length > 0} send={send} status={answeredChip}>
+                <MessageActions text={text} sessionId={sessionId} userMessage={message} hasAttachments={attachmentItems.length > 0} attachments={reusableAttachmentsFromFileEvents(attachments)} send={send} status={answeredChip}>
                 {text && <div className="msg-bubble">
                     <div id={contentId} className={`msg-bubble-text${clamped ? ' msg-bubble-text--clamped' : ''}`}>
                         {text}
@@ -182,6 +183,7 @@ function AgentText({
     optionsActive = false,
     retryOf,
     retryHasAttachments = false,
+    retryAttachments,
 }: {
     message: AgentTextMessage;
     showMeta: boolean;
@@ -191,6 +193,7 @@ function AgentText({
     optionsActive?: boolean;
     retryOf?: UserTextMessage;
     retryHasAttachments?: boolean;
+    retryAttachments?: ReusableAttachment[];
 }) {
     const { t } = useTranslation();
     // Live-thinking auto-expand (B-101): while the session is working and no
@@ -267,7 +270,7 @@ function AgentText({
                     <DraftScopeProvider sessionId={sessionId} seq={message.seq}>
                         <Markdown text={prose} onOption={offerOptions ? onOption : undefined} hideOptions={!offerOptions} />
                     </DraftScopeProvider>
-                    {showActions && <MessageActions text={text} sessionId={sessionId} createdAt={message.createdAt} retryOf={retryOf} retryHasAttachments={retryHasAttachments} />}
+                    {showActions && <MessageActions text={text} sessionId={sessionId} createdAt={message.createdAt} retryOf={retryOf} retryHasAttachments={retryHasAttachments} retryAttachments={retryAttachments} />}
                 </div>
             )}
             {showMeta && (
@@ -572,7 +575,7 @@ function AgentEventBlock({ message, sessionId, continueOffer = false }: { messag
  * 判据」。`attachments` 打破了默认浅比较：`extractUserAttachments` 每次都新建那个数组。
  * 比较器保留 message 的引用判据，只对附件按 id 序列比较。
  */
-function sameTools(a?: ToolCallMessage[], b?: ToolCallMessage[]): boolean {
+function sameTools<T extends object>(a?: readonly T[], b?: readonly T[]): boolean {
     if (a === b) return true;
     if (!a || !b || a.length !== b.length) return false;
     return a.every((tool, i) => tool === b[i]);
@@ -593,6 +596,8 @@ type MessageViewProps = {
     /** B-961: the latest reply — 「重试」 resends this prompt. */
     retryOf?: UserTextMessage;
     retryHasAttachments?: boolean;
+    /** B-961b: that prompt's uploaded files, re-sent by reference. */
+    retryAttachments?: ReusableAttachment[];
 };
 
 /** B-565: one message row = one boundary. resetKey is the message object —
@@ -614,6 +619,7 @@ export const MessageView = memo(function MessageView(props: MessageViewProps) {
     && prev.continueOffer === next.continueOffer
     && prev.retryOf === next.retryOf
     && prev.retryHasAttachments === next.retryHasAttachments
+    && sameTools(prev.retryAttachments, next.retryAttachments)
     && sameTools(prev.attachments, next.attachments)
 ));
 
@@ -628,6 +634,7 @@ function MessageViewBody({
     continueOffer = false,
     retryOf,
     retryHasAttachments,
+    retryAttachments,
 }: MessageViewProps) {
     switch (message.kind) {
         case 'user-text':
@@ -643,6 +650,7 @@ function MessageViewBody({
                     optionsActive={optionsActive}
                     retryOf={retryOf}
                     retryHasAttachments={retryHasAttachments}
+                    retryAttachments={retryAttachments}
                 />
             );
         case 'agent-event':
