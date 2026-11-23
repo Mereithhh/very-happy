@@ -36,7 +36,6 @@ export function projectRoutes(app: Fastify) {
         catch (error) {
             if (error instanceof ProjectError) {
                 // B-651: refusals that matter for the A/B read-out.
-                if (error.code === 'project_note_quota_exceeded') countProjectOp('note_quota_refused', 'agent');
                 if (error.code === 'instructions_version_conflict') countProjectOp('instructions_conflict', 'user');
                 return reply.code(error.status).send({ error: error.code, ...(error.details ?? {}) });
             }

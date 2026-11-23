@@ -23,7 +23,7 @@ describe('projects client compatibility', () => {
         const c = createProjectsClient({ serverUrl: 'http://x', token: async () => 't', fetch: (async () => res(404, { error: 'project_not_found' })) as any });
         await expect(c.note('p', { kind: 'finding', title: 't', authorSessionId: 's' })).rejects.toMatchObject({ status: 404, code: 'project_not_found' });
         expect(c.isDisabled()).toBe(false);
-        const q = createProjectsClient({ serverUrl: 'http://x', token: async () => 't', fetch: (async () => res(429, { error: 'project_note_quota_exceeded', suggestion: 'fold it' })) as any });
+        const q = createProjectsClient({ serverUrl: 'http://x', token: async () => 't', fetch: (async () => res(409, { error: 'log_entry_not_owned', suggestion: 'fold it' })) as any });
         const error = await q.note('p', { kind: 'finding', title: 't', authorSessionId: 's' }).catch(e => e);
         expect(error).toBeInstanceOf(ProjectRequestError);
         expect(error.details).toEqual({ suggestion: 'fold it' });

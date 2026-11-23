@@ -194,8 +194,7 @@ reports the `project-v1` capability) receive:
   is added or revoked, or a message arrives for them. Idle sessions are never
   woken up for this;
 - the MCP tools `project_context` (read the project) and `project_note` (append
-  a decision, finding or handoff; at most 5 entries per hour, of which at most 2
-  decisions), and `session_peers` with `scope: "project"`.
+  a decision, finding or handoff; no per-hour count limit), and `session_peers` with `scope: "project"`.
 
 **Between sessions** (project settings): *Isolated* is the default, and
 existing projects are isolated too. An isolated session's first message

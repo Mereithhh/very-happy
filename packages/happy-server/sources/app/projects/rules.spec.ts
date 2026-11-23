@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeFolders, normalizeDefaults, noteQuotaRefusal, parseLogRef, snapshotTeamDefaults, teamMachineAllowed, readFolders } from './rules';
+import { PROJECT_ERROR_CODES, PROJECT_LIMITS, ProjectLogCreateSchema } from '@slopus/happy-wire';
+import { normalizeFolders, normalizeDefaults, parseLogRef, snapshotTeamDefaults, teamMachineAllowed, readFolders } from './rules';
 
 describe('project rules', () => {
     it('normalizeFolders keeps one primary (first flagged, else first) and dedupes trailing-slash variants', () => {
@@ -14,13 +15,16 @@ describe('project rules', () => {
         expect(readFolders([{ machineId: 'm', path: '/x' }, { nope: true }, 'x'])).toEqual([{ machineId: 'm', path: '/x', primary: false }]);
         expect(readFolders(null)).toEqual([]);
     });
-    it('noteQuotaRefusal: 5 notes/hour, 2 of them decisions, each refusal names an alternative', () => {
-        const n = (kind: string, count: number) => Array.from({ length: count }, () => ({ kind }));
-        expect(noteQuotaRefusal(n('finding', 4), 'finding')).toBeNull();
-        expect(noteQuotaRefusal(n('finding', 5), 'finding')).toMatchObject({ limit: 5, count: 5 });
-        expect(noteQuotaRefusal(n('decision', 2), 'finding')).toBeNull();
-        expect(noteQuotaRefusal(n('decision', 2), 'decision')).toMatchObject({ limit: 2, count: 2 });
-        expect(noteQuotaRefusal(n('decision', 2), 'decision')!.suggestion).toContain('supersede');
+    it('B-964: log entries have no per-hour count, only length/byte bounds', () => {
+        expect(PROJECT_LIMITS).not.toHaveProperty('notesPerHour');
+        expect(PROJECT_LIMITS).not.toHaveProperty('decisionsPerHour');
+        expect(PROJECT_ERROR_CODES).not.toContain('project_note_quota_exceeded' as any);
+        const ok = { kind: 'decision', title: 't', body: 'x'.repeat(PROJECT_LIMITS.logBodyBytes) };
+        expect(ProjectLogCreateSchema.safeParse(ok).success).toBe(true);
+        // Byte bound, not char bound: 2048 × 3-byte chars = 6KB > 4KB.
+        expect(ProjectLogCreateSchema.safeParse({ ...ok, body: '中'.repeat(PROJECT_LIMITS.logBodyBytes / 2) }).success).toBe(false);
+        expect(ProjectLogCreateSchema.safeParse({ ...ok, body: 'x'.repeat(PROJECT_LIMITS.logBodyBytes + 1) }).success).toBe(false);
+        expect(ProjectLogCreateSchema.safeParse({ ...ok, title: 'x'.repeat(PROJECT_LIMITS.logTitleChars + 1) }).success).toBe(false);
     });
     it('parseLogRef accepts #12 / 12 as seq, anything else as id', () => {
         expect(parseLogRef('#12')).toEqual({ seq: 12 });

@@ -46,7 +46,6 @@ export type ProjectToolExecutor = (name: ProjectToolName, args: any) => Promise<
 function describeError(error: unknown): string {
     if (error instanceof ProjectsUnsupportedError) return 'This Very Happy server does not support projects yet.';
     if (error instanceof ProjectRequestError) {
-        if (error.code === 'project_note_quota_exceeded' && typeof error.details.suggestion === 'string') return error.details.suggestion;
         if (error.code === 'not_a_project_member') return 'not in a project';
         if (error.code) return `Project request failed: ${error.code}`;
         return 'Project request failed';

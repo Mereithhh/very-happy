@@ -1,4 +1,4 @@
-import { PROJECT_LIMITS, ProjectAgentProfilesSchema, type AgentProfileRef, type ProjectAgentProfile, type ProjectFolder, type ProjectDefaults, type ProjectLogKind } from '@slopus/happy-wire';
+import { ProjectAgentProfilesSchema, type AgentProfileRef, type ProjectAgentProfile, type ProjectFolder, type ProjectDefaults } from '@slopus/happy-wire';
 
 /** Pure B-644 rules, kept out of the store so they are testable without a database. */
 
@@ -64,28 +64,6 @@ export function readFolders(value: unknown): ProjectFolder[] {
 
 export function readDefaults(value: unknown): ProjectDefaults {
     return value && typeof value === 'object' && !Array.isArray(value) ? normalizeDefaults(value as ProjectDefaults) : {};
-}
-
-/**
- * Per-author-session note budget (rolling hour): ≤5 notes, of which ≤2
- * decisions. The refusal carries one actionable alternative so an agent can
- * do the right thing instead of retrying.
- */
-export function noteQuotaRefusal(recent: { kind: string }[], kind: ProjectLogKind): { limit: number; count: number; suggestion: string } | null {
-    if (recent.length >= PROJECT_LIMITS.notesPerHour) {
-        return {
-            limit: PROJECT_LIMITS.notesPerHour, count: recent.length,
-            suggestion: 'Project note budget for this hour is used up. Fold this into one handoff note when you stop, or tell the user directly.',
-        };
-    }
-    const decisions = recent.filter(r => r.kind === 'decision').length;
-    if (kind === 'decision' && decisions >= PROJECT_LIMITS.decisionsPerHour) {
-        return {
-            limit: PROJECT_LIMITS.decisionsPerHour, count: decisions,
-            suggestion: 'Decision budget for this hour is used up. Record it as a finding, or supersede an earlier decision instead of adding a new one.',
-        };
-    }
-    return null;
 }
 
 /** `#12`, `12` → seq 12; anything else is treated as an entry id. */
