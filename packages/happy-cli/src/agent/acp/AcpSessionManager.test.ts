@@ -53,7 +53,8 @@ describe('AcpSessionManager turn lifecycle', () => {
 
   it('B-845b wiring: runAcp ends a failed prompt with its reason', () => {
     const source = readFileSync(join(__dirname, 'runAcp.ts'), 'utf8');
-    expect(source).toContain("sendEnvelopes(sessionManager.endTurn('failed', failure.error));");
+    // B-960: a dsh missing-key failure carries the hint as its one reason.
+    expect(source).toContain("sendEnvelopes(sessionManager.endTurn('failed', hint ?? failure.error));");
   });
 
   it('emits cancelled turn-end from endTurn()', () => {
