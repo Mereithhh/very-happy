@@ -45,7 +45,7 @@ import { ChangeTeamProjectModal } from "@/screens/projects/ChangeTeamProjectModa
 import { TeamDialog } from "./TeamDialog";
 import { LeadReviveNotice } from "./LeadReviveNotice";
 import { TeamRestoreNotice } from "./TeamRestoreNotice";
-import { useTeamRestoreCopy } from "./teamRestore";
+import { archivedStatusLine, useTeamRestoreCopy } from "./teamRestore";
 import { acceptBlockedByOpenTasks, leadReviveCopyFor, ownedTasksRefusalCount } from "./leadRevive";
 import { TeamTaskMessages, TeamTaskSummary } from "./TeamTaskDetail";
 import { useWorkspaceCopy } from "./workspaceCopy";
@@ -245,7 +245,7 @@ function TeamsContent() {
           <h1 className="vh-back-row">{!team && <BackButton />}<UsersRound size={26} aria-hidden /><span className="teams-heading-name" title={team?.name}>{team?.name ?? c.title}</span></h1>
           {team && <TeamProjectLine team={team} />}
           <p>{team ? <><span data-live={machineOnline}>{machineOnline ? c.online : c.offline}</span> · {executionMachine ? machineLabel(executionMachine) : c.unnamedMachine}</> : c.intro}</p>
-          {team?.archivedAt !== undefined && <p role="status">{tr("teams.archived")} · {new Date(team.archivedAt).toLocaleString()}</p>}
+          {team?.archivedAt !== undefined && <p role="status" data-testid="team-archived-line">{archivedStatusLine(team, Date.now(), restoreCopy, tr("teams.archived"))}</p>}
         </div>
         <div className="teams-heading-actions">
           <Link to="/help">{c.guide}</Link>
