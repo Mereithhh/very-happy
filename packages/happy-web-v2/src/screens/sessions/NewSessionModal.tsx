@@ -46,7 +46,7 @@ import { worktreeCopy, worktreeErrorText } from './worktreeCopy';
 import './newsession.css';
 import { DialogHead } from '@/ui/DialogHead';
 import { SpawnAccountPicker } from '@/components/accounts/SpawnAccountPicker';
-import { readMachineAgentProfiles, resolveSpawnAccount, spawnAgentProfileParam, type SpawnAccountChoice } from '@/sync/agentProfiles';
+import { dshHelpAccountLink, readMachineAgentProfiles, resolveSpawnAccount, spawnAgentProfileParam, type SpawnAccountChoice } from '@/sync/agentProfiles';
 import { accountSettingsHref } from '@/screens/session/sessionAccount';
 import { machineLabel as machineDisplayName } from '@/utils/machineUtils';
 import { useDialogBackdrop } from '@/ui/DialogBackdrop';
@@ -463,7 +463,10 @@ export function NewSessionModal({
             {agent === 'dsh' && (
               <div className="ns-agent-help" data-testid="ns-dsh-help">
                 {t('newSessionModal.dshHelp')}{' '}
-                <Link to={accountSettingsHref(machineId)} onClick={() => onClose()}>{t('newSessionModal.dshKeyLink')}</Link>
+                {/* B-960b: with an account already added, link to manage it instead of asking to add one. */}
+                {dshHelpAccountLink(readMachineAgentProfiles(selectedMachine)) === 'manage'
+                  ? <Link to={accountSettingsHref(machineId)} onClick={() => onClose()} data-testid="ns-dsh-accounts-link">{t('newSessionModal.dshManageLink')}</Link>
+                  : <>{t('newSessionModal.dshKeyNeeded')}{' '}<Link to={accountSettingsHref(machineId)} onClick={() => onClose()} data-testid="ns-dsh-accounts-link">{t('newSessionModal.dshKeyLink')}</Link></>}
               </div>
             )}
             {agentsToSetUp.length > 0 && (shownSetupAgent ? (

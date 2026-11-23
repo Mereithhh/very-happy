@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatAccountLine, parseAccountArgs } from './account';
+import { formatAccountLine, newSessionDefaultLines, parseAccountArgs } from './account';
 
 describe('B-850a very-happy account', () => {
     it('parses every subcommand', () => {
@@ -60,5 +60,34 @@ describe('B-957 account add --agent dsh / edit', () => {
         const line = formatAccountLine({ id: 'gw', label: 'GW', agent: 'dsh', kind: 'dsh-api', status: 'unverified', statusReason: 'unreachable', statusDetail: 'HTTP 404', baseUrl: 'https://your-gateway.example.com' }, false, 0);
         expect(line).toContain('[deepseek]');
         expect(line).toContain('wrong Base URL or unreachable: HTTP 404');
+    });
+});
+
+describe('B-960b account list: what new sessions use, per agent', () => {
+    const acc = (id: string, agent: string, over: Record<string, unknown> = {}) => ({ id, label: id.toUpperCase(), agent, kind: agent === 'dsh' ? 'dsh-api' : 'claude-api', status: 'ok', createdAt: 1, ...over }) as never;
+
+    it('a dsh default is named, never "machine login (no default account)" (QA R75 P3-3)', () => {
+        const lines = newSessionDefaultLines({ accounts: [acc('first-fake', 'dsh', { status: 'unverified' })], defaults: { dsh: 'first-fake' }, machineLoginKey: { dsh: false } });
+        expect(lines).toEqual(['New DeepSeek Harness sessions use the default account FIRST-FAKE.']);
+        expect(lines.join('\n')).not.toContain('no default account');
+    });
+
+    it('one line per agent with accounts, each by its own default', () => {
+        expect(newSessionDefaultLines({ accounts: [acc('ds', 'dsh'), acc('hub', 'claude')], defaults: { dsh: 'ds' } })).toEqual([
+            'New Claude sessions use the machine login (no default account).',
+            'New DeepSeek Harness sessions use the default account DS.',
+        ]);
+        expect(newSessionDefaultLines({ accounts: [], defaults: {} })).toEqual([]);
+    });
+
+    it('dsh without a key and without a default: the account the daemon falls back to', () => {
+        expect(newSessionDefaultLines({ accounts: [acc('ds', 'dsh')], defaults: {}, machineLoginKey: { dsh: false } }))
+            .toEqual(['New DeepSeek Harness sessions use DS (this machine has no DeepSeek key; no default account).']);
+        expect(newSessionDefaultLines({ accounts: [acc('ds', 'dsh')], defaults: {}, machineLoginKey: { dsh: true } }))
+            .toEqual(['New DeepSeek Harness sessions use the machine login (no default account).']);
+    });
+
+    it('a default pointing at a removed account says so', () => {
+        expect(newSessionDefaultLines({ accounts: [acc('hub', 'claude')], defaults: { claude: 'gone' } })[0]).toContain('is gone');
     });
 });
