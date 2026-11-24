@@ -89,6 +89,8 @@ rl.on('line', (line) => {
             process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'end_turn', padding } })}\n`);
             return;
         }
+        // B-970: dsh's context occupancy after a committed answer.
+        if (scenario === 'usage') notify(sessionId, { sessionUpdate: 'usage_update', used: 4321, size: 1000000 });
         notify(sessionId, { sessionUpdate: 'tool_call', toolCallId: 'call-1', title: 'sleep forever', kind: 'execute', status: 'in_progress' });
         setTimeout(() => out({ id: msg.id, result: { stopReason: 'end_turn' } }), 30);
         return;

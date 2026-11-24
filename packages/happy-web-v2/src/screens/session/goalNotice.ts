@@ -113,6 +113,13 @@ export function isDshSessionNotice(message: string): boolean {
     return message.trim() === DSH_SESSION_NOTICE;
 }
 
+/** Same string as the CLI's dshRunner.ts DSH_COMPACT_NOTICE (B-970): the answer to `/compact` in a dsh session. */
+export const DSH_COMPACT_NOTICE = 'DeepSeek Harness compacts the context automatically when it reaches about 80%; it has no manual compact command.';
+
+export function isDshCompactNotice(message: string): boolean {
+    return message.trim() === DSH_COMPACT_NOTICE;
+}
+
 /**
  * B-960: the dsh wrapper's "no API key" hint (dshRunner.ts dshMissingKeyHint,
  * CLI 0.2.223), plus the B-952 line of older CLIs. `label` = the DeepSeek

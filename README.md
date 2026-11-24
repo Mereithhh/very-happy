@@ -399,7 +399,7 @@ platform delivers them to an installed PWA; normal tabs use the explicit
 | Custom ACP command | Beta · implemented | Generic runner for a compatible Agent Client Protocol stdio endpoint |
 | OpenClaw | Shipped | Its own local gateway adapter—not ACP |
 | pi | Shipped · via pi-acp | ACP runner over the external pi-acp adapter: structured chat, Steer into the running turn, question cards, sub-agent cards, permission modes enforced by the Very Happy pi extension, resume after a crash or restart; also Teams and native terminal tools |
-| DeepSeek Harness (dsh) | Beta · implemented | dsh's own ACP server (`dsh --profile acp`): structured chat, tool cards, stop, resume (dsh context restored, no replay), model and reasoning-effort picker, DeepSeek API key accounts. Replies arrive per message, not word by word; no plan mode, slash commands or images. Needs Node.js 24.9+ |
+| DeepSeek Harness (dsh) | Beta · implemented | dsh's own ACP server (`dsh --profile acp`): structured chat, tool cards, stop, resume (dsh context restored, no replay), model and reasoning-effort picker, DeepSeek API key accounts, context-used meter (CLI 0.2.227+). Replies arrive per message, not word by word; no plan mode, slash commands or images; `/compact` is answered by Very Happy (dsh compacts by itself at ~80%); no edit / delete / retry / fork (dsh cannot cut or branch its history). Needs Node.js 24.9+ |
 | Provider-aware routing | Roadmap | Cross-provider subtask coordination, not a shipped claim |
 
 Agent Client Protocol is distinct from the older Agent Communication Protocol

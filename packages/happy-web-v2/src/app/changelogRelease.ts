@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-25-dsh-context-meter',
+    cliVersion: '0.2.227',
+    date: '2026-11-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov25b.title',
+    summaryKey: 'changelog.releases.nov25b.summary',
+    itemKeys: ['changelog.releases.nov25b.context', 'changelog.releases.nov25b.compact', 'changelog.releases.nov25b.edit'],
+  },
+  {
     id: '2026-11-25-dsh-permission-card',
     cliVersion: '0.2.227',
     date: '2026-11-25',

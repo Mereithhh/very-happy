@@ -147,6 +147,7 @@ import { Spinner, useToast } from '@/ui';
 import { abortOutcomeForError, type AbortOutcome } from './abortOutcome';
 import { contextPercentOf, composerContextUsage } from './contextWindow';
 import { sessionCodexContext } from '@/sync/codexContext';
+import { sessionDshContext } from '@/sync/dshContext';
 import { formatTokens } from './format';
 import { getAllCommands } from '@/sync/suggestionCommands';
 import { filterSlashSuggestions, slashCommandText } from './slashSuggestions';
@@ -718,7 +719,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         sync.applySettings({ claudeLongContextOptOut: !on });
     };
     // context meter — always visible when we have a usage snapshot.
-    const context = composerContextUsage(isPiAgent(flavor), session?.agentState?.contextUsage, usage, metadata?.currentModelCode, metadata?.currentContextWindow, normalizeAgentKey(flavor) === 'codex' ? sessionCodexContext(session) : undefined);
+    const context = composerContextUsage(isPiAgent(flavor), session?.agentState?.contextUsage, usage, metadata?.currentModelCode, metadata?.currentContextWindow, normalizeAgentKey(flavor) === 'codex' ? sessionCodexContext(session) : sessionDshContext(session));
     const contextKnown = context.tokens !== null;
     const contextSize = context.tokens ?? 0;
     const contextWindow = context.window;

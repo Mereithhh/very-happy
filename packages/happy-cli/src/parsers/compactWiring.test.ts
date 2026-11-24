@@ -26,7 +26,8 @@ describe('/compact wiring', () => {
 
     it('ACP routes /compact before steering or queueing it', () => {
         const acp = read('agent/acp/runAcp.ts');
-        const routeAt = acp.indexOf('const route = routeAcpUserText(message.content.text, agentCommands);');
+        // B-970: dsh (no manual compaction) gets Very Happy's own answer.
+        const routeAt = acp.indexOf("const route = routeAcpUserText(message.content.text, agentCommands, opts.agentName === 'dsh' ? { compactNotice: DSH_COMPACT_NOTICE } : {});");
         const steerAt = acp.indexOf("if (message.meta?.delivery === 'steer' && !fromPeer && piSteer?.ready && thinking && !attachments?.length) {");
         expect(routeAt).toBeGreaterThan(0);
         expect(steerAt).toBeGreaterThan(routeAt);

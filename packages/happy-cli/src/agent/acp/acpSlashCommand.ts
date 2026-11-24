@@ -42,9 +42,11 @@ export type AcpUserTextRoute =
  * among them, Very Happy says so. Before the agent reported anything the
  * command is passed on, as before.
  */
-export function routeAcpUserText(text: string, advertisedCommands: readonly string[] | null): AcpUserTextRoute {
+export function routeAcpUserText(text: string, advertisedCommands: readonly string[] | null, opts: { compactNotice?: string } = {}): AcpUserTextRoute {
   const compact = compactCommandText(text);
   if (compact !== null) {
+    // B-970: an agent known to have no manual compaction (dsh) gets its own answer, never the model's.
+    if (opts.compactNotice) return { kind: 'unsupported', notice: opts.compactNotice };
     if (advertisedCommands && advertisedCommands.length > 0 && !advertisedCommands.includes('compact')) {
       return { kind: 'unsupported', notice: COMPACT_UNSUPPORTED_NOTICE };
     }

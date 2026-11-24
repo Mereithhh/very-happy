@@ -1,4 +1,4 @@
-import { CodexContextUsageSchema, CodexGoalSchema, ContextUsageSchema } from '@slopus/happy-wire';
+import { CodexContextUsageSchema, CodexGoalSchema, ContextUsageSchema, DshContextUsageSchema } from '@slopus/happy-wire';
 import { z } from "zod";
 import type { SessionShareInfo } from './sessionShareTypes';
 
@@ -258,6 +258,8 @@ export const AgentStateSchema = z.object({
     codexGoal: CodexGoalSchema.nullish().catch(undefined),
     /** B-963: Codex context occupancy; read through `sessionCodexContext`. */
     codexContextUsage: CodexContextUsageSchema.nullish().catch(undefined),
+    /** B-970: dsh context occupancy; read through `sessionDshContext`. */
+    dshContextUsage: DshContextUsageSchema.nullish().catch(undefined),
     requests: z.record(z.string(), z.object({
         tool: z.string(),
         arguments: z.any(),

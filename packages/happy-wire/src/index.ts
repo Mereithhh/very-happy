@@ -39,6 +39,7 @@ export * from './syncProtocol';
 export * from './turnFailure';
 export * from './codexGoal';
 export * from './codexContext';
+export * from './dshContext';
 export * from './accountSettings';
 export * from './machineSettings';
 export * from './mainAgentSafety';

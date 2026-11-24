@@ -1258,6 +1258,7 @@ export const zhHans: TranslationStructure = {
             dshNoKeyAddAccount: '这台机器没有 DeepSeek key。在设置 → 模型与账号里添加一个 DeepSeek 账号，或在 daemon 的环境里设置 DEEPSEEK_API_KEY。',
             dshNoKeyUseAccount: ({ label }: { label: string }) => `这台机器的 DeepSeek 默认是本机登录，但本机没有 key。在设置 → 模型与账号里把默认改成「${label}」，或新建会话时选它。`,
             dshSessionNotice: 'DeepSeek Harness 会话：回复按条显示，不逐字流式；恢复会话时这里的记录保留，但 dsh 不回放历史；不支持计划模式、斜杠命令和图片。除非会话开了 yolo，工具调用都会在这里请你确认。',
+            dshCompactNotice: 'dsh 会在上下文用到约 80% 时自动压缩，没有手动压缩命令。',
             subagentPrompt: '任务说明',
             subagentLog: '执行过程',
             subagentNoActivity: '这个子代理还没有任何回报。',
@@ -3665,6 +3666,13 @@ export const zhHans: TranslationStructure = {
                 summary: '终端所在的机器没连上时，打开终端只有黑屏，别人分享给你的终端尤其如此。现在终端里会写明这台机器没连上，以及是哪台机器。',
                 shared: '别人分享给你的终端会写明是谁的哪台机器（比如「Alex 的 mac-studio」）：连接时显示正在连接，机器没连上时显示没连上，看的过程中掉线也一样。',
                 recover: '机器重新连上后，终端会自动恢复，不用刷新，也不用点重试。你自己的终端也一样。',
+            },
+            nov25b: {
+                title: 'DeepSeek Harness 会话显示上下文占用',
+                summary: 'DeepSeek Harness（dsh）会话现在显示上下文用了多少，/compact 也会得到明确答复。',
+                context: 'dsh 会话输入框下方的占用条显示当前上下文 token 数和 dsh 报告的窗口大小，每次回复后更新；刷新或恢复会话后仍在。需要把会话重启到 CLI 0.2.227。',
+                compact: '在 dsh 会话里发 /compact 不再被当成普通消息发给模型：dsh 会在上下文用到约 80% 时自动压缩，没有手动压缩命令，会话里会直接说明。',
+                edit: 'dsh 会话仍不提供编辑、删除、重试和分叉：dsh 目前不能截断或分叉自己的历史，所以不显示这些按钮。',
             },
             nov25c: {
                 title: 'Codex 模型选择器标出模型来源',
