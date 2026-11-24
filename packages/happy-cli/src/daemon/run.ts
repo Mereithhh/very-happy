@@ -125,7 +125,7 @@ import { createMainAgentProactive, type MainAgentProactive } from './mainAgentPr
 import { sendRemoteMessage } from '@/sessions/remoteSessionClient';
 import { waitForSessionKey } from '@/commands/sessionMessage';
 import { daemonExitCode, HANDOVER_EXIT_CODE, type ShutdownSource } from './shutdownExit';
-import { daemonLineage, detectDaemonSupervisor, probeLaunchdJob, probeSystemdKillMode, wrappersSurviveHandover, handoverWaitsForSessions } from './daemonSupervisor';
+import { daemonLineage, detectDaemonSupervisor, probeLaunchdJob, probeSystemdUnit, probeSystemdKillMode, wrappersSurviveHandover, handoverWaitsForSessions } from './daemonSupervisor';
 
 import { shellescape } from '@/utils/shellescape';
 import { sanitizeImportTitle } from './importTitle';
@@ -2230,7 +2230,12 @@ export async function startDaemon(): Promise<void> {
     const daemonClaudeCredentials = resolveClaudeCredentialReadiness();
     // B-505/B-770: decides how the auto-update handover leaves this process.
     const launchdJob = process.platform === 'darwin' ? await probeLaunchdJob() : null;
-    const daemonSupervisor = detectDaemonSupervisor(process.env, process.platform, launchdJob);
+    // B-965: a systemd claim from the env needs the unit's own word (active, MainPID = us or an ancestor).
+    const systemdUnit = process.platform === 'linux' ? await probeSystemdUnit() : null;
+    const daemonSupervisor = detectDaemonSupervisor(process.env, process.platform, launchdJob, systemdUnit);
+    if (daemonSupervisor === 'none' && (process.env.INVOCATION_ID || process.env.HAPPY_DAEMON_SUPERVISOR?.trim().toLowerCase() === 'systemd')) {
+      logger.warn(`[DAEMON RUN] The environment says systemd, but this daemon is not its unit's main process (${systemdUnit ? `ActiveState=${systemdUnit.activeState} MainPID=${systemdUnit.mainPid}` : 'unit unreadable'}); running unsupervised`);
+    }
     const lineage = daemonLineage(daemonSupervisor, process.env, process.platform, launchdJob);
     logger.debug(`[DAEMON RUN] Supervisor: ${daemonSupervisor} (lineage ${lineage}${launchdJob ? `, launchd job pid ${launchdJob.jobPid ?? '-'}` : ''})`);
     // B-817b: whether the handover may leave mid-turn (see wrappersSurviveHandover).

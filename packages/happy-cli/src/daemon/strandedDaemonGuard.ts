@@ -23,9 +23,16 @@
  * - this process runs as a handover preflight (`HAPPY_HOME_DIR` is the
  *   preflight's throwaway `vh-preflight-*` home) and its parent is a
  *   `daemon start-sync` process;
- * - linux: the parent is in a systemd `.service` cgroup, claims systemd
- *   (`HAPPY_DAEMON_SUPERVISOR=systemd` or `INVOCATION_ID`), and the unit's
- *   `MainPID` is not the parent (0 = inactive, as observed);
+ * - linux, all four:
+ *   1. the parent's pid is the pid in its home's `daemon.state.json` (the
+ *      home from the parent's environment, `HAPPY_HOME_DIR` or `~/.happy`);
+ *   2. the parent's environment claims systemd (`INVOCATION_ID` or
+ *      `HAPPY_DAEMON_SUPERVISOR=systemd`);
+ *   3. the unit of the parent's cgroup is not active with the parent as its
+ *      `MainPID` (observed: inactive, MainPID 0);
+ *   4. the unit's `KillMode` is `process` or `none` — only then is it started;
+ *      any other mode starts nothing and only holds (exit 3).
+ *   Every systemctl call has a 5 s timeout; a failure answers normally.
  * - darwin: the parent carries the job's `XPC_SERVICE_NAME` and the job has
  *   no running process.
  */
@@ -36,7 +43,8 @@ import { HAPPY_DAEMON_LAUNCHD_LABEL, parseLaunchctlPid } from './claudeAuth/clau
 import { parseSystemdUnit } from './daemonSupervisor';
 
 export type StrandedDaemon =
-    | { kind: 'systemd'; unit: string; user: boolean; mainPid: number | null }
+    /** `start`: KillMode process/none (a start spares the wrappers); otherwise only hold. */
+    | { kind: 'systemd'; unit: string; user: boolean; mainPid: number | null; start: boolean }
     | { kind: 'launchd'; target: string };
 
 export type StrandedGuardDeps = {
@@ -48,13 +56,44 @@ export type StrandedGuardDeps = {
     run?: (file: string, args: string[]) => { status: number | null; stdout?: string };
 };
 
+/** Every systemctl / launchctl / ps call is bounded: a hung bus must not hang the preflight. */
 const run = (file: string, args: string[]) => spawnSync(file, args, { encoding: 'utf8', timeout: 5_000 });
+
+/** The pid in `<home>/daemon.state.json`, or null. */
+function statePid(home: string, read: (path: string) => string): number | null {
+    try {
+        const pid = Number(JSON.parse(read(`${home}/daemon.state.json`)).pid);
+        return Number.isInteger(pid) && pid > 0 ? pid : null;
+    } catch {
+        return null;
+    }
+}
+
+/** `KEY=value` lines of `systemctl show`. */
+function showValues(stdout: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const line of stdout.split('\n')) {
+        const i = line.indexOf('=');
+        if (i > 0) out[line.slice(0, i)] = line.slice(i + 1).trim();
+    }
+    return out;
+}
 
 /** Is this `--version` a handover preflight of a `daemon start-sync` parent? */
 export function isHandoverPreflight(env: NodeJS.ProcessEnv, parentCmdline: string): boolean {
     const home = env.HAPPY_HOME_DIR;
     if (!home || !basename(home).startsWith('vh-preflight-')) return false;
     return /\bdaemon start-sync\b/.test(parentCmdline.replace(/\0/g, ' '));
+}
+
+/** `/proc/<pid>/environ` → map (NUL-separated). */
+export function parseEnviron(raw: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const pair of raw.split('\0')) {
+        const i = pair.indexOf('=');
+        if (i > 0) out[pair.slice(0, i)] = pair.slice(i + 1);
+    }
+    return out;
 }
 
 export function detectStrandedDaemon(deps: StrandedGuardDeps = {}): StrandedDaemon | null {
@@ -66,15 +105,28 @@ export function detectStrandedDaemon(deps: StrandedGuardDeps = {}): StrandedDaem
     try {
         if (platform === 'linux') {
             if (!isHandoverPreflight(env, read(`/proc/${ppid}/cmdline`))) return null;
-            const claimsSystemd = env.HAPPY_DAEMON_SUPERVISOR?.trim().toLowerCase() === 'systemd' || Boolean(env.INVOCATION_ID?.trim());
-            if (!claimsSystemd) return null;
+            // 1. the parent is THE daemon: its pid is in the real home's state file.
+            //    The preflight runs with a throwaway HAPPY_HOME_DIR, so the real home
+            //    is read from the parent's own environment.
+            const parentEnv = parseEnviron(read(`/proc/${ppid}/environ`));
+            const home = parentEnv.HAPPY_HOME_DIR || (parentEnv.HOME ? `${parentEnv.HOME}/.happy` : '');
+            if (!home || statePid(home, read) !== ppid) return null;
+            // 2. the parent claims systemd.
+            const claims = parentEnv.HAPPY_DAEMON_SUPERVISOR?.trim().toLowerCase() === 'systemd' || Boolean(parentEnv.INVOCATION_ID?.trim());
+            if (!claims) return null;
+            // 3. its cgroup's unit is not active with it as main process.
             const owner = parseSystemdUnit(read(`/proc/${ppid}/cgroup`));
             if (!owner) return null;
-            const shown = exec('systemctl', [...(owner.user ? ['--user'] : []), 'show', '-p', 'MainPID', '--value', owner.unit]);
+            const scope = owner.user ? ['--user'] : [];
+            const shown = exec('systemctl', [...scope, 'show', '-p', 'ActiveState', '-p', 'MainPID', '-p', 'KillMode', owner.unit]);
             if (shown.status !== 0) return null; // cannot tell: behave as before
-            const mainPid = Number((shown.stdout ?? '').trim());
-            if (!Number.isInteger(mainPid) || mainPid === ppid) return null;
-            return { kind: 'systemd', unit: owner.unit, user: owner.user, mainPid: mainPid > 0 ? mainPid : null };
+            const v = showValues(shown.stdout ?? '');
+            const mainPid = Number(v.MainPID);
+            if (!v.ActiveState || !Number.isInteger(mainPid)) return null;
+            if (v.ActiveState === 'active' && mainPid === ppid) return null;
+            // 4. only a KillMode that spares the cgroup may be started; any other only holds.
+            const start = v.KillMode === 'process' || v.KillMode === 'none';
+            return { kind: 'systemd', unit: owner.unit, user: owner.user, mainPid: mainPid > 0 ? mainPid : null, start };
         }
         if (platform === 'darwin') {
             const cmd = exec('ps', ['-o', 'command=', '-p', String(ppid)]);
@@ -98,6 +150,7 @@ export function detectStrandedDaemon(deps: StrandedGuardDeps = {}): StrandedDaem
 export function reviveSupervisor(stranded: StrandedDaemon, exec: StrandedGuardDeps['run'] = run): boolean {
     try {
         if (stranded.kind === 'systemd') {
+            if (!stranded.start) return false; // KillMode would take the wrappers: hold only
             // A unit that is active with another main process already has its daemon; leave it.
             if (stranded.mainPid !== null) return false;
             return exec('systemctl', [...(stranded.user ? ['--user'] : []), '--no-block', 'start', stranded.unit]).status === 0;

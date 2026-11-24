@@ -56,15 +56,47 @@ export interface LaunchdJobEvidence {
     ancestorPids: number[];
 }
 
+/**
+ * B-965: what `systemctl show` says about the unit this process's cgroup
+ * belongs to, plus our own pid chain. The env alone (`INVOCATION_ID`,
+ * `HAPPY_DAEMON_SUPERVISOR`) is inherited by everything the unit ever started,
+ * including a daemon a session wrapper spawned after the unit's main process
+ * exited — that daemon read `systemd`, handed over by exiting 75 with the unit
+ * inactive, and the machine went offline. Same rule as launchd (B-770): the
+ * unit must be active and its MainPID this process or one of its ancestors.
+ */
+export interface SystemdUnitEvidence {
+    activeState: string;
+    mainPid: number;
+    /** This process first, then its ancestors. */
+    ancestorPids: number[];
+}
+
+/** The env claims a systemd unit (explicit setting, or INVOCATION_ID on linux). */
+function claimsSystemd(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): boolean {
+    if (env.HAPPY_DAEMON_SUPERVISOR?.trim().toLowerCase() === 'systemd') return true;
+    return platform === 'linux' && typeof env.INVOCATION_ID === 'string' && env.INVOCATION_ID.trim() !== '';
+}
+
+/** B-965: is the unit active with this process (or an ancestor) as its main process? */
+export function ownsSystemdUnit(unit: SystemdUnitEvidence | null): boolean {
+    if (!unit) return false;
+    if (unit.activeState.trim() !== 'active') return false;
+    if (!Number.isInteger(unit.mainPid) || unit.mainPid <= 0) return false;
+    return unit.ancestorPids.includes(unit.mainPid);
+}
+
 export function detectDaemonSupervisor(
     env: NodeJS.ProcessEnv,
     platform: NodeJS.Platform = process.platform,
     launchd: LaunchdJobEvidence | null = null,
+    systemd: SystemdUnitEvidence | null = null,
 ): DaemonSupervisor {
     const explicit = env.HAPPY_DAEMON_SUPERVISOR?.trim().toLowerCase();
-    if (explicit === 'systemd') return 'systemd';
     if (explicit === 'none') return 'none';
-    if (platform === 'linux' && typeof env.INVOCATION_ID === 'string' && env.INVOCATION_ID.trim() !== '') return 'systemd';
+    // B-965: a systemd claim counts only with proof (unreadable = not proven =
+    // none: spawning a successor and exiting 0 keeps the machine online).
+    if (claimsSystemd(env, platform)) return ownsSystemdUnit(systemd) ? 'systemd' : 'none';
     if (platform === 'darwin' && launchd && classifyLineage({ platform, env, launchdJobPid: launchd.jobPid, ancestorPids: launchd.ancestorPids }) === 'launchd') return 'launchd';
     return 'none';
 }
@@ -183,6 +215,36 @@ export function parseSystemdUnit(cgroup: string): { unit: string; user: boolean 
     const unit = segments[index];
     if (!/^[A-Za-z0-9:_.@\\-]+\.service$/.test(unit) || /^user@\d+\.service$/.test(unit)) return null;
     return { unit, user: segments.slice(0, index).some((segment) => /^user@\d+\.service$/.test(segment)) };
+}
+
+/**
+ * B-965: linux only. The unit from /proc/self/cgroup and its `ActiveState` /
+ * `MainPID`; null when any of it cannot be read (treated as unsupervised).
+ */
+export async function probeSystemdUnit(
+    readCgroup: () => Promise<string> = () => readFile('/proc/self/cgroup', 'utf8'),
+    exec: (file: string, args: string[]) => Promise<string> = execText,
+    ancestors: () => Promise<number[]> = () => ancestorPidChain(exec),
+): Promise<SystemdUnitEvidence | null> {
+    const owner = parseSystemdUnit(await readCgroup().catch(() => ''));
+    if (!owner) return null;
+    const out = await exec('systemctl', [...(owner.user ? ['--user'] : []), 'show', '-p', 'ActiveState', '-p', 'MainPID', owner.unit]);
+    const activeState = /^ActiveState=(.*)$/m.exec(out)?.[1]?.trim();
+    const mainPid = Number(/^MainPID=(\d+)$/m.exec(out)?.[1]);
+    if (!activeState || !Number.isInteger(mainPid)) return null;
+    return { activeState, mainPid, ancestorPids: await ancestors() };
+}
+
+async function ancestorPidChain(exec: (file: string, args: string[]) => Promise<string>): Promise<number[]> {
+    const chain = [process.pid];
+    let pid = process.ppid;
+    for (let i = 0; i < 10 && pid > 1; i++) {
+        chain.push(pid);
+        const ppid = Number((await exec('ps', ['-o', 'ppid=', '-p', String(pid)])).trim());
+        if (!Number.isFinite(ppid) || ppid <= 0 || ppid === pid) break;
+        pid = ppid;
+    }
+    return chain;
 }
 
 /** linux only; any failure reads as "unknown" (null), which keeps the turn gate unless the unit said so explicitly. */
