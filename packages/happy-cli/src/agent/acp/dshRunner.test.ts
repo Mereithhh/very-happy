@@ -121,3 +121,42 @@ describe('dsh pending permission request shape (B-969)', () => {
     expect('kind' in state.requests.b).toBe(false);
   });
 });
+
+describe('switching a dsh session to auto-approve (B-969)', () => {
+  it('approveAllPending resolves waiting asks as approved and moves them to completedRequests', async () => {
+    const { BasePermissionHandler } = await import('@/utils/BasePermissionHandler');
+    let state: any = {};
+    const session = {
+      rpcHandlerManager: { registerHandler: () => {} },
+      updateAgentState: (fn: (s: any) => any) => { state = fn(state); },
+    };
+    class H extends BasePermissionHandler {
+      protected getLogPrefix() { return '[t]'; }
+      ask(id: string) {
+        return new Promise((resolve, reject) => {
+          this.pendingRequests.set(id, { resolve, reject, toolName: 'bash', input: {} });
+          this.addPendingRequestToState(id, 'bash', { command: 'ls' }, { kind: 'tool' });
+        });
+      }
+    }
+    const h = new H(session as any);
+    expect(h.approveAllPending()).toBe(0);
+    const a = h.ask('a');
+    const b = h.ask('b');
+    expect(h.approveAllPending()).toBe(2);
+    await expect(a).resolves.toEqual({ decision: 'approved' });
+    await expect(b).resolves.toEqual({ decision: 'approved' });
+    expect(state.requests).toEqual({});
+    expect(state.completedRequests.a).toMatchObject({ tool: 'bash', status: 'approved', decision: 'approved', kind: 'tool' });
+    expect(h.approveAllPending()).toBe(0);
+  });
+
+  it('the dsh wrapper advertises live permission switching and approves waiting asks on bypass', async () => {
+    const { DSH_LIVE_PERMISSION_CAPABILITY } = await import('./dshRunner');
+    expect(DSH_LIVE_PERMISSION_CAPABILITY).toBe('dsh-live-permission-v1');
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('./runAcp.ts', import.meta.url), 'utf8');
+    expect(src).toContain("...(opts.agentName === 'dsh' ? [DSH_LIVE_PERMISSION_CAPABILITY] : [])");
+    expect(src).toContain("if (opts.agentName === 'dsh' && dshAutoApproves(mode)) permissionHandler?.approveAllPending();");
+  });
+});

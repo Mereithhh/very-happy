@@ -191,6 +191,38 @@ export abstract class BasePermissionHandler {
     }
 
     /**
+     * B-969: approve every pending request (a dsh session switched to
+     * bypassPermissions / yolo while asks were waiting). Each resolves as a plain
+     * `approved`, exactly as if the user had pressed Approve. Returns how many.
+     */
+    approveAllPending(): number {
+        const pendingSnapshot = Array.from(this.pendingRequests.entries());
+        if (pendingSnapshot.length === 0) return 0;
+        this.pendingRequests.clear();
+        for (const [id, pending] of pendingSnapshot) {
+            try {
+                pending.resolve({ decision: 'approved' });
+            } catch (err) {
+                logger.debug(`${this.getLogPrefix()} Error approving pending request ${id}:`, err);
+            }
+        }
+        const ids = new Set(pendingSnapshot.map(([id]) => id));
+        this.session.updateAgentState((currentState) => {
+            const requests = { ...(currentState.requests || {}) };
+            const completedRequests = { ...currentState.completedRequests };
+            for (const id of ids) {
+                const request = requests[id];
+                if (!request) continue;
+                delete requests[id];
+                completedRequests[id] = { ...request, completedAt: Date.now(), status: 'approved', decision: 'approved' };
+            }
+            return { ...currentState, requests, completedRequests };
+        });
+        logger.debug(`${this.getLogPrefix()} Approved ${pendingSnapshot.length} pending permission(s) after a switch to auto-approve`);
+        return pendingSnapshot.length;
+    }
+
+    /**
      * Reset state for new sessions.
      * This method is idempotent - safe to call multiple times.
      */

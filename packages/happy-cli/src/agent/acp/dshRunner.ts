@@ -124,6 +124,13 @@ export function dshAutoApproves(mode: string | null | undefined): boolean {
 }
 
 /**
+ * B-969: a dsh wrapper takes `set-permission-mode` at any time (also while a
+ * turn runs or an ask waits) and publishes the mode in effect in
+ * `metadata.permissionMode`. The Web switches dsh live only when it sees this.
+ */
+export const DSH_LIVE_PERMISSION_CAPABILITY = 'dsh-live-permission-v1';
+
+/**
  * B-969: extra fields for a pending permission request in agentState. dsh only
  * offers allow-once / reject-once (its approval service grants nothing wider)
  * and Very Happy keeps no session allow-list for ACP agents, so "Approve for

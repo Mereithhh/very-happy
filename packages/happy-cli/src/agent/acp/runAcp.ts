@@ -1,7 +1,7 @@
 import { VERY_HAPPY_DISCOVERY } from '@/skill/discovery';
 import { dshHintContext, loadDshWrapperAccount, MACHINE_DSH_ACCOUNT, type DshWrapperAccount } from '@/agentProfiles/dshAccount';
 import { SPAWN_ACCOUNT_ENV } from '@/agentProfiles/store';
-import { DSH_SESSION_NOTICE, acpPendingRequestExtras, dshAutoApproves, dshFailureHint } from './dshRunner';
+import { DSH_LIVE_PERMISSION_CAPABILITY, DSH_SESSION_NOTICE, acpPendingRequestExtras, dshAutoApproves, dshFailureHint } from './dshRunner';
 import { isSessionPeerPrompt } from '@/claude/nonUserPrompt';
 import { readPiModelsJson, resolvePiContextUsage, type PiContextReport } from './piContextUsage';
 import { buildAcpPrompt, routeAcpUserText } from './acpSlashCommand';
@@ -563,7 +563,7 @@ export async function runAcp(opts: {
     sandbox: settings.sandboxConfig,
     // B-852: a daemon-spawned pi session reports when it is quiescent, so the
     // daemon can restart it onto new code after an upgrade.
-    capabilities: [PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, ...(opts.agentName === 'pi' && opts.startedBy === 'daemon' ? [AUTO_RESTART_CAPABILITY] : [])],
+    capabilities: [PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, ...(opts.agentName === 'pi' && opts.startedBy === 'daemon' ? [AUTO_RESTART_CAPABILITY] : []), ...(opts.agentName === 'dsh' ? [DSH_LIVE_PERMISSION_CAPABILITY] : [])],
   });
   // B-874: issue_* tools (via HAPPY_MCP_URL) + issue digest (spec §5).
   metadata.capabilities = [...(metadata.capabilities ?? []), ISSUE_SESSION_CAPABILITY];
@@ -736,6 +736,8 @@ export async function runAcp(opts: {
     fileBackedPermissionMode = mode;
     session.updateMetadata((currentMetadata) => ({ ...currentMetadata, permissionMode: mode }));
     logger.debug(`[${opts.agentName}] Published file-backed permission mode: ${mode}`);
+    // B-969: dsh asks are answered here, so asks already waiting go through too.
+    if (opts.agentName === 'dsh' && dshAutoApproves(mode)) permissionHandler?.approveAllPending();
     return true;
   };
 

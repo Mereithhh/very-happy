@@ -74,3 +74,18 @@ describe('AgentInput live permission integration', () => {
         expect(source).toContain("t('session.chat.permissionModeChangeFailed')");
     });
 });
+
+describe('dsh live permission mode (B-969)', () => {
+    const base = { isClaude: false, isDsh: true, isWorking: true, isRemote: true, isOnline: true };
+    it('switches live only when the wrapper advertises it and is online', async () => {
+        const { DSH_LIVE_PERMISSION_CAPABILITY } = await import('./livePermissionMode');
+        expect(shouldApplyPermissionModeLive({ ...base, capabilities: [DSH_LIVE_PERMISSION_CAPABILITY] })).toBe(true);
+        expect(shouldApplyPermissionModeLive({ ...base, isWorking: false, capabilities: [DSH_LIVE_PERMISSION_CAPABILITY] })).toBe(true);
+        expect(shouldApplyPermissionModeLive({ ...base, isOnline: false, capabilities: [DSH_LIVE_PERMISSION_CAPABILITY] })).toBe(false);
+        expect(shouldApplyPermissionModeLive({ ...base, capabilities: [] })).toBe(false);
+        expect(shouldApplyPermissionModeLive({ ...base, isRemote: false, capabilities: [DSH_LIVE_PERMISSION_CAPABILITY] })).toBe(false);
+        // A Claude capability does not make a dsh session live, nor the dsh one a Claude session.
+        expect(shouldApplyPermissionModeLive({ ...base, capabilities: [CLAUDE_LIVE_PERMISSION_V2_CAPABILITY] })).toBe(false);
+        expect(shouldApplyPermissionModeLive({ isClaude: true, isWorking: true, isRemote: true, isOnline: true, capabilities: [DSH_LIVE_PERMISSION_CAPABILITY] })).toBe(false);
+    });
+});
