@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 
-import { killSurvivors, readLiveProcessTable, snapshotTree, survivorsOf, type ProcessEntry, type ProcessTableReader } from '@/utils/processTreeSnapshot';
+import { ancestorsOf, killSurvivors, readLiveProcessTable, readProcessTable, selfTreePids, snapshotTree, survivorsOf, type ProcessEntry, type ProcessTableReader } from '@/utils/processTreeSnapshot';
 
 export type ProcessSignal = 'SIGTERM' | 'SIGKILL';
 
@@ -84,7 +84,26 @@ export type TerminateTreeDeps = {
     graceMs?: number;
     platform?: NodeJS.Platform;
     onLeftovers?: (pids: number[]) => void;
+    /** B-965: the stopped pid is an ancestor of this process; called once, before anything is signalled. */
+    onAncestor?: (pid: number) => void;
+    /** Process table for the default snapshot, reap and ancestor check (default: `ps`). */
+    read?: ProcessTableReader;
+    selfPid?: number;
 };
+
+/**
+ * B-965: is `pid` one of this process's ancestors? A daemon started by a
+ * session wrapper during an upgrade is that wrapper's child until the wrapper
+ * exits. Unknown (no process table) reads as false.
+ */
+export function isAncestorOfSelf(pid: number, read: ProcessTableReader = readProcessTable, selfPid: number = process.pid): boolean {
+    try {
+        const table = read();
+        return table ? ancestorsOf(selfPid, table).includes(pid) : false;
+    } catch {
+        return false;
+    }
+}
 
 /** Windows: TerminateProcess on the root orphans everything under it; taskkill /T ends the tree. */
 const windowsTreeRuntime = (base: ProcessTerminationRuntime): ProcessTerminationRuntime => ({
@@ -115,10 +134,23 @@ export function terminateProcessTree(
     onSettled: (stopped: boolean) => void,
     deps: TerminateTreeDeps = {},
 ): boolean {
-    const snapshot = deps.snapshot ?? ((root: number) => snapshotTree(root));
-    const reap = deps.reap ?? ((entries: ProcessEntry[]) => killSurvivors(entries));
-    const readLive = deps.readLive ?? readLiveProcessTable;
+    const selfPid = deps.selfPid ?? process.pid;
+    // B-965: a stop of another process's tree never reaches this process or
+    // anything below it — pruned from every snapshot, spared by the reap and
+    // the leftover check. When the stopped wrapper is our own ancestor (the
+    // daemon was started by it) only the wrapper and its other branches go.
     const base = deps.runtime ?? runtime;
+    const snapshot = deps.snapshot ?? ((root: number) => snapshotTree(root, { selfPid, ...(deps.read ? { read: deps.read } : {}) }));
+    const reap = deps.reap ?? ((entries: ProcessEntry[]) => killSurvivors(entries, {
+        spareSelfTree: true,
+        selfPid,
+        ...(deps.read ? { read: deps.read } : {}),
+        ...(deps.runtime ? { kill: (target: number) => base.signal(target, 'SIGKILL') } : {}),
+    }));
+    if (deps.onAncestor && isAncestorOfSelf(pid, deps.read, selfPid)) {
+        try { deps.onAncestor(pid); } catch { /* best effort */ }
+    }
+    const readLive = deps.readLive ?? readLiveProcessTable;
     const impl = (deps.platform ?? process.platform) === 'win32' ? windowsTreeRuntime(base) : base;
     const members = new Map<string, ProcessEntry>();
     const remember = () => {
@@ -138,7 +170,8 @@ export function terminateProcessTree(
             }
             let table: ProcessEntry[] | null = null;
             try { table = readLive(); } catch { table = null; }
-            const left = table ? survivorsOf(tree, table).filter((entry) => entry.pid !== process.pid) : [];
+            const spared = table ? selfTreePids(table, selfPid) : new Set<number>();
+            const left = table ? survivorsOf(tree, table).filter((entry) => !spared.has(entry.pid)) : [];
             if (left.length === 0) {
                 onSettled(stopped);
                 return;

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { spawn, spawnSync } from 'node:child_process';
-import { isProcessAlive, terminateProcess, terminateProcessTree, TREE_VERIFY_ATTEMPTS, type ProcessSignal, type ProcessTerminationRuntime } from './processTermination';
+import { isAncestorOfSelf, isProcessAlive, terminateProcess, terminateProcessTree, TREE_VERIFY_ATTEMPTS, type ProcessSignal, type ProcessTerminationRuntime } from './processTermination';
 
 function fakeRuntime(alive = true) {
     let current = alive;
@@ -173,5 +173,64 @@ describe('every wrapper stop goes through the tree stop (B-864b)', () => {
         expect(read('utils/sessionLock.ts')).toContain('isAlive: (pid) => isProcessAlive(pid)');
         expect(read('daemon/run.ts')).toContain('const isPidAlive = (pid: number): boolean => isProcessAlive(pid);');
         expect(read('daemon/run.ts')).not.toMatch(/process\.kill\(pid, 0\)/);
+    });
+});
+
+describe('stopping a wrapper the daemon runs under (B-965)', () => {
+    // Upgrade timeline from the 2026-11-24 incident: wrapper 100 started the daemon
+    // (200), which then spawned sessions 201/202/203. Restarting session 100
+    // must stop 100 and its own children, and nothing of the daemon's.
+    const table = [
+        { pid: 100, ppid: 1, start: 'w' },
+        { pid: 101, ppid: 100, start: 'c' },
+        { pid: 200, ppid: 100, start: 'd' },
+        { pid: 201, ppid: 200, start: 's1' },
+        { pid: 202, ppid: 200, start: 's2' },
+        { pid: 203, ppid: 200, start: 's3' },
+        { pid: 311, ppid: 201, start: 'k1' },
+    ];
+
+    it('signals only the wrapper and its own subtree; the daemon\'s sessions are untouched', () => {
+        let live = [...table];
+        const signalled: Array<[number, string]> = [];
+        const scheduled: Array<() => void> = [];
+        const runtime: ProcessTerminationRuntime = {
+            signal: (pid, sig) => { signalled.push([pid, sig]); if (sig === 'SIGKILL') live = live.filter((p) => p.pid !== pid); },
+            isAlive: (pid) => live.some((p) => p.pid === pid),
+            schedule: (cb) => scheduled.push(cb),
+        };
+        const onAncestor = vi.fn();
+        const settled = vi.fn();
+        expect(terminateProcessTree(100, settled, { runtime, read: () => live, readLive: () => live, selfPid: 200, onAncestor })).toBe(true);
+        while (scheduled.length > 0) scheduled.shift()!();
+        expect(onAncestor).toHaveBeenCalledWith(100);
+        expect(settled).toHaveBeenCalledWith(true);
+        const hit = new Set(signalled.map(([pid]) => pid));
+        expect([...hit].sort()).toEqual([100, 101]);
+        expect(live.map((p) => p.pid).sort()).toEqual([200, 201, 202, 203, 311]);
+    });
+
+    it('the default reap spares the daemon\'s subtree even when a snapshot names it', () => {
+        // A snapshot member list from any source (an injected snapshot, an older
+        // walk) never reaches the daemon or its sessions through the reap.
+        let live = [...table];
+        const signalled: number[] = [];
+        const scheduled: Array<() => void> = [];
+        const runtime: ProcessTerminationRuntime = {
+            signal: (pid, sig) => { signalled.push(pid); if (sig === 'SIGKILL') live = live.filter((p) => p.pid !== pid); },
+            isAlive: (pid) => live.some((p) => p.pid === pid),
+            schedule: (cb) => scheduled.push(cb),
+        };
+        const settled = vi.fn();
+        terminateProcessTree(100, settled, { runtime, read: () => live, readLive: () => live, selfPid: 200, snapshot: () => table.filter((p) => p.pid !== 100) });
+        while (scheduled.length > 0) scheduled.shift()!();
+        expect([...new Set(signalled)].sort()).toEqual([100, 101]);
+        expect(settled).toHaveBeenCalledWith(true);
+    });
+
+    it('isAncestorOfSelf reads the parent chain', () => {
+        expect(isAncestorOfSelf(100, () => table, 311)).toBe(true);
+        expect(isAncestorOfSelf(202, () => table, 311)).toBe(false);
+        expect(isAncestorOfSelf(100, () => null, 311)).toBe(false);
     });
 });

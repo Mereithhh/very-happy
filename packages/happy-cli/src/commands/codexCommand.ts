@@ -22,7 +22,8 @@ export async function handleCodexCommand(args: string[]): Promise<void> {
   }
 
   const { credentials } = await authAndSetupMachineIfNeeded()
-  await ensureDaemonRunning()
+  // B-965: a daemon-spawned wrapper never replaces the daemon that started it.
+  await ensureDaemonRunning({ startedBy })
 
   await runCodex({
     credentials,

@@ -14,6 +14,7 @@
 export const LAZY_MODULES: ReadonlyArray<readonly [name: string, load: () => Promise<unknown>]> = [
     // Entry
     ['main', () => import('@/main')],
+    ['daemon/strandedDaemonGuard', () => import('@/daemon/strandedDaemonGuard')],
     ['selfCheck', () => import('@/selfCheck')],
     // Subcommands (main.ts)
     ['api/api', () => import('@/api/api')],

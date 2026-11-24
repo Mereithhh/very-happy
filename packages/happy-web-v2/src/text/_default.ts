@@ -3503,6 +3503,12 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov24c: {
+                title: 'Upgrading no longer stops your other sessions',
+                summary: 'Upgrading the CLI no longer stops other sessions on the same computer at the same time.',
+                restart: 'Before, a Codex session started during an upgrade could replace the background service itself. Restarting that session later then stopped every other session the service had started. Now only the session you restart stops.',
+                upgrade: 'Needs CLI 0.2.226. The background service is now always replaced by the service itself or by systemd / launchd, never by a session.',
+            },
             nov24b: {
                 title: 'Context used, for Codex sessions and sub-agents',
                 summary: 'Codex sessions now show how full the context is, and each sub-agent shows its own.',

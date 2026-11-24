@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { daemonLineage, detectDaemonSupervisor, handoverWaitsForSessions, kickstartLaunchdJob, parseSystemdUnit, probeLaunchdJob, probeSystemdKillMode, SYSTEMD_RESTART_HINT, wrappersSurviveHandover, type HandoverSurvivalEvidence } from './daemonSupervisor';
+import { daemonLineage, detectDaemonSupervisor, handoverSupervisor, ownsSystemdUnit, probeSystemdUnitWithRetry, probeSystemdUnit, type SystemdUnitEvidence, handoverWaitsForSessions, kickstartLaunchdJob, parseSystemdUnit, probeLaunchdJob, probeSystemdKillMode, SYSTEMD_RESTART_HINT, wrappersSurviveHandover, type HandoverSurvivalEvidence } from './daemonSupervisor';
 import { HANDOVER_EXIT_CODE } from './shutdownExit';
 
 /**
@@ -11,17 +11,84 @@ import { HANDOVER_EXIT_CODE } from './shutdownExit';
  * and the auto-update self-handover would have done the same by exiting 0
  * with a replacement spawned from inside the unit.
  */
+// The unit's own word that this process is its main process (B-965).
+const OWNED: SystemdUnitEvidence = { activeState: 'active', mainPid: 500, ancestorPids: [500, 1078] };
+
 describe('detectDaemonSupervisor', () => {
     it('reads the explicit unit setting first', () => {
-        expect(detectDaemonSupervisor({ HAPPY_DAEMON_SUPERVISOR: 'systemd' }, 'darwin')).toBe('systemd');
-        expect(detectDaemonSupervisor({ HAPPY_DAEMON_SUPERVISOR: 'none', INVOCATION_ID: 'abc' }, 'linux')).toBe('none');
-        expect(detectDaemonSupervisor({ HAPPY_DAEMON_SUPERVISOR: ' SystemD ' }, 'linux')).toBe('systemd');
+        expect(detectDaemonSupervisor({ HAPPY_DAEMON_SUPERVISOR: 'systemd' }, 'darwin', null, OWNED)).toBe('systemd');
+        expect(detectDaemonSupervisor({ HAPPY_DAEMON_SUPERVISOR: 'none', INVOCATION_ID: 'abc' }, 'linux', null, OWNED)).toBe('none');
+        expect(detectDaemonSupervisor({ HAPPY_DAEMON_SUPERVISOR: ' SystemD ' }, 'linux', null, OWNED)).toBe('systemd');
     });
 
     it("recognises systemd's INVOCATION_ID on linux only", () => {
-        expect(detectDaemonSupervisor({ INVOCATION_ID: '2f3c…' }, 'linux')).toBe('systemd');
+        expect(detectDaemonSupervisor({ INVOCATION_ID: '2f3c…' }, 'linux', null, OWNED)).toBe('systemd');
         expect(detectDaemonSupervisor({ INVOCATION_ID: '' }, 'linux')).toBe('none');
         expect(detectDaemonSupervisor({ INVOCATION_ID: '2f3c…' }, 'darwin')).toBe('none');
+    });
+
+    // B-965: the env is inherited by everything the unit started. A daemon a
+    // session wrapper spawned after the unit's main process exited read
+    // `systemd`, exited 75 with the unit inactive, and nobody restarted it.
+    it('a systemd claim without the unit\'s proof is unsupervised (MainPID 0, inactive, someone else, unreadable)', () => {
+        const env = { HAPPY_DAEMON_SUPERVISOR: 'systemd', INVOCATION_ID: 'x' };
+        expect(detectDaemonSupervisor(env, 'linux', null, { activeState: 'inactive', mainPid: 0, ancestorPids: [700, 650, 1078] })).toBe('none');
+        expect(detectDaemonSupervisor(env, 'linux', null, { activeState: 'inactive', mainPid: 700, ancestorPids: [700, 1078] })).toBe('none');
+        expect(detectDaemonSupervisor(env, 'linux', null, { activeState: 'active', mainPid: 999, ancestorPids: [700, 650, 1078] })).toBe('none');
+        expect(detectDaemonSupervisor(env, 'linux', null, null)).toBe('none');
+        expect(detectDaemonSupervisor(env, 'linux')).toBe('none');
+        // the unit's main process may be an ancestor (a shim that imports the CLI in-process)
+        expect(detectDaemonSupervisor(env, 'linux', null, { activeState: 'active', mainPid: 650, ancestorPids: [700, 650, 1078] })).toBe('systemd');
+        expect(ownsSystemdUnit({ activeState: 'active', mainPid: 0, ancestorPids: [0] })).toBe(false);
+    });
+
+    it('probeSystemdUnit reads the cgroup\'s unit and parses ActiveState / MainPID; unreadable → null', async () => {
+        const cgroup = async () => '0::/user.slice/user-1000.slice/user@1000.service/app.slice/very-happy-daemon.service\n';
+        const calls: string[][] = [];
+        const exec = async (file: string, args: string[]) => { calls.push([file, ...args]); return 'ActiveState=inactive\nMainPID=0\n'; };
+        expect(await probeSystemdUnit(cgroup, exec, async () => [7])).toEqual({ activeState: 'inactive', mainPid: 0, ancestorPids: [7] });
+        expect(calls[0]).toEqual(['systemctl', '--user', 'show', '-p', 'ActiveState', '-p', 'MainPID', 'very-happy-daemon.service']);
+        expect(await probeSystemdUnit(cgroup, async () => '', async () => [7])).toBeNull();
+        expect(await probeSystemdUnit(async () => '0::/user.slice/session-2.scope\n', exec, async () => [7])).toBeNull();
+    });
+
+    it('an unreadable unit at startup is retried (3 tries, 1 s apart); a readable answer is final', async () => {
+        const sleeps: number[] = [];
+        const sleep = async (ms: number) => { sleeps.push(ms); };
+        let n = 0;
+        const flaky = async () => (++n < 3 ? null : OWNED);
+        const unit = await probeSystemdUnitWithRetry(flaky, 3, 1_000, sleep);
+        expect(unit).toEqual(OWNED);
+        expect(sleeps).toEqual([1_000, 1_000]);
+        expect(detectDaemonSupervisor({ HAPPY_DAEMON_SUPERVISOR: 'systemd' }, 'linux', null, unit)).toBe('systemd');
+        // readable but unproven: no retry
+        let m = 0;
+        const unproven = async () => { m++; return { activeState: 'inactive', mainPid: 0, ancestorPids: [1] }; };
+        expect(await probeSystemdUnitWithRetry(unproven, 3, 1_000, sleep)).toMatchObject({ activeState: 'inactive' });
+        expect(m).toBe(1);
+        // never readable → null after 3 tries (a throw counts as unreadable)
+        let k = 0;
+        expect(await probeSystemdUnitWithRetry(async () => { k++; throw new Error('timeout'); }, 3, 1_000, sleep)).toBeNull();
+        expect(k).toBe(3);
+    });
+
+    it('the handover re-checks a systemd claim and that answer overrides the startup decision', async () => {
+        const env = { HAPPY_DAEMON_SUPERVISOR: 'systemd' };
+        expect(await handoverSupervisor('none', env, 'linux', async () => OWNED)).toBe('systemd');
+        expect(await handoverSupervisor('systemd', env, 'linux', async () => ({ activeState: 'inactive', mainPid: 0, ancestorPids: [500] }))).toBe('none');
+        expect(await handoverSupervisor('systemd', env, 'linux', async () => null)).toBe('none');
+        // no systemd claim: the startup decision stands, nothing is probed
+        let probed = false;
+        expect(await handoverSupervisor('launchd', { XPC_SERVICE_NAME: 'x' }, 'darwin', async () => { probed = true; return null; })).toBe('launchd');
+        expect(await handoverSupervisor('none', {}, 'linux', async () => { probed = true; return OWNED; })).toBe('none');
+        expect(probed).toBe(false);
+    });
+
+    it('run.ts gives the systemd decision the unit probe', () => {
+        const run = readFileSync(join(__dirname, 'run.ts'), 'utf8');
+        expect(run).toContain('const systemdUnit = process.platform === \'linux\' ? await probeSystemdUnitWithRetry() : null;');
+        expect(run).toMatch(/const exitSupervisor = await handoverSupervisor\(daemonSupervisor, process\.env, process\.platform\);[\s\S]{0,300}if \(exitSupervisor !== 'none'\) \{\s+[^\n]*\n\s+process\.exit\(HANDOVER_EXIT_CODE\);/);
+        expect(run).toContain('detectDaemonSupervisor(process.env, process.platform, launchdJob, systemdUnit)');
     });
 
     it('a shell-started daemon is unsupervised (plain terminals on either OS)', () => {
@@ -105,7 +172,7 @@ describe('daemon run wiring (B-505 systemd / B-770 launchd handover)', () => {
     const unit = readFileSync(join(__dirname, '..', '..', '..', '..', 'ops', 'dev-sg', 'very-happy-daemon.service'), 'utf8');
 
     it('detects the supervisor once and records it in the daemon state', () => {
-        expect(run).toContain('const daemonSupervisor = detectDaemonSupervisor(process.env, process.platform, launchdJob);');
+        expect(run).toContain('const daemonSupervisor = detectDaemonSupervisor(process.env, process.platform, launchdJob, systemdUnit);');
         expect(run).toContain('supervisor: daemonSupervisor,');
         // the machine page's lineage comes from the same evidence
         expect(run).toContain('const lineage = daemonLineage(daemonSupervisor, process.env, process.platform, launchdJob);');
@@ -114,7 +181,7 @@ describe('daemon run wiring (B-505 systemd / B-770 launchd handover)', () => {
 
     it('any supervised daemon (launchd or systemd) exits HANDOVER_EXIT_CODE after releasing ownership, before any spawn', () => {
         const release = run.indexOf('await releaseDaemonLock(daemonLockHandle);\n        await stopCaffeinate();');
-        const gate = run.indexOf("if (daemonSupervisor !== 'none') {");
+        const gate = run.indexOf("if (exitSupervisor !== 'none') {");
         const spawn = run.indexOf("spawnHappyCLI(['daemon', 'start'], {");
         expect(release).toBeGreaterThan(-1);
         expect(gate).toBeGreaterThan(release);
@@ -214,7 +281,7 @@ describe('wrappersSurviveHandover (B-817b)', () => {
 
     it('a hand-written systemd unit (INVOCATION_ID only, default KillMode) keeps the gate', () => {
         const env = { INVOCATION_ID: 'abc' };
-        expect(detectDaemonSupervisor(env, 'linux')).toBe('systemd');
+        expect(detectDaemonSupervisor(env, 'linux', null, OWNED)).toBe('systemd');
         expect(survives({ supervisor: 'systemd', env, systemdKillMode: 'control-group' })).toBe(false);
         expect(survives({ supervisor: 'systemd', env, systemdKillMode: 'mixed' })).toBe(false);
         // KillMode unreadable and nothing explicit: unproven

@@ -109,7 +109,8 @@ import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager'
 import { createDaemonControlToken } from './controlAuth';
 import { withDaemonHeartbeat } from './daemonState';
 import { DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS, fetchCliUpdateState, resolveCliUpdateCheckInterval } from '@/update/cliUpdate';
-import { isProcessAlive, terminateProcessTree } from './processTermination';
+import { isProcessAlive, terminateProcessTree, type TerminateTreeDeps } from './processTermination';
+import { ancestorsOf, readProcessTable } from '@/utils/processTreeSnapshot';
 import { describeStartupExit, readStartupExitReason, type StartupExit } from './startupExit';
 import { findAllHappyProcesses } from './doctor';
 import { findSessionWrapperPids, mergeRestoreMetadata } from './sessionProcessRecovery';
@@ -124,7 +125,7 @@ import { createMainAgentProactive, type MainAgentProactive } from './mainAgentPr
 import { sendRemoteMessage } from '@/sessions/remoteSessionClient';
 import { waitForSessionKey } from '@/commands/sessionMessage';
 import { daemonExitCode, HANDOVER_EXIT_CODE, type ShutdownSource } from './shutdownExit';
-import { daemonLineage, detectDaemonSupervisor, probeLaunchdJob, probeSystemdKillMode, wrappersSurviveHandover, handoverWaitsForSessions } from './daemonSupervisor';
+import { daemonLineage, detectDaemonSupervisor, probeLaunchdJob, probeSystemdUnitWithRetry, handoverSupervisor, probeSystemdKillMode, wrappersSurviveHandover, handoverWaitsForSessions } from './daemonSupervisor';
 
 import { shellescape } from '@/utils/shellescape';
 import { sanitizeImportTitle } from './importTitle';
@@ -401,6 +402,17 @@ export async function startDaemon(): Promise<void> {
     let projectPresence: ReturnType<typeof createProjectPresenceReporter> | undefined;
     const persisted = readPersistedSessions();
     const liveHappyProcesses = await findAllHappyProcesses();
+    // B-965: a daemon started by a session wrapper (an older CLI replacing
+    // its daemon during an upgrade) is that wrapper's child. Say so: stopping
+    // that wrapper later must spare this daemon's subtree (processTermination).
+    {
+      const table = readProcessTable();
+      const ancestors = new Set(table ? ancestorsOf(process.pid, table) : []);
+      const wrapperAncestors = liveHappyProcesses.filter((p) => ancestors.has(p.pid) && p.type !== 'daemon' && p.type !== 'dev-daemon');
+      for (const wrapper of wrapperAncestors) {
+        logger.warn(`[DAEMON RUN] This daemon runs under session wrapper ${wrapper.pid} (${wrapper.type}); stopping that session will spare the daemon and its sessions`);
+      }
+    }
     for (const [id, s] of Object.entries(persisted)) {
       const tracked: TrackedSession = {
         startedBy: 'persisted',
@@ -446,6 +458,12 @@ export async function startDaemon(): Promise<void> {
     if (Object.keys(persisted).length > 0) {
       logger.debug(`[DAEMON RUN] Loaded ${Object.keys(persisted).length} persisted sessions from disk`);
     }
+
+    // B-965: every wrapper tree stop from here spares this daemon's own subtree
+    // (processTermination prunes it); this only adds the log line.
+    const wrapperStopDeps: TerminateTreeDeps = {
+      onAncestor: (pid) => logger.warn(`[DAEMON RUN] Wrapper ${pid} is an ancestor of this daemon; stopping it without the daemon's subtree`),
+    };
 
     // Session spawning awaiter system
     const pidToAwaiter = new Map<number, (session: TrackedSession) => void>();
@@ -1252,7 +1270,7 @@ export async function startDaemon(): Promise<void> {
           try {
             // B-864b: with its tree — a wrapper that got as far as starting Claude
             // Code but not the webhook would otherwise leave it running.
-            const started = terminateProcessTree(pid, (stopped) => fail({ exited: stopped, code: null, signal: null, timedOut: true }));
+            const started = terminateProcessTree(pid, (stopped) => fail({ exited: stopped, code: null, signal: null, timedOut: true }), wrapperStopDeps);
             if (!started) fail({ exited: false, code: null, signal: null, timedOut: true });
           } catch {
             fail({ exited: false, code: null, signal: null, timedOut: true });
@@ -1555,7 +1573,7 @@ export async function startDaemon(): Promise<void> {
             pidToTrackedSession.delete(pid);
           }
           done();
-        });
+        }, wrapperStopDeps);
         if (!requested) done();
         setTimeout(done, timeoutMs).unref?.();
       })));
@@ -1750,7 +1768,7 @@ export async function startDaemon(): Promise<void> {
             }
             pidToTrackedSession.delete(pid);
             logger.debug(`[DAEMON RUN] Verified session ${sessionId} stopped and removed it from tracking`);
-          });
+          }, wrapperStopDeps);
           if (requested) {
             logger.debug(`[DAEMON RUN] Requested verified termination for session ${sessionId} (PID ${pid})`);
           } else {
@@ -2212,7 +2230,12 @@ export async function startDaemon(): Promise<void> {
     const daemonClaudeCredentials = resolveClaudeCredentialReadiness();
     // B-505/B-770: decides how the auto-update handover leaves this process.
     const launchdJob = process.platform === 'darwin' ? await probeLaunchdJob() : null;
-    const daemonSupervisor = detectDaemonSupervisor(process.env, process.platform, launchdJob);
+    // B-965: a systemd claim from the env needs the unit's own word (active, MainPID = us or an ancestor).
+    const systemdUnit = process.platform === 'linux' ? await probeSystemdUnitWithRetry() : null;
+    const daemonSupervisor = detectDaemonSupervisor(process.env, process.platform, launchdJob, systemdUnit);
+    if (daemonSupervisor === 'none' && (process.env.INVOCATION_ID || process.env.HAPPY_DAEMON_SUPERVISOR?.trim().toLowerCase() === 'systemd')) {
+      logger.warn(`[DAEMON RUN] The environment says systemd, but this daemon is not its unit's main process (${systemdUnit ? `ActiveState=${systemdUnit.activeState} MainPID=${systemdUnit.mainPid}` : 'unit unreadable'}); running unsupervised`);
+    }
     const lineage = daemonLineage(daemonSupervisor, process.env, process.platform, launchdJob);
     logger.debug(`[DAEMON RUN] Supervisor: ${daemonSupervisor} (lineage ${lineage}${launchdJob ? `, launchd job pid ${launchdJob.jobPid ?? '-'}` : ''})`);
     // B-817b: whether the handover may leave mid-turn (see wrappersSurviveHandover).
@@ -2731,8 +2754,11 @@ export async function startDaemon(): Promise<void> {
         // escapes the job and the exit 0 below leaves the job `not running`;
         // under systemd the default KillMode would also SIGTERM every wrapper.
         // See daemonSupervisor.ts, ops/dev-sg and ops/mac-office.
-        if (daemonSupervisor !== 'none') {
-          logger.debug(`[DAEMON RUN] ${daemonSupervisor}-supervised: exiting ${HANDOVER_EXIT_CODE} for the supervisor to restart on the new bundle`);
+        // B-965: a systemd claim is re-checked right before the exit is chosen; this answer wins.
+        const exitSupervisor = await handoverSupervisor(daemonSupervisor, process.env, process.platform);
+        if (exitSupervisor !== daemonSupervisor) logger.warn(`[DAEMON RUN] supervisor re-checked for the handover: ${daemonSupervisor} → ${exitSupervisor}`);
+        if (exitSupervisor !== 'none') {
+          logger.debug(`[DAEMON RUN] ${exitSupervisor}-supervised: exiting ${HANDOVER_EXIT_CODE} for the supervisor to restart on the new bundle`);
           process.exit(HANDOVER_EXIT_CODE);
         }
 
