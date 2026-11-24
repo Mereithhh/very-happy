@@ -55,7 +55,7 @@ describe('process tree snapshot (B-634 ①)', () => {
 });
 
 describe('the stopping process and its subtree are never part of a tree (B-965)', () => {
-    // dev-sg 2026-11-24: wrapper 100 replaced the daemon during an upgrade, so
+    // 2026-11-24 incident: wrapper 100 replaced the daemon during an upgrade, so
     // daemon 200 was its child. Restarting that session snapshotted 100's tree
     // — the daemon and its twelve other session wrappers included.
     const table: ProcessEntry[] = [

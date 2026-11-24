@@ -177,7 +177,7 @@ describe('every wrapper stop goes through the tree stop (B-864b)', () => {
 });
 
 describe('stopping a wrapper the daemon runs under (B-965)', () => {
-    // Upgrade timeline from dev-sg 2026-11-24: wrapper 100 started the daemon
+    // Upgrade timeline from the 2026-11-24 incident: wrapper 100 started the daemon
     // (200), which then spawned sessions 201/202/203. Restarting session 100
     // must stop 100 and its own children, and nothing of the daemon's.
     const table = [
