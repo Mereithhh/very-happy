@@ -254,6 +254,11 @@ export type SpawnAccountResolution =
     /** Q3: stop before creating — the user must pick another. */
     | { kind: 'blocked'; reason: 'missing' | 'expired' | 'invalid' | 'missing-secret'; label: string | null; fromDefault: boolean; fromProject?: true };
 
+/** B-968: the account a new session starts on, as gatewayModelsAllowed reads it; null = machine login or unknown. */
+export function spawnClaudeAccount(resolution: SpawnAccountResolution | null | undefined): { kind: string; baseUrl?: string | null } | null {
+    return resolution?.kind === 'account' ? { kind: resolution.account.kind, baseUrl: resolution.account.baseUrl ?? null } : null;
+}
+
 /** B-850d: 「项目默认 · X」/「机器默认 · X」/「本机登录」 — where the resolved account comes from. */
 export type SpawnAccountSource = 'explicit' | 'project' | 'machine' | 'machine-login';
 

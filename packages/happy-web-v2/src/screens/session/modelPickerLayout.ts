@@ -1,5 +1,5 @@
 import { LATEST_MODEL_MODE } from '@slopus/happy-wire';
-import type { ModeOption } from '@/components/modelModeOptions';
+import { CLAUDE_GATEWAY_MODEL_KEYS, type ModeOption } from '@/components/modelModeOptions';
 import { normalizeAgentKey } from '@/sync/agentDefaults';
 
 /**
@@ -213,6 +213,8 @@ export function layoutModelPicker(options: readonly ModeOption[], input: {
     const picks = options.filter((option) => familyPicks.has(option.key));
     if (order) picks.sort((a, b) => order.indexOf(familyOf(a)) - order.indexOf(familyOf(b)));
     primary.push(...picks);
+    // B-968: the gateway models have no family but belong in the default list, not under 「更多模型」.
+    if (agent === 'claude') for (const option of options) if (CLAUDE_GATEWAY_MODEL_KEYS.has(option.key) && !custom.has(option.key)) primary.push(option);
     for (const option of options) if (custom.has(option.key)) primary.push(option);
     const inPrimary = new Set(primary.map((option) => option.key));
     const riding = (key: string) => key.endsWith(LONG_CONTEXT_SUFFIX) && (keys.has(baseKey(key)) || baseKey(key) === input.followModel);

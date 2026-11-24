@@ -48,7 +48,7 @@ import { ModelSupportBanner } from './ModelSupportBanner';
 import { AccountUnavailableBanner } from './AccountUnavailableBanner';
 import { AccountHistoryRejectedBanner } from './HistoryRejected';
 import { spawnAccountBlockText } from '@/components/accounts/SpawnAccountPicker';
-import { readMachineAgentProfiles, resolveSpawnAccount } from '@/sync/agentProfiles';
+import { readMachineAgentProfiles, resolveSpawnAccount, spawnClaudeAccount } from '@/sync/agentProfiles';
 import { projectAccountsOf } from '@/sync/accountChoice';
 import { machineLabel } from '@/utils/machineUtils';
 import { useProjects } from '@/sync/projects';
@@ -106,8 +106,11 @@ export function SessionDetailScreen() {
     const pendingMachine = storage((s) => (pendingMode && pending ? s.machines[pending.machineId] : undefined));
     // B-850e: …including the project default it would start on.
     const pendingProjects = useProjects();
-    const pendingAccountBlock = pendingMode && pending?.state === 'draft'
-        ? spawnAccountBlockText(resolveSpawnAccount(readMachineAgentProfiles(pendingMachine), pending.agent, pending.agentProfileId, Date.now(), { project: projectAccountsOf(pending.onSpawnedProject?.projectId, pendingProjects.projects), machineId: pending.machineId }), pendingMachine ? machineLabel(pendingMachine) : pending.machineId.slice(0, 8), t)
+    const pendingSpawnAccount = pendingMode && pending
+        ? resolveSpawnAccount(readMachineAgentProfiles(pendingMachine), pending.agent, pending.agentProfileId, Date.now(), { project: projectAccountsOf(pending.onSpawnedProject?.projectId, pendingProjects.projects), machineId: pending.machineId })
+        : null;
+    const pendingAccountBlock = pendingMode && pending?.state === 'draft' && pendingSpawnAccount
+        ? spawnAccountBlockText(pendingSpawnAccount, pendingMachine ? machineLabel(pendingMachine) : pending.machineId.slice(0, 8), t)
         : null;
     const [searchParams, setSearchParams] = useSearchParams();
     const panelTab = readSessionPanel(searchParams.get('panel'));
@@ -402,6 +405,7 @@ export function SessionDetailScreen() {
         isGone: () => !pendingSessions.get(pending.pendingId),
         launcher: pendingLauncher,
         machineId: pending.machineId,
+        account: spawnClaudeAccount(pendingSpawnAccount),
         blockedHint: foreignPending
             ? t('pendingSession.otherTab')
             : pendingAccountBlock ? pendingAccountBlock

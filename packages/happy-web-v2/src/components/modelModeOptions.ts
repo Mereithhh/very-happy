@@ -126,7 +126,54 @@ export function getClaudeModelModes(): ModelMode[] {
         { key: 'sonnet[1m]', name: 'sonnet (alias) · 1M', description: null },
         { key: 'haiku', name: 'haiku (alias)', description: null },
         { key: 'opusplan', name: 'opusplan', description: null },
+        ...CLAUDE_GATEWAY_MODELS,
     ];
+}
+
+/**
+ * B-968: non-Anthropic models that run under Claude Code through an
+ * Anthropic-compatible gateway (Owner 11-24: in the default list, no
+ * 「Custom…」). Both ran end to end with Claude Code 2.1.330's full tool set
+ * (2026-11-24). Listed last so the existing order and defaults stay as they
+ * were; hidden where the Web knows the account cannot reach them
+ * (gatewayModelsAllowed).
+ */
+export const CLAUDE_GATEWAY_MODELS: ModelMode[] = [
+    { key: 'kimi-k3.1-pro', name: 'Kimi K3.1 Pro', description: null },
+    { key: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash', description: null },
+];
+
+export const CLAUDE_GATEWAY_MODEL_KEYS: ReadonlySet<string> = new Set(CLAUDE_GATEWAY_MODELS.map((model) => model.key));
+
+/** Who serves a Claude session: an account's kind and (API kinds) its endpoint. Unknown = null/undefined. */
+export type ClaudeAccountFacts = { kind: string; baseUrl?: string | null } | null | undefined;
+
+function isAnthropicEndpoint(baseUrl: string | null | undefined): boolean {
+    const raw = baseUrl?.trim();
+    if (!raw) return true; // no endpoint = Anthropic's own API
+    try {
+        const host = new URL(raw).hostname.toLowerCase();
+        return host === 'anthropic.com' || host.endsWith('.anthropic.com');
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * B-968: false only when the Web knows the account is Anthropic's own — a
+ * Claude subscription, or an API account without a custom Base URL / on
+ * anthropic.com. Unknown (machine login, no account support, old wrapper) =
+ * true: the entries stay, their description says they need a gateway.
+ */
+export function gatewayModelsAllowed(account: ClaudeAccountFacts): boolean {
+    if (!account) return true;
+    if (account.kind === 'claude-subscription') return false;
+    if (account.kind === 'claude-api') return !isAnthropicEndpoint(account.baseUrl);
+    return true;
+}
+
+export function withGatewayModelsFor(models: ModelMode[], account: ClaudeAccountFacts): ModelMode[] {
+    return gatewayModelsAllowed(account) ? models : models.filter((model) => !CLAUDE_GATEWAY_MODEL_KEYS.has(model.key));
 }
 
 const CLAUDE_PINNED_MODELS: ModelMode[] = [
@@ -468,7 +515,10 @@ export function getAvailableModels(
     if (metadataModels.length > 0) {
         const extras = getCatalogExtras(flavor, metadata).filter((extra) => !metadataModels.some((model) => model.key === extra.key));
         const [first, ...rest] = metadataModels;
-        const withExtras = first?.key === 'default' ? [first, ...extras, ...rest] : [...extras, ...metadataModels];
+        const listed = first?.key === 'default' ? [first, ...extras, ...rest] : [...extras, ...metadataModels];
+        // B-968: a live catalog never lists them (Claude Code ships Anthropic's); appended after it.
+        const gateway = flavor === 'claude' ? CLAUDE_GATEWAY_MODELS.filter((extra) => !listed.some((model) => model.key === extra.key)) : [];
+        const withExtras = [...listed, ...gateway];
         if ((flavor === 'codex' || flavor === 'claude') && !withExtras.some((model) => model.key === 'default')) {
             return [{ key: 'default', name: 'default model', description: null }, ...withExtras];
         }

@@ -1351,6 +1351,7 @@ export const zhHans: TranslationStructure = {
                     sol: '新一代编码 agent 模型',
                     terra: '均衡，适合日常编码',
                     luna: '快、成本低',
+                    gateway: '需要 Anthropic 兼容网关（如 API 账号的自定义 Base URL）',
                     older: '旧版本',
                 },
             },
@@ -3660,6 +3661,12 @@ export const zhHans: TranslationStructure = {
                 summary: '终端所在的机器没连上时，打开终端只有黑屏，别人分享给你的终端尤其如此。现在终端里会写明这台机器没连上，以及是哪台机器。',
                 shared: '别人分享给你的终端会写明是谁的哪台机器（比如「Alex 的 mac-studio」）：连接时显示正在连接，机器没连上时显示没连上，看的过程中掉线也一样。',
                 recover: '机器重新连上后，终端会自动恢复，不用刷新，也不用点重试。你自己的终端也一样。',
+            },
+            nov24d: {
+                title: '模型列表里可以直接选 Kimi K3.1 Pro 和 DeepSeek V4.1 Flash',
+                summary: 'Claude 会话的模型列表里新增 Kimi K3.1 Pro 和 DeepSeek V4.1 Flash，不用再手动填自定义模型。',
+                models: '这两个模型都需要 Anthropic 兼容网关，比如填了自定义 Base URL 的 API 账号。Claude 订阅账号和走 Anthropic 官方地址的 API 账号不显示；不知道用的是哪个账号时照常列出，并附上这条说明。默认模型不变。',
+                tools: 'deepseek-v4.1-flash 可以带完整工具集使用。',
             },
             nov24c: {
                 title: '升级时不会再把别的会话一起停掉',
