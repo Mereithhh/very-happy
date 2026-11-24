@@ -59,7 +59,6 @@ export function escalateIdleMembers(input: TeamState, now: number, id: () => str
         if (since === null || now - since < TEAM_IDLE_ESCALATE_MS || bot.idleEscalatedAt === since) continue;
         const tasks = team.tasks.filter(t => t.assigneeBotId === bot.id && t.ownerBotId && ['queued', 'running'].includes(t.status));
         if (!tasks.length) continue;
-        if (team.messages.length + tasks.length > 2000) break;
         for (const task of tasks) {
             const body = `Agent ${bot.name}: idle for ${minutes(now - since)} min. Task ${task.id} is still not submitted and requires explicit submission and acceptance.` + idleDigest(team, task.ownerBotId!, now, [bot.id]);
             team.messages.push({ id: id(), taskId: task.id, senderBotId: null, source: 'system', recipientBotId: task.ownerBotId!, body, deliveredAt: null, createdAt: now });
@@ -67,7 +66,8 @@ export function escalateIdleMembers(input: TeamState, now: number, id: () => str
         }
         bot.idleEscalatedAt = since;
     }
-    if (!fired || JSON.stringify(team).length > 2_000_000) return { team: input, fired: 0 };
+    // B-966: no size or count gate — a reminder is never dropped because the team is large.
+    if (!fired) return { team: input, fired: 0 };
     team.version++;
     return { team, fired };
 }

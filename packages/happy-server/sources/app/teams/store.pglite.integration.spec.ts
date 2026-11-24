@@ -498,7 +498,7 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         } finally { await app.close(); }
     });
 
-    it('keeps a capacity-blocked Team from stopping other Teams schedule recovery', async () => {
+    it('B-966: a Team past 2000 messages still fires its schedule, next to a healthy one', async () => {
         const makeScheduled = async (name: string) => {
             const team = await store.createTeam(accountId, { name, machineId });
             const lead = (await db.session.create({ data: { accountId, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
@@ -512,9 +512,12 @@ describe('agent teams persistent transactions and scoped credentials', () => {
             FROM generate_series(1, 2000) i`;
         const healthy = await makeScheduled('Healthy after capacity failure');
         const outcome = await store.tickTeamSchedules(accountId, machineId);
-        expect(outcome.errors).toContainEqual({ teamId: full.id, error: 'team_message_limit' });
+        expect(outcome.errors).toEqual([]);
+        expect(outcome.fired).toBe(2);
         expect((await store.readTeam(healthy.id, { accountId })).messages).toHaveLength(1);
-        expect((await store.readTeam(full.id, { accountId })).schedules![0].fireCount).toBe(0);
+        const fullAfter = await store.readTeam(full.id, { accountId });
+        expect(fullAfter.schedules![0].fireCount).toBe(1);
+        expect(fullAfter.messages.length).toBeGreaterThan(2000);
     });
 
     describe('B-730: a session belongs to at most one live team', () => {

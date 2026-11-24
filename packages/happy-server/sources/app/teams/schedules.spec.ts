@@ -14,6 +14,14 @@ function fixture() {
     };
 }
 describe('persistent schedule semantics', () => {
+    it('B-966: a due schedule fires on a team past the 2000-message soft limit', () => {
+        const f = fixture(); f.act({ type: 'schedule-create', name: 'Busy', botId: 'bot', body: 'Inspect', runAt: 2000 });
+        const busy = { ...f.team, messages: Array.from({ length: 2500 }, (_, i) => ({ id: `m${i}`, taskId: null, senderBotId: null, recipientBotId: 'bot', body: 'x', deliveredAt: null, createdAt: 1 })) };
+        const r = advanceSchedules(busy, 2000);
+        expect(r.fired).toBe(1);
+        expect(r.team.messages).toHaveLength(2501);
+        expect(r.team.messages.at(-1)).toMatchObject({ scheduleId: r.team.schedules![0].id, body: 'Inspect' });
+    });
     it('fires one time and completes only after a fenced delivery ACK', () => {
         const f = fixture(); f.act({ type: 'schedule-create', name: 'Once', botId: 'bot', body: 'Inspect', runAt: 2000 });
         expect(f.fire(1999)).toBe(0); expect(f.fire(2000)).toBe(1); expect(f.fire(9000)).toBe(0);

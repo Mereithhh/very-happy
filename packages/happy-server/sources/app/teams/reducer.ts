@@ -4,7 +4,7 @@ export type TeamActor = { kind: 'owner' } | { kind: 'agent'; botId: string; gene
 export { TeamError, requireTeam } from './errors';
 export { archiveRestorable, restoreSessionId } from '@slopus/happy-wire';
 import { requireCapacity, requireTeam, TeamError } from './errors';
-import { TEAM_LIMITS, teamCapacity, warnCapacity } from './compaction';
+import { teamCapacity, warnCapacity } from './compaction';
 import { applyScheduleAction, acknowledgeScheduleMessage } from './schedules';
 import { idleDigest, idleMembersFor } from './teamIdle';
 export function inTaskTree(state: TeamState, task: TeamTask, ancestorId: string): boolean {
@@ -63,7 +63,7 @@ export function actorCanReadTask(state: TeamState, actor: TeamActor, task: TeamT
 }
 /** `live`: the stored record when `state` carries read-only extras (B-959: archived messages of open tasks). */
 export function teamView(state: TeamState, actor: TeamActor, live: TeamState = state): TeamState {
-    // B-822: capacity is the whole live record's, whoever reads it (the count limits refuse writes for everyone).
+    // B-822: capacity is the whole live record's, whoever reads it. B-966: no metric refuses a write; they are observed only.
     const view = { ...withMemberActivity(scopedTeamView(state, actor), state), capacity: teamCapacity(live) };
     return actor.kind === 'agent' ? { ...view, idleMembers: idleMembersFor(state, actor.botId), cleanupIssues: cleanupIssuesFor(state, view) } : view;
 }
@@ -200,13 +200,11 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         if (!recipientBotId) return;
         // `quiet`: the caller tells the recipient itself (the briefing board's「退回」sends the owner's chat line, B-766 S-1d).
         if (ctx.quiet) return;
-        requireCapacity(s.messages.length < TEAM_LIMITS.messages, 'team_message_limit', s.messages.length, TEAM_LIMITS.messages);
         // B-769: idle members are reported here, on a message that wakes the recipient anyway.
         const digest = idleDigest(s, recipientBotId, now, actor.kind === 'agent' ? [actor.botId] : []);
         s.messages.push({ id: id(), taskId: t.id, senderBotId: actor.kind === 'agent' ? actor.botId : null, recipientBotId, body: body + digest, deliveredAt: null, createdAt: now });
     };
     const operation = (t: TeamTask, bot: TeamBot, type: 'spawn' | 'stop', attemptId = t.currentAttemptId) => {
-        requireCapacity(s.operations.length < TEAM_LIMITS.operations, 'team_operation_limit', s.operations.length, TEAM_LIMITS.operations);
         // B-706: a launch creates its worktree from the bot's source repository, never
         // from the previous launch's worktree (bot.directory after a completed spawn).
         const directory = type === 'spawn' ? teamBotRepository(s, bot) : bot.directory;
@@ -391,7 +389,6 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             break;
         }
         case 'delegate': {
-            requireCapacity(s.tasks.length < TEAM_LIMITS.tasks, 'team_task_limit', s.tasks.length, TEAM_LIMITS.tasks);
             const parent = action.parentTaskId ? getTask(action.parentTaskId) : undefined;
             if (actor.kind === 'agent') requireTeam(parent ? parent.assigneeBotId === actor.botId : currentBot?.root, 'delegation_denied', 403);
             if (parent) requireTeam(!['done', 'cancelled', 'submitted'].includes(parent.status), 'parent_not_running');
@@ -559,7 +556,6 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             const open = teamOwnedOpenTasks(s, bot.id);
             if (block) throw new TeamError(block, 409, { openTasks: open.total });
             refuseFailedCleanup(bot);
-            requireCapacity(s.tasks.length < TEAM_LIMITS.tasks, 'team_task_limit', s.tasks.length, TEAM_LIMITS.tasks);
             bot.generation++;
             const attemptId = id();
             const task: TeamTask = { id: id(), parentTaskId: null, goal: leadReviveGoal(s, open, bot.id), acceptance: ['Every task you delegated is accepted or cancelled (team_inspect shows none open).', 'Report what you accepted, returned, cancelled or handed off.'], goalVersion: 1, ownerBotId: null, assigneeBotId: bot.id, status: 'queued', attempts: [{ id: attemptId, botId: bot.id, generation: bot.generation, goalVersion: 1, status: 'pending', result: null }], currentAttemptId: attemptId, cleanup: 'none' };
@@ -661,7 +657,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         }
     }
     s.version++;
-    // B-959: the byte size is observed (capacity, the 80% warning), never a refusal — a team over 2 MB stayed stuck for 16 h.
+    // B-959 / B-966: size and counts are observed (capacity, the 80% warning), never a refusal — a team over 2 MB stayed stuck for 16 h.
     warnCapacity(s, JSON.stringify(s).length, now, id);
     return { team: s, credentialBotId, operationId, taskId, scheduleId };
 }

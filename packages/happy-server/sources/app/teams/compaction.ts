@@ -14,9 +14,12 @@ import type { TeamCapacity, TeamCapacityMetric, TeamMessage, TeamOperation, Team
  * team_size_limit. Its terminal messages are archived too, except the newest
  * `TEAM_OPEN_TASK_KEEP_MESSAGES` of each task; reads put them back (store `withOpenTaskArchive`). The
  * byte size is no longer a write limit, only observed (capacity, the 80% warning).
+ *
+ * B-966: neither are the counts. No metric refuses a write; a team over a soft limit keeps working and
+ * its lead is warned (and the server logs it) while compaction keeps archiving closed work.
  */
-/** `bytes` is observed only (capacity, warning, compaction pressure); the counts still refuse new records. */
-export const TEAM_LIMITS: Record<TeamCapacityMetric, number> = { bytes: 2_000_000, messages: 2000, operations: 1000, tasks: 200 };
+/** Reference thresholds, never write limits: compaction pressure (50%), the lead's warning (80%) and `capacity.metrics[k].limit`. */
+export const TEAM_SOFT_LIMITS: Record<TeamCapacityMetric, number> = { bytes: 2_000_000, messages: 2000, operations: 1000, tasks: 200 };
 /** Closed work stays visible this long before it is archived. */
 export const TEAM_COMPACT_AGE_MS = 24 * 60 * 60 * 1000;
 /** Above this share of any limit, compaction stops waiting for the age (then 1 h, then the grace). */
@@ -115,19 +118,17 @@ export function taskArchivable(task: TeamTask, team: Pick<TeamState, 'tasks' | '
 /** `bytes`: the caller's `JSON.stringify(team).length` when it already has it. */
 export function teamCapacity(team: TeamState, bytes = JSON.stringify(team).length): TeamCapacity {
     const used: Record<TeamCapacityMetric, number> = { bytes, messages: team.messages.length, operations: team.operations.length, tasks: team.tasks.length };
-    const metrics = Object.fromEntries((Object.keys(TEAM_LIMITS) as TeamCapacityMetric[]).map(k => [k, { used: used[k], limit: TEAM_LIMITS[k] }])) as TeamCapacity['metrics'];
+    const metrics = Object.fromEntries((Object.keys(TEAM_SOFT_LIMITS) as TeamCapacityMetric[]).map(k => [k, { used: used[k], limit: TEAM_SOFT_LIMITS[k] }])) as TeamCapacity['metrics'];
     const full = (Object.keys(metrics) as TeamCapacityMetric[]).filter(k => metrics[k].used >= metrics[k].limit * TEAM_CAPACITY_WARN);
     return { metrics, ...(full.length ? { warning: capacityWarning(metrics, full) } : {}) };
 }
 function capacityWarning(metrics: TeamCapacity['metrics'], full: TeamCapacityMetric[]): string {
-    // B-959: bytes never refuses a write; only a count that is itself near its limit says so.
-    const counts = full.filter(k => k !== 'bytes');
-    const refusal = counts.length ? ` New ${counts.join(' / ')} are refused at 100%.` : '';
-    return `Team record is large: ${full.map(k => `${k} ${metrics[k].used}/${metrics[k].limit} (${Math.round(metrics[k].used / metrics[k].limit * 100)}%)`).join(', ')}. Closed work and older delivered messages are archived automatically, so this is mostly open work: accept, cancel or hand off finished tasks, or ask the owner to archive this team and start a new one.${refusal} 团队记录较大：请验收/取消已完成的任务，或请 Owner 归档本团队并新建。`;
+    // B-959 / B-966: nothing is refused at any level; these are soft limits.
+    return `Team record is large: ${full.map(k => `${k} ${metrics[k].used}/${metrics[k].limit} (${Math.round(metrics[k].used / metrics[k].limit * 100)}%)`).join(', ')}. Nothing is blocked: closed work and older delivered messages are archived automatically, so this is mostly open work. Accept, cancel or hand off finished tasks to keep the team fast, or ask the owner to archive this team and start a new one. 团队记录较大，不影响写入，会自动整理；请验收或取消已完成的任务，或请 Owner 归档本团队后新建。`;
 }
 
 /**
- * Pure policy: archive what is archivable and old enough; while any limit is ≥ 50% used, take
+ * Pure policy: archive what is archivable and old enough; while any soft limit is ≥ 50% used, take
  * younger closed work too. Returns `input` itself when nothing moves (no write needed).
  */
 export function compactTeam(input: TeamState, now: number): TeamState {
@@ -153,8 +154,8 @@ function stampLegacyClosedAt(team: TeamState, now: number): TeamState {
     return { ...team, tasks: team.tasks.map(t => closed(t) && t.closedAt === undefined ? { ...t, closedAt: pressure ? lastActivity.get(t.id) ?? 0 : now } : t) };
 }
 function underPressure(team: TeamState): boolean {
-    const counted = team.messages.length >= TEAM_LIMITS.messages * TEAM_COMPACT_PRESSURE || team.operations.length >= TEAM_LIMITS.operations * TEAM_COMPACT_PRESSURE || team.tasks.length >= TEAM_LIMITS.tasks * TEAM_COMPACT_PRESSURE;
-    return counted || JSON.stringify(team).length >= TEAM_LIMITS.bytes * TEAM_COMPACT_PRESSURE;
+    const counted = team.messages.length >= TEAM_SOFT_LIMITS.messages * TEAM_COMPACT_PRESSURE || team.operations.length >= TEAM_SOFT_LIMITS.operations * TEAM_COMPACT_PRESSURE || team.tasks.length >= TEAM_SOFT_LIMITS.tasks * TEAM_COMPACT_PRESSURE;
+    return counted || JSON.stringify(team).length >= TEAM_SOFT_LIMITS.bytes * TEAM_COMPACT_PRESSURE;
 }
 /**
  * B-962: while an archived team can still be restored, what its archive cancelled stays live — the tasks
@@ -185,6 +186,27 @@ function compactOnce(team: TeamState, cutoff: number, now: number): TeamState {
 }
 
 /**
+ * B-966: what the server logs when a transition newly crosses a soft limit (the metrics `warnCapacity`
+ * just added to `capacityWarned`), so an outgrown team shows up in the logs as well as in its lead's
+ * session. Null when nothing crossed. `bytes` is the stored size the transition leaves.
+ */
+export function capacityCrossing(before: Pick<TeamState, 'capacityWarned'>, after: TeamState): { metrics: TeamCapacityMetric[]; used: Record<TeamCapacityMetric, number> } | null {
+    const had = new Set(before.capacityWarned ?? []);
+    const metrics = (after.capacityWarned ?? []).filter(k => !had.has(k));
+    if (!metrics.length) return null;
+    return { metrics, used: { bytes: JSON.stringify(after).length, messages: after.messages.length, operations: after.operations.length, tasks: after.tasks.length } };
+}
+
+/** B-966: a team this many times over a soft limit is logged at error level (still never refused). At 20 MB a write takes ~0.85 s. */
+export const TEAM_EXTREME_FACTOR = 10;
+export type TeamUsage = Record<TeamCapacityMetric, number>;
+/** The metrics a transition took from below to at least `TEAM_EXTREME_FACTOR` × their soft limit. */
+export function extremeCrossing(before: TeamUsage, after: TeamUsage): TeamCapacityMetric[] {
+    const extreme = (used: TeamUsage, k: TeamCapacityMetric) => used[k] >= TEAM_SOFT_LIMITS[k] * TEAM_EXTREME_FACTOR;
+    return (Object.keys(TEAM_SOFT_LIMITS) as TeamCapacityMetric[]).filter(k => extreme(after, k) && !extreme(before, k));
+}
+
+/**
  * Mutates `team` (inside reduceTeam): the first time a metric reaches 80% the lead gets one system
  * message (taskId null, so it reaches the lead's session like a schedule). A metric is warned again
  * only after it dropped below 70%. Returns whether it added the message.
@@ -200,7 +222,7 @@ export function warnCapacity(team: TeamState, bytes: number, now: number, id: ()
     }
     if (warned.size) team.capacityWarned = [...warned]; else delete team.capacityWarned;
     const lead = team.bots.find(b => b.root && b.sessionId) ?? team.bots.find(b => b.root);
-    if (!fresh.length || !lead || team.archivedAt !== undefined || team.messages.length >= TEAM_LIMITS.messages) return false;
+    if (!fresh.length || !lead || team.archivedAt !== undefined) return false;
     team.messages.push({ id: id(), taskId: null, senderBotId: null, source: 'system', recipientBotId: lead.id, body: capacityWarning(metrics, fresh), deliveredAt: null, createdAt: now });
     return true;
 }
