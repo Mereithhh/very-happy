@@ -1,7 +1,11 @@
 name: Publish very-happy-cli
 
 # Publishes the very-happy-cli package to npm when a tag matching v* is pushed.
-# Requires repo secret NPM_TOKEN (an npm automation token with publish rights).
+# Authenticates to npm with trusted publishing (GitHub OIDC, B-967): the
+# publish and promote jobs carry `id-token: write`, and every npm write goes
+# through scripts/release/npm-oidc-or-token.sh. During the transition the repo
+# secret NPM_TOKEN is only a fallback used when OIDC fails, and the run then
+# carries a ::warning:: annotation. See RELEASING.md for the npm-side setup.
 #
 # This is a monorepo: publish the six OS/CPU tool packages first, then the
 # very-happy-cli main package that references their exact version as optional
@@ -30,6 +34,11 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      # npm trusted publishing (OIDC) + automatic provenance. Tag/dispatch only:
+      # this workflow never runs on pull_request, so fork code never sees it.
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -56,6 +65,9 @@ jobs:
         continue-on-error: true
         run: node scripts/release/check-sdk-pin.mjs
 
+      # Install and build on Node 20: pkgroll targets the running Node version,
+      # and the CLI's engines still allow ^20.19. The publish steps switch to
+      # Node 22 below, after the build (B-967).
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -119,6 +131,20 @@ jobs:
           fi
           echo "OK: @slopus/happy-wire is inlined into dist (no external import)."
 
+      # Trusted publishing needs Node >= 22.14 and npm >= 11.5.1; OIDC for
+      # `npm dist-tag` (promote) needs npm >= 11.21.0. Both pinned, never latest.
+      # Switched only here so the build above stays on Node 20.
+      - name: Setup Node for publishing
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Pin npm for trusted publishing
+        run: |
+          npm install -g npm@11.21.2
+          npm --version
+
       - name: Publish platform tool packages to npm
         run: |
           set -euo pipefail
@@ -134,11 +160,14 @@ jobs:
               # platform-neutral tarball while preserving that metadata for
               # consumers during install.
               npm pack "$package_dir" --pack-destination "$RUNNER_TEMP"
-              npm publish "$RUNNER_TEMP/${package_name}-${package_version}.tgz" --access public
+              # Provenance is generated automatically under OIDC (npm docs);
+              # no --provenance flag, so the token fallback is not affected.
+              scripts/release/npm-oidc-or-token.sh "publish $package_name@$package_version" \
+                npm publish "$RUNNER_TEMP/${package_name}-${package_version}.tgz" --access public
             fi
           done
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_FALLBACK_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish main CLI package to npm
         # --no-git-checks because publishing from a tagged, detached state.
@@ -162,10 +191,11 @@ jobs:
             # job below moves it. Publishing itself stays unconditional and
             # unblocked: the emergency channel above is untouched, only the
             # fleet-wide recommendation waits.
-            npm publish "$RUNNER_TEMP/very-happy-cli-${package_version}.tgz" --access public --tag next
+            scripts/release/npm-oidc-or-token.sh "publish very-happy-cli@$package_version" \
+              npm publish "$RUNNER_TEMP/very-happy-cli-${package_version}.tgz" --access public --tag next
           fi
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_FALLBACK_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   # ── Promote `next` → `latest` once the smoke matrix is green (B-348) ───────
   # Deliberately a separate job that `needs: publish` — NOT a `needs:` on the
@@ -185,15 +215,25 @@ jobs:
       contents: read
       # read-only, and only to poll this repo's own run conclusions
       actions: read
+      # `npm dist-tag add` via trusted publishing; needs "Allow npm dist-tag"
+      # on very-happy-cli's trusted publisher (RELEASING.md).
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      # Trusted publishing needs Node >= 22.14 (22 line is past it) and npm >= 11.5.1; OIDC for
+      # `npm dist-tag` (promote) needs npm >= 11.21.0. Both pinned, never latest.
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
+
+      - name: Pin npm for trusted publishing
+        run: |
+          npm install -g npm@11.21.2
+          npm --version
 
       - name: Wait for the CLI smoke matrix on this commit
         env:
@@ -232,7 +272,7 @@ jobs:
 
       - name: Promote to latest (never backwards, idempotent)
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_FALLBACK_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ github.ref_name }}
         run: |
           set -euo pipefail
@@ -266,7 +306,8 @@ jobs:
               }
             ' "$version" "$current"
           fi
-          npm dist-tag add "very-happy-cli@$version" latest
+          scripts/release/npm-oidc-or-token.sh "dist-tag very-happy-cli@$version latest" \
+            npm dist-tag add "very-happy-cli@$version" latest
           npm view very-happy-cli version
 
       # Publication is complete only when the relay advertises the promoted version.
