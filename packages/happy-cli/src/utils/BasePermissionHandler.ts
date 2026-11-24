@@ -130,7 +130,7 @@ export abstract class BasePermissionHandler {
     /**
      * Add a pending request to the agent state.
      */
-    protected addPendingRequestToState(toolCallId: string, toolName: string, input: unknown): void {
+    protected addPendingRequestToState(toolCallId: string, toolName: string, input: unknown, extra: { kind?: 'tool' } = {}): void {
         this.session.updateAgentState((currentState) => ({
             ...currentState,
             requests: {
@@ -138,7 +138,8 @@ export abstract class BasePermissionHandler {
                 [toolCallId]: {
                     tool: toolName,
                     arguments: input,
-                    createdAt: Date.now()
+                    createdAt: Date.now(),
+                    ...extra
                 }
             }
         }));
@@ -187,6 +188,39 @@ export abstract class BasePermissionHandler {
         });
 
         logger.debug(`${this.getLogPrefix()} Aborted ${pendingSnapshot.length} pending permission(s)`);
+    }
+
+    /**
+     * B-969: approve every pending request (a dsh session switched to
+     * bypassPermissions / yolo while asks were waiting). Each resolves as a plain
+     * `approved`, exactly as if the user had pressed Approve; `reason` is kept on
+     * the completed request. Returns what was approved.
+     */
+    approveAllPending(reason?: string): Array<{ id: string; toolName: string; input: unknown }> {
+        const pendingSnapshot = Array.from(this.pendingRequests.entries());
+        if (pendingSnapshot.length === 0) return [];
+        this.pendingRequests.clear();
+        for (const [id, pending] of pendingSnapshot) {
+            try {
+                pending.resolve({ decision: 'approved' });
+            } catch (err) {
+                logger.debug(`${this.getLogPrefix()} Error approving pending request ${id}:`, err);
+            }
+        }
+        const ids = new Set(pendingSnapshot.map(([id]) => id));
+        this.session.updateAgentState((currentState) => {
+            const requests = { ...(currentState.requests || {}) };
+            const completedRequests = { ...currentState.completedRequests };
+            for (const id of ids) {
+                const request = requests[id];
+                if (!request) continue;
+                delete requests[id];
+                completedRequests[id] = { ...request, completedAt: Date.now(), status: 'approved', decision: 'approved', ...(reason ? { reason } : {}) };
+            }
+            return { ...currentState, requests, completedRequests };
+        });
+        logger.debug(`${this.getLogPrefix()} Approved ${pendingSnapshot.length} pending permission(s) after a switch to auto-approve`);
+        return pendingSnapshot.map(([id, pending]) => ({ id, toolName: pending.toolName, input: pending.input }));
     }
 
     /**

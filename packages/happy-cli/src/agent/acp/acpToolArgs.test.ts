@@ -8,7 +8,9 @@ import {
   buildAcpPermissionMeta,
   deriveAcpToolArgs,
   readAcpTerminalMeta,
+  recordAcpToolCallFact,
   resolveAcpPermissionRequest,
+  type AcpToolCallFact,
 } from './acpToolArgs';
 import { handleToolCall, handleToolCallUpdate, type HandlerContext } from './sessionUpdateHandlers';
 import { AcpSessionManager } from './AcpSessionManager';
@@ -111,6 +113,101 @@ describe('resolveAcpPermissionRequest', () => {
     expect(resolveAcpPermissionRequest({ toolCall: { kind: 'edit', input: { a: 1 }, rawInput: { b: 2 } } }, newId).input).toEqual({ acpKind: 'edit', a: 1 });
     expect(resolveAcpPermissionRequest({ kind: 'other', arguments: { x: 1 } }, newId)).toEqual({ toolCallId: 'uuid-1', toolName: 'other', input: { x: 1 } });
     expect(resolveAcpPermissionRequest({}, newId)).toEqual({ toolCallId: 'uuid-1', toolName: 'Unknown tool', input: {} });
+  });
+});
+
+// B-969: dsh 0.2.2-rc.5 (dsh-acp toolCallUpdate / approval/request), values redacted.
+const dshOptions = [
+  { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' },
+  { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' },
+];
+const dshToolCalls = {
+  bash: { sessionUpdate: 'tool_call', toolCallId: 'call_00_bash', title: 'bash', kind: 'other', status: 'in_progress', rawInput: { command: 'echo <redacted>', description: '<redacted>' } },
+  write: { sessionUpdate: 'tool_call', toolCallId: 'call_00_write', title: 'write', kind: 'other', status: 'in_progress', rawInput: { file_path: '/tmp/<redacted>.txt', content: '<redacted>' } },
+};
+
+describe('resolveAcpPermissionRequest — dsh (B-969)', () => {
+  const newId = () => 'uuid-1';
+  const factsFrom = (...updates: Array<Record<string, unknown>>) => {
+    const facts = new Map<string, AcpToolCallFact>();
+    for (const u of updates) recordAcpToolCallFact(facts, u);
+    return { agentName: 'dsh', priorToolCall: (id: string) => facts.get(id) };
+  };
+
+  it('toolCallId only: name, kind and arguments come from the earlier tool_call with the same id', () => {
+    const ask = { sessionId: 's', toolCall: { toolCallId: 'call_00_bash' }, options: dshOptions };
+    expect(resolveAcpPermissionRequest(ask, newId, factsFrom(dshToolCalls.bash, dshToolCalls.write))).toEqual({
+      toolCallId: 'uuid-1',
+      toolName: 'bash',
+      input: { command: 'echo <redacted>', description: '<redacted>', acpTitle: 'bash', acpKind: 'execute' },
+    });
+    const write = { sessionId: 's', toolCall: { toolCallId: 'call_00_write' }, options: dshOptions };
+    expect(resolveAcpPermissionRequest(write, newId, factsFrom(dshToolCalls.bash, dshToolCalls.write))).toEqual({
+      toolCallId: 'uuid-1',
+      toolName: 'write',
+      input: { file_path: '/tmp/<redacted>.txt', content: '<redacted>', acpTitle: 'write', acpKind: 'edit' },
+    });
+  });
+
+  it('toolCallId only with no earlier tool_call keeps the old fallback', () => {
+    const ask = { toolCall: { toolCallId: 'call_unseen' }, options: dshOptions };
+    expect(resolveAcpPermissionRequest(ask, newId, factsFrom(dshToolCalls.bash))).toEqual({ toolCallId: 'uuid-1', toolName: 'Unknown tool', input: {} });
+  });
+
+  it('title on the ask itself wins and is mapped like the transcript card', () => {
+    const ask = { toolCall: { toolCallId: 'call_00_bash', title: 'edit', kind: 'other' }, options: dshOptions };
+    const resolved = resolveAcpPermissionRequest(ask, newId, factsFrom(dshToolCalls.bash));
+    expect(resolved.toolName).toBe('edit');
+    expect(resolved.input).toEqual({ command: 'echo <redacted>', description: '<redacted>', acpTitle: 'edit', acpKind: 'edit' });
+    // Unmapped dsh tool names keep their kind and still name the tool.
+    expect(resolveAcpPermissionRequest({ toolCall: { toolCallId: 'x', title: 'todo', kind: 'other' } }, newId, factsFrom()))
+      .toEqual({ toolCallId: 'uuid-1', toolName: 'todo', input: { acpTitle: 'todo', acpKind: 'other' } });
+  });
+
+  it('rawInput on the ask itself wins over the earlier tool_call', () => {
+    const ask = { toolCall: { toolCallId: 'call_00_bash', rawInput: { command: 'ls' } }, options: dshOptions };
+    expect(resolveAcpPermissionRequest(ask, newId, factsFrom(dshToolCalls.bash)).input)
+      .toEqual({ command: 'ls', acpTitle: 'bash', acpKind: 'execute' });
+  });
+
+  it('the permission id is still never the ACP toolCallId', () => {
+    const ask = { toolCall: { toolCallId: 'call_00_bash' }, options: dshOptions };
+    expect(resolveAcpPermissionRequest(ask, newId, factsFrom(dshToolCalls.bash)).toolCallId).toBe('uuid-1');
+  });
+
+  it('pi and Gemini asks are unchanged even when a prior tool_call lookup is passed', () => {
+    const facts = factsFrom({ toolCallId: 'pi-ui-3', title: 'bash', kind: 'execute', rawInput: { command: 'rm -rf x' } });
+    const piGate = { toolCall: { toolCallId: 'pi-ui-3', title: 'ask-git-push', kind: 'other', rawInput: { method: 'confirm', message: 'm' } } };
+    const pi = resolveAcpPermissionRequest(piGate, newId, { ...facts, agentName: 'pi' });
+    expect(pi).toEqual(resolveAcpPermissionRequest(piGate, newId));
+    expect(pi.toolName).toBe('other');
+    const gemini = { toolCall: { toolCallId: 'pi-ui-3', kind: 'execute', title: 'rm f [cwd /x] (desc)' } };
+    const g = resolveAcpPermissionRequest(gemini, newId, { ...facts, agentName: 'gemini' });
+    expect(g).toEqual(resolveAcpPermissionRequest(gemini, newId));
+    expect(g).toEqual({ toolCallId: 'uuid-1', toolName: 'execute', input: { acpTitle: 'rm f [cwd /x] (desc)', acpKind: 'execute' } });
+    // An id-only ask from another agent is not filled from earlier tool calls.
+    expect(resolveAcpPermissionRequest({ toolCall: { toolCallId: 'pi-ui-3' } }, newId, { ...facts, agentName: 'gemini' }).toolName).toBe('Unknown tool');
+  });
+});
+
+describe('recordAcpToolCallFact', () => {
+  it('merges updates per id, keeps the latest non-empty fields and drops the oldest past max', () => {
+    const facts = new Map<string, AcpToolCallFact>();
+    recordAcpToolCallFact(facts, { toolCallId: 'a', title: 'bash', kind: 'other', rawInput: { command: 'ls' } }, 2);
+    recordAcpToolCallFact(facts, { toolCallId: 'a', title: '', rawInput: ['not-an-object'] }, 2);
+    expect(facts.get('a')).toEqual({ title: 'bash', kind: 'other', rawInput: { command: 'ls' } });
+    recordAcpToolCallFact(facts, { toolCallId: 'b', title: 'read' }, 2);
+    recordAcpToolCallFact(facts, { toolCallId: 'c', title: 'write' }, 2);
+    expect([...facts.keys()]).toEqual(['b', 'c']);
+    recordAcpToolCallFact(facts, { title: 'no-id' }, 2);
+    recordAcpToolCallFact(facts, { toolCallId: 'd' }, 2);
+    expect([...facts.keys()]).toEqual(['b', 'c']);
+  });
+
+  it('skips an oversized rawInput', () => {
+    const facts = new Map<string, AcpToolCallFact>();
+    recordAcpToolCallFact(facts, { toolCallId: 'a', title: 'write', rawInput: { content: 'x'.repeat(ACP_RAW_INPUT_MAX_BYTES + 1) } });
+    expect(facts.get('a')).toEqual({ title: 'write' });
   });
 });
 

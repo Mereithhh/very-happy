@@ -3678,6 +3678,13 @@ export const zhHans: TranslationStructure = {
                 models: '这两个模型都需要 Anthropic 兼容网关，比如填了自定义 Base URL 的 API 账号。Claude 订阅账号和走 Anthropic 官方地址的 API 账号不显示；不知道用的是哪个账号时照常列出，并附上这条说明。默认模型不变。',
                 tools: 'deepseek-v4.1-flash 可以带完整工具集使用。',
             },
+            nov25a: {
+                title: 'DeepSeek Harness：权限请求写明要执行什么，自动执行立即生效',
+                summary: 'DeepSeek Harness（dsh）会话请求权限时，会写出工具名和要运行的命令或文件，不再只显示「Unknown tool」和空的 {}。切到自动执行也会立即生效。',
+                card: '请求里显示的工具名、命令和文件路径，和对话里的工具卡一致，批准前就能判断风险。dsh 每次只放行一次调用，所以它的请求不再显示「本次会话都批准」（这个按钮以前也只放行那一次）。',
+                yolo: '以前把 dsh 会话切到自动执行，要等你发下一条消息才生效，当前这次回复里的工具调用仍要一个个手点。现在切换立即生效：已在等待的请求会直接放行；选择器显示会话实际在用的模式，恢复会话后也一样。',
+                upgrade: '需要 CLI 0.2.227。',
+            },
             nov24c: {
                 title: '升级时不会再把别的会话一起停掉',
                 summary: '升级 CLI 时，同一台电脑上的其他会话不会再被一起停掉。',

@@ -545,11 +545,13 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     // honesty subtitles below apply to both. Live permission RPC / the explicit
     // 「default」 effort option stay Claude-only; Steer is Claude's and (B-628) Codex's,
     // each behind its own capability (steerSupport.ts).
-    const publishesModeFacts = isClaudeFlavor || isPiAgent(flavor);
+    // B-969: a dsh wrapper publishes the mode it enforces as well (file-backed, like pi).
+    const publishesModeFacts = isClaudeFlavor || isPiAgent(flavor) || flavor === 'dsh';
     const supportsSteer = wrapperSupportsSteer(flavor, metadata?.capabilities)
         && session?.agentState?.controlledByUser === false;
     const supportsLivePermissionMode = shouldApplyPermissionModeLive({
         isClaude: isClaudeFlavor,
+        isDsh: flavor === 'dsh',
         isWorking: isWorking || hasPendingPermission,
         isRemote: session?.agentState?.controlledByUser === false,
         isOnline: session?.presence === 'online',

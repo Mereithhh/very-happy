@@ -124,6 +124,47 @@ export function dshAutoApproves(mode: string | null | undefined): boolean {
 }
 
 /**
+ * B-969: a dsh wrapper takes `set-permission-mode` at any time (also while a
+ * turn runs or an ask waits) and publishes the mode in effect in
+ * `metadata.permissionMode`. The Web switches dsh live only when it sees this.
+ */
+export const DSH_LIVE_PERMISSION_CAPABILITY = 'dsh-live-permission-v1';
+
+/** B-969: kept as the reason of an ask approved by switching to auto-approve. */
+export const DSH_AUTO_APPROVED_REASON = 'Auto-approved: the session switched to Auto-run';
+
+/**
+ * B-969: the transcript line saying which waiting asks were approved by the
+ * switch, so they do not just vanish. Pure.
+ */
+export function dshAutoApprovedNotice(approved: Array<{ toolName: string; input: unknown }>): string | null {
+    if (approved.length === 0) return null;
+    const describe = ({ toolName, input }: { toolName: string; input: unknown }): string => {
+        const args = input && typeof input === 'object' ? input as Record<string, unknown> : {};
+        const detail = typeof args.command === 'string' ? args.command
+            : typeof args.file_path === 'string' ? args.file_path : null;
+        const line = detail ? `${toolName}: ${detail.replace(/\s+/g, ' ').trim()}` : toolName;
+        return line.length > 160 ? `${line.slice(0, 159)}…` : line;
+    };
+    const list = approved.map(describe).join('; ');
+    return approved.length === 1
+        ? `Auto-approved the waiting request after switching to Auto-run — ${list}`
+        : `Auto-approved ${approved.length} waiting requests after switching to Auto-run — ${list}`;
+}
+
+/**
+ * B-969: extra fields for a pending permission request in agentState. dsh only
+ * offers allow-once / reject-once (its approval service grants nothing wider)
+ * and Very Happy keeps no session allow-list for ACP agents, so "Approve for
+ * session" would just approve once. `kind: 'tool'` without
+ * `permissionSuggestions` is the Web's existing signal to hide that button.
+ * Other agents keep the legacy shape (no `kind`) and their current buttons.
+ */
+export function acpPendingRequestExtras(agentName: string): { kind?: 'tool' } {
+    return agentName === 'dsh' ? { kind: 'tool' } : {};
+}
+
+/**
  * B-952: dsh's ACP server sends every tool call as `kind: 'other'` with the
  * model-visible tool name as the title. The standard ACP kind for dsh's own
  * tools lets the Web draw the usual command / read / edit / search cards;
