@@ -3523,7 +3523,7 @@ export const en = {
             nov25a: {
                 title: 'DeepSeek Harness permission requests show what will run',
                 summary: 'A DeepSeek Harness (dsh) session asking for permission now names the tool and shows the command or file, instead of "Unknown tool" and an empty {}.',
-                card: 'The request shows the same tool name, command and file path as the tool card in the conversation, so you can judge the risk before you approve. dsh only allows one call at a time: "Approve for session" still lets just this call run.',
+                card: 'The request shows the same tool name, command and file path as the tool card in the conversation, so you can judge the risk before you approve. dsh grants one call at a time, so its requests no longer show "Approve for session" (it only ever approved that one call).',
                 upgrade: 'Needs CLI 0.2.227.',
             },
             nov24c: {

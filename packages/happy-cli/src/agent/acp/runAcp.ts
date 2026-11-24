@@ -1,7 +1,7 @@
 import { VERY_HAPPY_DISCOVERY } from '@/skill/discovery';
 import { dshHintContext, loadDshWrapperAccount, MACHINE_DSH_ACCOUNT, type DshWrapperAccount } from '@/agentProfiles/dshAccount';
 import { SPAWN_ACCOUNT_ENV } from '@/agentProfiles/store';
-import { DSH_SESSION_NOTICE, dshAutoApproves, dshFailureHint } from './dshRunner';
+import { DSH_SESSION_NOTICE, acpPendingRequestExtras, dshAutoApproves, dshFailureHint } from './dshRunner';
 import { isSessionPeerPrompt } from '@/claude/nonUserPrompt';
 import { readPiModelsJson, resolvePiContextUsage, type PiContextReport } from './piContextUsage';
 import { buildAcpPrompt, routeAcpUserText } from './acpSlashCommand';
@@ -459,6 +459,7 @@ function resolveRequestedLegacyModelCode(models: SessionModelState, requested: s
 
 class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPermissionHandler {
   private readonly logPrefix: string;
+  private readonly agentName: string;
 
   /**
    * B-952: `autoApprove` answers an agent's permission ask without the user when
@@ -469,6 +470,7 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
   constructor(session: ApiSessionClient, agentName: string, private readonly autoApprove: () => boolean = () => false) {
     super(session);
     this.logPrefix = `[${agentName}]`;
+    this.agentName = agentName;
   }
 
   protected getLogPrefix(): string {
@@ -487,7 +489,7 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
         toolName,
         input,
       });
-      this.addPendingRequestToState(toolCallId, toolName, input);
+      this.addPendingRequestToState(toolCallId, toolName, input, acpPendingRequestExtras(this.agentName));
       logger.debug(`${this.logPrefix} Permission request sent for tool: ${toolName} (${toolCallId})`);
     });
   }

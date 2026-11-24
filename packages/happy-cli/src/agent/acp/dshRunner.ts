@@ -124,6 +124,18 @@ export function dshAutoApproves(mode: string | null | undefined): boolean {
 }
 
 /**
+ * B-969: extra fields for a pending permission request in agentState. dsh only
+ * offers allow-once / reject-once (its approval service grants nothing wider)
+ * and Very Happy keeps no session allow-list for ACP agents, so "Approve for
+ * session" would just approve once. `kind: 'tool'` without
+ * `permissionSuggestions` is the Web's existing signal to hide that button.
+ * Other agents keep the legacy shape (no `kind`) and their current buttons.
+ */
+export function acpPendingRequestExtras(agentName: string): { kind?: 'tool' } {
+    return agentName === 'dsh' ? { kind: 'tool' } : {};
+}
+
+/**
  * B-952: dsh's ACP server sends every tool call as `kind: 'other'` with the
  * model-visible tool name as the title. The standard ACP kind for dsh's own
  * tools lets the Web draw the usual command / read / edit / search cards;

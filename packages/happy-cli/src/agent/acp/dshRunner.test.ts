@@ -93,3 +93,31 @@ describe('dsh tool kinds (B-952)', () => {
         expect(deriveAcpToolArgs({ title: 'bash', kind: 'other' }, { agentName: 'opencode' }).acpKind).toBe('other');
     });
 });
+
+describe('dsh pending permission request shape (B-969)', () => {
+  it('dsh requests are kind tool (Web hides "Approve for session": dsh only grants allow-once)', async () => {
+    const { acpPendingRequestExtras } = await import('./dshRunner');
+    expect(acpPendingRequestExtras('dsh')).toEqual({ kind: 'tool' });
+    for (const agent of ['pi', 'gemini', 'opencode', 'acp']) expect(acpPendingRequestExtras(agent)).toEqual({});
+  });
+
+  it('BasePermissionHandler stores the extras next to tool / arguments, and nothing for others', async () => {
+    const { BasePermissionHandler } = await import('@/utils/BasePermissionHandler');
+    const { acpPendingRequestExtras } = await import('./dshRunner');
+    let state: any = {};
+    const session = {
+      rpcHandlerManager: { registerHandler: () => {} },
+      updateAgentState: (fn: (s: any) => any) => { state = fn(state); },
+    };
+    class H extends BasePermissionHandler {
+      protected getLogPrefix() { return '[t]'; }
+      add(id: string, agent: string) { this.addPendingRequestToState(id, 'bash', { command: 'ls' }, acpPendingRequestExtras(agent)); }
+    }
+    const h = new H(session as any);
+    h.add('a', 'dsh');
+    h.add('b', 'gemini');
+    expect(state.requests.a).toMatchObject({ tool: 'bash', arguments: { command: 'ls' }, kind: 'tool' });
+    expect(state.requests.a.permissionSuggestions).toBeUndefined();
+    expect('kind' in state.requests.b).toBe(false);
+  });
+});

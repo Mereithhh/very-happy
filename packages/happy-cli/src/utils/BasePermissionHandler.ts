@@ -130,7 +130,7 @@ export abstract class BasePermissionHandler {
     /**
      * Add a pending request to the agent state.
      */
-    protected addPendingRequestToState(toolCallId: string, toolName: string, input: unknown): void {
+    protected addPendingRequestToState(toolCallId: string, toolName: string, input: unknown, extra: { kind?: 'tool' } = {}): void {
         this.session.updateAgentState((currentState) => ({
             ...currentState,
             requests: {
@@ -138,7 +138,8 @@ export abstract class BasePermissionHandler {
                 [toolCallId]: {
                     tool: toolName,
                     arguments: input,
-                    createdAt: Date.now()
+                    createdAt: Date.now(),
+                    ...extra
                 }
             }
         }));

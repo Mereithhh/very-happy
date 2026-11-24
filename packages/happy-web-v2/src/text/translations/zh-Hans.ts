@@ -3681,7 +3681,7 @@ export const zhHans: TranslationStructure = {
             nov25a: {
                 title: 'DeepSeek Harness 的权限请求会写明要执行什么',
                 summary: 'DeepSeek Harness（dsh）会话请求权限时，会写出工具名和要运行的命令或文件，不再只显示「Unknown tool」和空的 {}。',
-                card: '请求里显示的工具名、命令和文件路径，和对话里的工具卡一致，批准前就能判断风险。dsh 每次只放行一次调用：点「本次会话都批准」也只放行这一次。',
+                card: '请求里显示的工具名、命令和文件路径，和对话里的工具卡一致，批准前就能判断风险。dsh 每次只放行一次调用，所以它的请求不再显示「本次会话都批准」（这个按钮以前也只放行那一次）。',
                 upgrade: '需要 CLI 0.2.227。',
             },
             nov24c: {
