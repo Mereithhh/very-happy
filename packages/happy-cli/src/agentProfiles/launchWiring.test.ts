@@ -23,7 +23,7 @@ describe('B-850d daemon wiring', () => {
     });
 
     it('the automation runner aligns sticky sessions through the daemon (check + in-place rebind)', () => {
-        expect(daemon).toContain("resolve: (agent: 'claude' | 'codex', requested: string | null | undefined) => accountServiceRef!.resolveSpawnAccount(agent, requested),");
+        expect(daemon).toContain("resolve: (agent: 'claude' | 'codex' | 'dsh', requested: string | null | undefined) => accountServiceRef!.resolveSpawnAccount(agent, requested),");
         expect(daemon).toContain('const result = await accountServiceRef!.bind({ sessionId, accountId });\n            if (result.restart === \'failed\') throw new Error(result.error ?? \'restart failed\');');
     });
 
