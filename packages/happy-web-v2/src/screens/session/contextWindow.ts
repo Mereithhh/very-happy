@@ -42,6 +42,9 @@ export function contextWindowFor(model: string | null | undefined): number | nul
     // ANTHROPIC_* overrides (2026-11-21); Haiku 4.5 stays 200k. Only a guess for
     // wrappers that report no window.
     if (/^claude-(fable|sonnet|haiku)-5(?:-\d{1,2})?(?![0-9])/.test(id)) return LONG_CONTEXT_WINDOW;
+    // B-968: the gateway models in the Claude list — both 1M (Kimi K3.1 Pro and
+    // DeepSeek V4.1 Flash model cards; the gateway serves them at 1M).
+    if (id === 'kimi-k3.1-pro' || id === 'deepseek-v4.1-flash') return LONG_CONTEXT_WINDOW;
     // A non-Claude model ID does not imply a 200k window. Pi uses runtime capacity.
     return /^(claude[-_:]|(?:opus|sonnet|haiku)[-_:])/.test(id) ? DEFAULT_CONTEXT_WINDOW : null;
 }

@@ -56,6 +56,9 @@ const DESC_KEYS: Readonly<Record<string, SimpleTranslationKey>> = {
     'codex:sol': 'session.chat.modelPicker.desc.sol',
     'codex:terra': 'session.chat.modelPicker.desc.terra',
     'codex:luna': 'session.chat.modelPicker.desc.luna',
+    // B-968: the gateway models (CLAUDE_GATEWAY_MODELS) have no family; keyed by id.
+    'kimi-k3.1-pro': 'session.chat.modelPicker.desc.gateway',
+    'deepseek-v4.1-flash': 'session.chat.modelPicker.desc.gateway',
 };
 
 /**

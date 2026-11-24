@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-24-gateway-models',
+    date: '2026-11-24',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov24d.title',
+    summaryKey: 'changelog.releases.nov24d.summary',
+    itemKeys: ['changelog.releases.nov24d.models', 'changelog.releases.nov24d.tools'],
+  },
+  {
     id: '2026-11-24-upgrade-keeps-sessions',
     cliVersion: '0.2.226',
     date: '2026-11-24',

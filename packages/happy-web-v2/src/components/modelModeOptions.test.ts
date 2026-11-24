@@ -13,6 +13,9 @@ import {
     getHardcodedPermissionModes,
     relabelDefaultModel, codexModelGate, withClaudeCatalogBases, catalogRunnableKeys } from './modelModeOptions';
 
+/** B-968: appended after every existing Claude entry. */
+const GATEWAY = ['kimi-k3.1-pro', 'deepseek-v4.1-flash'];
+
 describe('resolved default model labels', () => {
     it('keeps the concrete model value while removing the redundant Claude prefix', () => {
         expect(compactResolvedModelCode('claude-opus-5[1m]')).toBe('opus-5[1m]');
@@ -76,9 +79,9 @@ describe('Claude model picker (Fable 5.2 / 5.1)', () => {
             { code: 'opus', value: 'Opus 5.5', resolvedModel: 'claude-opus-5-5' },
         ];
         expect(getAvailableModels('claude', { models, capabilities: ['claude-opus-5-5-v1'] } as any, t as any).map((m) => m.key))
-            .toEqual(['default', 'claude-opus-5-5', 'claude-opus-5-5[1m]', 'opus']);
+            .toEqual(['default', 'claude-opus-5-5', 'claude-opus-5-5[1m]', 'opus', ...GATEWAY]);
         expect(getAvailableModels('claude', { models, capabilities: ['claude-steer-v1'] } as any, t as any).map((m) => m.key))
-            .toEqual(['default', 'opus']);
+            .toEqual(['default', 'opus', ...GATEWAY]);
     });
 
     it('names the SDK opus alias apart from pinned Opus 5.5 without dropping it', () => {

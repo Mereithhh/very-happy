@@ -1144,6 +1144,7 @@ export const en = {
                     sol: 'Newest agentic coding model',
                     terra: 'Balanced, for everyday coding',
                     luna: 'Fast and affordable',
+                    gateway: 'Needs an Anthropic-compatible gateway (e.g. an API account with a custom Base URL)',
                     older: 'Older version',
                 },
             },
@@ -3502,6 +3503,12 @@ export const en = {
                 summary: 'When an agent tries to preview a file that does not exist (or a folder), it is told so instead of being told the preview went out, so it stops saying "preview opened" for nothing.',
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
+            },
+            nov24d: {
+                title: 'Kimi K3.1 Pro and DeepSeek V4.1 Flash in the model list',
+                summary: 'Claude sessions can pick Kimi K3.1 Pro and DeepSeek V4.1 Flash straight from the model list, without typing a custom model.',
+                models: 'Both need an Anthropic-compatible gateway, such as an API account with a custom Base URL. They are not shown for a Claude subscription or an API account on Anthropic’s own endpoint; where the account is not known they are listed with that note. Defaults are unchanged.',
+                tools: 'deepseek-v4.1-flash works in sessions with the full tool set.',
             },
             nov24c: {
                 title: 'Upgrading no longer stops your other sessions',

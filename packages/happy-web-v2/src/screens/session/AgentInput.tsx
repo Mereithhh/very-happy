@@ -37,6 +37,8 @@ import {
     getAvailableModels,
     getAvailablePermissionModes,
     getLauncherModelModes,
+    withGatewayModelsFor,
+    type ClaudeAccountFacts,
     getEffortLevelsForModel,
     compactResolvedModelCode,
     claudeRunningModelLabel,
@@ -181,7 +183,7 @@ import { applyFileMention, fileMentionDismissKey, fileMentionQuery } from './fil
 import { useFileMentionSuggestions } from './useFileMentionSuggestions';
 import { highlightRuns } from '../quickopen/quickOpenScore';
 import { recordQuickOpen } from '../quickopen/quickOpenHistory';
-import { MACHINE_LOGIN_KEY, buildAccountSection, sessionApiModels, switchSessionAccount, useSessionAccount } from './sessionAccount';
+import { MACHINE_LOGIN_KEY, buildAccountSection, sessionApiModels, sessionClaudeAccount, switchSessionAccount, useSessionAccount } from './sessionAccount';
 // B-688: the model/provider editor loads on first use (Vite turns CJS `react` imports into consts, so this sits after every import).
 const ModelConfigEditor = lazy(() => import('@/components/modelConfig/ModelConfigEditor').then((m) => ({ default: m.ModelConfigEditor })));
 
@@ -228,6 +230,8 @@ export interface PendingComposer {
     launcher?: LauncherModelSource;
     /** B-849a: the target machine (its update page from 「升级 CLI」). */
     machineId?: string;
+    /** B-968: the account the session will start on (null = machine login / unknown). */
+    account?: ClaudeAccountFacts;
 }
 
 const NO_CATALOGS: never[] = [];
@@ -446,7 +450,9 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     // B-851b: a fork without its own catalog yet borrows its parent's (same machine + agent).
     const parentMetadata = useSession(metadata?.models?.length ? '' : metadata?.parentSessionId ?? '')?.metadata;
     const catalogMetadata = forkCatalogSource(metadata, parentMetadata);
-    const baseModels = localizeModelNames(flavor, session ? getAvailableModels(flavor, catalogMetadata, t as any) : getLauncherModelModes(flavor, launcherCatalogs, t as any, latestTable), t);
+    // B-968: the gateway models drop out where the account is known to be Anthropic's own.
+    const modelAccount = session ? sessionClaudeAccount(sessionAccount.facts) : pending?.account;
+    const baseModels = localizeModelNames(flavor, withGatewayModelsFor(session ? getAvailableModels(flavor, catalogMetadata, t as any) : getLauncherModelModes(flavor, launcherCatalogs, t as any, latestTable), modelAccount), t);
     // B-849a: a draft resolves right away for its machine; one whose CLI cannot
     // report what follow-latest runs says so instead of naming a guess.
     const followState = followLatestState(latestResolution, !!session, { runFactsUnknown: !session && !launcherReportsRunFacts(flavor, launcherContext) });

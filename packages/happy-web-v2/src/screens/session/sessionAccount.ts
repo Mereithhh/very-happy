@@ -127,6 +127,18 @@ export function buildAccountSection(facts: SessionAccountFacts, t: T, actions: {
 }
 
 /** API account: the model list comes from the account (wire: `models`, first = default). */
+/**
+ * B-968: the session's account as gatewayModelsAllowed reads it. Unknown (no
+ * binding, or an API account whose endpoint the machine did not report) = null.
+ */
+export function sessionClaudeAccount(facts: SessionAccountFacts | null): { kind: string; baseUrl?: string | null } | null {
+    const profile = facts?.profile;
+    if (!profile) return null;
+    if (profile.kind === 'claude-subscription') return { kind: profile.kind };
+    const account = facts?.state?.accounts.find((a) => a.id === profile.id);
+    return account ? { kind: account.kind, baseUrl: account.baseUrl ?? null } : null;
+}
+
 export function sessionApiModels(facts: SessionAccountFacts | null): { account: AgentProfileSummary | null; models: string[]; pinned: string | null } | null {
     const profile = facts?.profile;
     if (!facts || !profile || profile.status !== 'active' || !isApiAccount(profile.kind)) return null;
