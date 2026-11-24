@@ -83,6 +83,8 @@ describe('a daemon that left its unit is repaired by the new bundle\'s preflight
         const guard = src.indexOf('guardStrandedPreflight()');
         expect(guard).toBeGreaterThan(0);
         expect(guard).toBeLessThan(src.indexOf("await import('./selfCheck')"));
+        // its non-zero code is what holds the stranded daemon's handover
+        expect(src).toMatch(/const code = guardStrandedPreflight\(\)\s+if \(code !== null\) process\.exit\(code\)/);
         expect(src).toContain("if (isStandaloneVersionRequest(args) && /(^|[\\\\/])vh-preflight-[^\\\\/]*$/.test(process.env.HAPPY_HOME_DIR ?? '')) {");
     });
 });
