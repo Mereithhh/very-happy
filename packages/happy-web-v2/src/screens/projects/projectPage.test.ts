@@ -9,7 +9,7 @@ describe('injection badge (准则 1: every harness shows its real state)', () =>
     expect(injectionStateOf({ flavor: undefined }, undefined, 3)).toEqual({ kind: 'none', restartHelps: false });
     // B-970b: dsh runs on the ACP wrapper, which injects; an old dsh wrapper gets 「restart to enable」 like pi/gemini.
     for (const flavor of ['dsh', 'pi', 'gemini', 'codex']) expect(injectionStateOf({ capabilities: [], flavor }, undefined, 3)).toEqual({ kind: 'none', restartHelps: true });
-    expect(injectionStateOf({ capabilities: ['project-v1'], flavor: 'dsh' }, { injectedInstructionsVersion: 3 }, 3)).toEqual({ kind: 'current', version: 3 });
+    expect(injectionStateOf({ capabilities: ['project-v1'], flavor: 'dsh' }, { injectedInstructionsVersion: 3, capabilities: ['project-v1'] }, 3)).toEqual({ kind: 'current', version: 3 });
   });
   it('capable: current / stale / pending from the wrapper presence', () => {
     const meta = { capabilities: ['project-v1'], flavor: 'codex' };
