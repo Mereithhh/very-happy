@@ -197,6 +197,15 @@ export function capacityCrossing(before: Pick<TeamState, 'capacityWarned'>, afte
     return { metrics, used: { bytes: JSON.stringify(after).length, messages: after.messages.length, operations: after.operations.length, tasks: after.tasks.length } };
 }
 
+/** B-966: a team this many times over a soft limit is logged at error level (still never refused). At 20 MB a write takes ~0.85 s. */
+export const TEAM_EXTREME_FACTOR = 10;
+export type TeamUsage = Record<TeamCapacityMetric, number>;
+/** The metrics a transition took from below to at least `TEAM_EXTREME_FACTOR` × their soft limit. */
+export function extremeCrossing(before: TeamUsage, after: TeamUsage): TeamCapacityMetric[] {
+    const extreme = (used: TeamUsage, k: TeamCapacityMetric) => used[k] >= TEAM_SOFT_LIMITS[k] * TEAM_EXTREME_FACTOR;
+    return (Object.keys(TEAM_SOFT_LIMITS) as TeamCapacityMetric[]).filter(k => extreme(after, k) && !extreme(before, k));
+}
+
 /**
  * Mutates `team` (inside reduceTeam): the first time a metric reaches 80% the lead gets one system
  * message (taskId null, so it reaches the lead's session like a schedule). A metric is warned again

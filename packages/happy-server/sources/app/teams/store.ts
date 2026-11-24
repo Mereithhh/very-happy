@@ -9,11 +9,11 @@ import { inTx, type Tx } from '@/storage/inTx';
 import { encryptString, decryptString } from '@/modules/encrypt';
 import { advanceSchedules } from './schedules';
 import { escalateIdleMembers } from './teamIdle';
-import { capacityCrossing, TEAM_SOFT_LIMITS, compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable, mergeArchivedMessages } from './compaction';
+import { capacityCrossing, extremeCrossing, TEAM_EXTREME_FACTOR, TEAM_SOFT_LIMITS, compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable, mergeArchivedMessages } from './compaction';
 import { requireCapacity } from './errors';
 import { machineJoinRefusal, ownerGuardMode } from '@/app/auth/ownerGuard';
 import { OWNER_LOGIN_REQUIRED } from '@/app/auth/tokenKind';
-import { log, warn } from '@/utils/log';
+import { log, warn, error as logError } from '@/utils/log';
 import { renewTeamCredentialTx, TEAM_CREDENTIAL_TTL_MS } from './credentials';
 import { adoptLeadAccount, otherTeamBinding, reduceTeam, restoreBots, restoreSessionId, requireTeam, sessionInOtherTeamMessage, teamView, transferSessionOut, TeamError, type TeamActor } from './reducer';
 
@@ -50,18 +50,26 @@ async function persistTransition(tx: Tx, row: Row, team: TeamState): Promise<voi
     // B-966: no metric refuses a write any more; crossing a soft limit is logged (once, until it drops below 70%).
     const crossing = capacityCrossing(row.state, team);
     if (crossing) warn({ module: 'teams', teamId: row.id, metrics: crossing.metrics, used: crossing.used, softLimits: TEAM_SOFT_LIMITS }, `team record crossed ${crossing.metrics.join(', ')} soft limit (80%); writes continue, compaction archives closed work`);
-    const oldOperations = new Map(row.state.operations.map(op => [op.id, JSON.stringify(op)]));
+    // Bytes before / after from the encodings the diff below makes anyway (records + the state column; `state` of the old row re-encoded once).
+    let beforeBytes = JSON.stringify({ ...row.state, messages: undefined, operations: undefined, projectId: undefined }).length;
+    let afterBytes = state.length;
+    const oldOperations = new Map(row.state.operations.map(op => { const e = JSON.stringify(op); beforeBytes += e.length; return [op.id, e]; }));
     for (const op of team.operations) {
         const encoded = JSON.stringify(op);
+        afterBytes += encoded.length;
         if (oldOperations.get(op.id) === encoded) continue;
         await tx.$executeRaw`INSERT INTO "TeamOperation" ("id","teamId","state") VALUES (${op.id},${row.id},${encoded}::jsonb) ON CONFLICT ("id") DO UPDATE SET "state"=EXCLUDED."state"`;
     }
-    const oldMessages = new Map(row.state.messages.map(message => [message.id, JSON.stringify(message)]));
+    const oldMessages = new Map(row.state.messages.map(message => { const e = JSON.stringify(message); beforeBytes += e.length; return [message.id, e]; }));
     for (const message of team.messages) {
         const encoded = JSON.stringify(message);
+        afterBytes += encoded.length;
         if (oldMessages.get(message.id) === encoded) continue;
         await tx.$executeRaw`INSERT INTO "TeamMessage" ("id","teamId","state") VALUES (${message.id},${row.id},${encoded}::jsonb) ON CONFLICT ("id") DO UPDATE SET "state"=EXCLUDED."state"`;
     }
+    const usage = (t: TeamState, bytes: number) => ({ bytes, messages: t.messages.length, operations: t.operations.length, tasks: t.tasks.length });
+    const extreme = extremeCrossing(usage(row.state, beforeBytes), usage(team, afterBytes));
+    if (extreme.length) logError({ module: 'teams', teamId: row.id, metrics: extreme, used: usage(team, afterBytes), softLimits: TEAM_SOFT_LIMITS, factor: TEAM_EXTREME_FACTOR }, `team record reached ${TEAM_EXTREME_FACTOR}x its ${extreme.join(', ')} soft limit; writes continue but every write and read now scales with this size`);
     // Batched: the first compaction of a team that ran for days moves thousands of rows (10 s transaction budget).
     const archive = async (kind: 'task' | 'message' | 'operation', records: { id: string }[]) => {
         if (!records.length) return;

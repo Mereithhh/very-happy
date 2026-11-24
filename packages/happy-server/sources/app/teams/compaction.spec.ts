@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { TeamAction, TeamMessage, TeamOperation, TeamState, TeamTask } from '@slopus/happy-wire';
 import { reduceTeam, teamBotRepository, teamView, type TeamActor } from './reducer';
-import { capacityCrossing, compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable, teamCapacity, warnCapacity, mergeArchivedMessages, TEAM_COMPACT_AGE_MS, TEAM_COMPACT_MIN_AGE_MS, TEAM_SOFT_LIMITS, TEAM_OPEN_TASK_KEEP_MESSAGES } from './compaction';
+import { capacityCrossing, extremeCrossing, TEAM_EXTREME_FACTOR, compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable, teamCapacity, warnCapacity, mergeArchivedMessages, TEAM_COMPACT_AGE_MS, TEAM_COMPACT_MIN_AGE_MS, TEAM_SOFT_LIMITS, TEAM_OPEN_TASK_KEEP_MESSAGES } from './compaction';
 import { advanceSchedules } from './schedules';
 import { TEAM_CAPACITY_HINT } from './errors';
 
@@ -282,6 +282,15 @@ describe('B-822 capacity', () => {
         expect(capacity.warning).not.toMatch(/refuse/i);
         // Other limits (members, depth, schedules) still refuse with the capacity hint.
         expect(TEAM_CAPACITY_HINT).toContain('not rate limiting');
+    });
+
+    it('B-966: extremeCrossing names only the metrics that just reached 10x their soft limit (logged at error level)', () => {
+        const under = { bytes: 19_999_999, messages: 19_999, operations: 9_999, tasks: 1_999 };
+        expect(TEAM_EXTREME_FACTOR).toBe(10);
+        expect(extremeCrossing(under, { ...under, bytes: 20_000_000 })).toEqual(['bytes']);
+        expect(extremeCrossing(under, { bytes: 20_000_000, messages: 20_000, operations: 10_000, tasks: 2_000 })).toEqual(['bytes', 'messages', 'operations', 'tasks']);
+        expect(extremeCrossing({ ...under, tasks: 2_000 }, { ...under, tasks: 2_001 })).toEqual([]); // already there: once per crossing
+        expect(extremeCrossing(under, under)).toEqual([]);
     });
 
     it('B-966: capacityCrossing reports only the metrics a transition newly crossed (what the server logs)', () => {

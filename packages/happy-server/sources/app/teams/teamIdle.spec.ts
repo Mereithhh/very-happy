@@ -120,6 +120,30 @@ describe('B-769: member idle does not wake the task owner', () => {
     });
 });
 
+describe('B-966: a team past every soft limit keeps its reminders', () => {
+    it('the idle reminder is sent and the capacity reminder is inserted (2100 messages, 1050 operations, 212 tasks, > 2 MB)', () => {
+        const f = team();
+        f.act({ type: 'session-event', sessionId: 'a', event: 'idle' });
+        const big = structuredClone(f.state);
+        big.messages.push(...Array.from({ length: 2100 }, (_, i) => ({ id: `m${i}`, taskId: f.tb.id, senderBotId: f.lead.id, recipientBotId: f.b.id, body: 'x'.repeat(1000), deliveredAt: null, createdAt: 1 })));
+        big.operations.push(...Array.from({ length: 1050 }, (_, i) => ({ ...big.operations[0], id: `o${i}`, status: 'pending' as const, claimId: null, claimedAt: null })));
+        big.tasks.push(...Array.from({ length: 210 }, (_, i) => ({ ...big.tasks[1], id: `t${i}`, assigneeBotId: 'ghost' })));
+        expect(JSON.stringify(big).length).toBeGreaterThan(2_000_000);
+        const idle = escalateIdleMembers(big, 1000 + TEAM_IDLE_ESCALATE_MS, f.id);
+        expect(idle.fired).toBe(1);
+        expect(idle.team.messages.at(-1)).toMatchObject({ recipientBotId: f.lead.id, taskId: f.ta.id, source: 'system' });
+        expect(idle.team.messages.at(-1)!.body).toContain('Agent A: idle for');
+        // The next write past the limits is accepted and the lead gets one capacity reminder naming all four.
+        f.state = idle.team; f.at(1000 + TEAM_IDLE_ESCALATE_MS + 1);
+        f.act({ type: 'message', taskId: f.ta.id, body: 'status?' }, f.asLead);
+        const reminders = f.state.messages.filter(m => m.source === 'system' && m.taskId === null && m.recipientBotId === f.lead.id);
+        expect(reminders).toHaveLength(1);
+        for (const k of ['bytes', 'messages', 'operations', 'tasks']) expect(reminders[0].body).toContain(`${k} `);
+        expect(reminders[0].body).not.toMatch(/refuse|拒绝/i);
+        expect(f.state.messages.filter(m => m.body.startsWith('status?'))).toHaveLength(1);
+    });
+});
+
 describe('B-769b: new work restarts the idle clock', () => {
     const H4 = 4 * 60 * MIN;
     /** A idle 4 h after its task was accepted (B keeps its own task running). */
