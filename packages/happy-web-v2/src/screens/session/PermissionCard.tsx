@@ -32,6 +32,7 @@ import {
     requestSummary,
     usePermissionDockFolded,
 } from './permissionDock';
+import { describeArgs, isCommandTool } from './permissionArgs';
 import './permission.css';
 
 type Pending = {
@@ -42,17 +43,6 @@ type Pending = {
     kind?: 'tool' | 'elicitation' | 'user_dialog';
     permissionSuggestions?: unknown[];
 };
-
-function describeArgs(tool: string, args: any): string | null {
-    if (!args || typeof args !== 'object') return null;
-    if (tool === 'Bash' && typeof args.command === 'string') return args.command;
-    if (typeof args.file_path === 'string') return args.file_path;
-    try {
-        return JSON.stringify(args, null, 2);
-    } catch {
-        return null;
-    }
-}
 
 function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pending }) {
     const { t } = useTranslation();
@@ -132,7 +122,7 @@ function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pend
             ) : isElicitation ? (
                 <ElicitationRequestView request={req.arguments ?? {}} disabled={!!busy} submitLabel={t('session.permission.approve')} onSubmit={(content) => void answerElicitation(content)} />
             ) : (
-                detail && <CodeView code={detail} lang={req.tool === 'Bash' ? 'bash' : null} />
+                detail && <CodeView code={detail} lang={isCommandTool(req.tool) ? 'bash' : null} />
             )}
             <div className="perm-actions">
                 {!isAskUserQuestion && !isElicitation && (

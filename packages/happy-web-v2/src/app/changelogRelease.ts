@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-25-dsh-permission-card',
+    cliVersion: '0.2.227',
+    date: '2026-11-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov25a.title',
+    summaryKey: 'changelog.releases.nov25a.summary',
+    itemKeys: ['changelog.releases.nov25a.card', 'changelog.releases.nov25a.upgrade'],
+  },
+  {
     id: '2026-11-25-codex-model-source',
     date: '2026-11-25',
     buildVersion: __APP_VERSION__,

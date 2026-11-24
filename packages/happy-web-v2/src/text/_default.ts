@@ -3520,6 +3520,12 @@ export const en = {
                 models: 'Both need an Anthropic-compatible gateway, such as an API account with a custom Base URL. They are not shown for a Claude subscription or an API account on Anthropic’s own endpoint; where the account is not known they are listed with that note. Defaults are unchanged.',
                 tools: 'deepseek-v4.1-flash works in sessions with the full tool set.',
             },
+            nov25a: {
+                title: 'DeepSeek Harness permission requests show what will run',
+                summary: 'A DeepSeek Harness (dsh) session asking for permission now names the tool and shows the command or file, instead of "Unknown tool" and an empty {}.',
+                card: 'The request shows the same tool name, command and file path as the tool card in the conversation, so you can judge the risk before you approve. dsh only allows one call at a time: "Approve for session" still lets just this call run.',
+                upgrade: 'Needs CLI 0.2.227.',
+            },
             nov24c: {
                 title: 'Upgrading no longer stops your other sessions',
                 summary: 'Upgrading the CLI no longer stops other sessions on the same computer at the same time.',

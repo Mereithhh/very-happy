@@ -3678,6 +3678,12 @@ export const zhHans: TranslationStructure = {
                 models: '这两个模型都需要 Anthropic 兼容网关，比如填了自定义 Base URL 的 API 账号。Claude 订阅账号和走 Anthropic 官方地址的 API 账号不显示；不知道用的是哪个账号时照常列出，并附上这条说明。默认模型不变。',
                 tools: 'deepseek-v4.1-flash 可以带完整工具集使用。',
             },
+            nov25a: {
+                title: 'DeepSeek Harness 的权限请求会写明要执行什么',
+                summary: 'DeepSeek Harness（dsh）会话请求权限时，会写出工具名和要运行的命令或文件，不再只显示「Unknown tool」和空的 {}。',
+                card: '请求里显示的工具名、命令和文件路径，和对话里的工具卡一致，批准前就能判断风险。dsh 每次只放行一次调用：点「本次会话都批准」也只放行这一次。',
+                upgrade: '需要 CLI 0.2.227。',
+            },
             nov24c: {
                 title: '升级时不会再把别的会话一起停掉',
                 summary: '升级 CLI 时，同一台电脑上的其他会话不会再被一起停掉。',

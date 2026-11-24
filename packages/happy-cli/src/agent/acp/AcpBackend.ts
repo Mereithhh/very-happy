@@ -147,7 +147,7 @@ import {
   handlePlanUpdate,
   handleThinkingUpdate,
 } from './sessionUpdateHandlers';
-import { resolveAcpPermissionRequest } from './acpToolArgs';
+import { recordAcpToolCallFact, resolveAcpPermissionRequest, type AcpToolCallFact } from './acpToolArgs';
 import { agentChildEnv } from '@/utils/agentBinResolver';
 import { piDialogOutcome, piSelectQuestionInput, readPiExtensionDialog } from './piExtensionDialogs';
 
@@ -389,6 +389,9 @@ export class AcpBackend implements AgentBackend {
 
   /** Streamed bash output per tool call (pi-acp `_meta.terminal_output`) */
   private toolCallOutputs = new Map<string, string>();
+
+  /** B-969: dsh tool_call title/kind/rawInput by toolCallId, for its id-only permission asks. */
+  private dshToolCallFacts = new Map<string, AcpToolCallFact>();
 
   /** Track if we just sent a prompt with change_title instruction */
   private recentPromptHadChangeTitle = false;
@@ -694,7 +697,10 @@ export class AcpBackend implements AgentBackend {
           
           const extendedParams = params as ExtendedRequestPermissionRequest;
           const toolCall = extendedParams.toolCall;
-          const resolved = resolveAcpPermissionRequest(extendedParams, randomUUID);
+          const resolved = resolveAcpPermissionRequest(extendedParams, randomUUID, {
+            agentName: this.options.agentName,
+            priorToolCall: (id) => this.dshToolCallFacts.get(id),
+          });
           let toolName = resolved.toolName;
           // Permission id == the id the web echoes back for pendingPermissions. See
           // resolveAcpPermissionRequest for why it is never the ACP toolCallId.
@@ -1145,6 +1151,10 @@ export class AcpBackend implements AgentBackend {
       return;
     }
 
+    if (this.options.agentName === 'dsh' && (sessionUpdateType === 'tool_call' || sessionUpdateType === 'tool_call_update')) {
+      recordAcpToolCallFact(this.dshToolCallFacts, update as { toolCallId?: unknown; title?: unknown; kind?: unknown; rawInput?: unknown });
+    }
+
     const ctx = this.createHandlerContext();
 
     // Dispatch to appropriate handler based on update type
@@ -1360,6 +1370,7 @@ export class AcpBackend implements AgentBackend {
     this.activeToolCalls.clear();
     this.toolCallStartTimes.clear();
     this.toolCallOutputs.clear();
+    this.dshToolCallFacts.clear();
     if (announceIdle) this.emitIdleStatus();
   }
 
@@ -1584,6 +1595,7 @@ export class AcpBackend implements AgentBackend {
     this.toolCallTimeouts.clear();
     this.toolCallStartTimes.clear();
     this.toolCallOutputs.clear();
+    this.dshToolCallFacts.clear();
     this.pendingPermissions.clear();
   }
 }

@@ -122,9 +122,14 @@ export function resolveAcpPermissionRequest(params: {
   input?: Record<string, unknown>;
   arguments?: Record<string, unknown>;
   content?: Record<string, unknown>;
-}, newId: () => string): { toolCallId: string; toolName: string; input: Record<string, unknown> } {
-  const toolCall = params.toolCall;
-  const toolName = toolCall?.kind || toolCall?.toolName || params.kind || 'Unknown tool';
+}, newId: () => string, options: { agentName?: string; priorToolCall?: (toolCallId: string) => AcpToolCallFact | undefined } = {}): { toolCallId: string; toolName: string; input: Record<string, unknown> } {
+  let toolCall = params.toolCall;
+  // B-969: dsh asks with `toolCall: { toolCallId }` only; the tool name and arguments
+  // are in the `tool_call` it sent (and drained) just before, under the same toolCallId.
+  const dsh = options.agentName === 'dsh';
+  if (dsh && toolCall) toolCall = fillFromPriorToolCall(toolCall, options.priorToolCall);
+  const dshTitle = dsh && typeof toolCall?.title === 'string' && toolCall.title.length > 0 ? toolCall.title : undefined;
+  const toolName = dshTitle || toolCall?.kind || toolCall?.toolName || params.kind || 'Unknown tool';
   const toolCallId = toolCall?.id || newId();
 
   let input: Record<string, unknown>;
@@ -136,8 +141,64 @@ export function resolveAcpPermissionRequest(params: {
   // B-353: surface ACP title/kind so the web ask card can show pi's gate rule id + reason
   // (pi-acp puts them in toolCall.title / rawInput.{title,message}) instead of a bare "other".
   input = { ...input, ...buildAcpPermissionMeta(toolCall) };
+  if (dsh) {
+    // Same kind mapping as the transcript's tool card (deriveAcpToolArgs, B-952).
+    const mapped = dshToolKind(dshTitle);
+    if (mapped) input.acpKind = mapped;
+  }
 
   return { toolCallId, toolName, input };
+}
+
+/** B-969: the title / kind / rawInput an ACP `tool_call` (or its updates) carried. */
+export interface AcpToolCallFact {
+  title?: string;
+  kind?: string;
+  rawInput?: Record<string, unknown>;
+}
+
+export const ACP_TOOL_CALL_FACTS_MAX = 256;
+
+/**
+ * Remember what a `tool_call` / `tool_call_update` said about a call so a later
+ * permission ask that names only its toolCallId can show it. Later non-empty
+ * fields win; the oldest entry is dropped past `max`. Never throws.
+ */
+export function recordAcpToolCallFact(
+  facts: Map<string, AcpToolCallFact>,
+  update: { toolCallId?: unknown; title?: unknown; kind?: unknown; rawInput?: unknown },
+  max: number = ACP_TOOL_CALL_FACTS_MAX
+): void {
+  if (typeof update.toolCallId !== 'string' || update.toolCallId.length === 0) return;
+  const next: AcpToolCallFact = { ...facts.get(update.toolCallId) };
+  if (typeof update.title === 'string' && update.title.length > 0) next.title = update.title;
+  if (typeof update.kind === 'string' && update.kind.length > 0) next.kind = update.kind;
+  if (update.rawInput && typeof update.rawInput === 'object' && !Array.isArray(update.rawInput)
+    && serializedSize(update.rawInput) <= ACP_RAW_INPUT_MAX_BYTES) {
+    next.rawInput = update.rawInput as Record<string, unknown>;
+  }
+  if (next.title === undefined && next.kind === undefined && next.rawInput === undefined) return;
+  facts.delete(update.toolCallId);
+  facts.set(update.toolCallId, next);
+  while (facts.size > max) {
+    const oldest = facts.keys().next().value;
+    if (oldest === undefined) break;
+    facts.delete(oldest);
+  }
+}
+
+function fillFromPriorToolCall<T extends { toolCallId?: string; title?: string; kind?: string; rawInput?: Record<string, unknown> }>(
+  toolCall: T,
+  priorToolCall: ((toolCallId: string) => AcpToolCallFact | undefined) | undefined
+): T {
+  const prior = toolCall.toolCallId && priorToolCall ? priorToolCall(toolCall.toolCallId) : undefined;
+  if (!prior) return toolCall;
+  return {
+    ...toolCall,
+    title: toolCall.title || prior.title,
+    kind: toolCall.kind || prior.kind,
+    rawInput: toolCall.rawInput || prior.rawInput,
+  };
 }
 
 export interface AcpTerminalMeta {
