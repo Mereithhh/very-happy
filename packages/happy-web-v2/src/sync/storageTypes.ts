@@ -22,6 +22,11 @@ export const MetadataSchema = z.object({
     // B-844: model the machine's own agent config pins (Codex config/read,
     // Gemini settings); null = none; absent = older wrapper (unknown).
     configuredModel: z.string().nullable().optional(),
+    // B-971b: Codex — the machine config.toml's own model (also on an account,
+    // where configuredModel is the account's) and why config/read failed
+    // (raw; read through readCodexConfigReadError). Absent = older wrapper.
+    machineConfigModel: z.string().nullable().optional().catch(undefined),
+    configReadError: z.unknown().optional(),
     // B-844c: explicit model the wrapper keeps applying to turns without one
     // (an earlier pick); null = none; absent = older wrapper (unknown).
     stickyModel: z.string().nullable().optional(),

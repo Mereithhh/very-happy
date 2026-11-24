@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-25-codex-machine-config',
+    cliVersion: '0.2.227',
+    date: '2026-11-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov25d.title',
+    summaryKey: 'changelog.releases.nov25d.summary',
+    itemKeys: ['changelog.releases.nov25d.account', 'changelog.releases.nov25d.error'],
+  },
+  {
     id: '2026-11-25-dsh-context-meter',
     cliVersion: '0.2.227',
     date: '2026-11-25',

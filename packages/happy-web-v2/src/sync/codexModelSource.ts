@@ -44,3 +44,54 @@ export function codexModelSource(input: {
     if (input.onAccount) return { kind: 'account' };
     return configured ? { kind: 'config', model: configured } : { kind: 'latest' };
 }
+
+/**
+ * B-971b: what the picker explains about this machine's own Codex config. A
+ * 0.2.227+ wrapper reports `machineConfigModel` (config.toml's own pin, even
+ * on an account) and `configReadError` (category + one line) next to
+ * `configuredModel`; an older wrapper reports neither and nothing is said.
+ *
+ * - `accountOverridesConfig`: an account session following the account's
+ *   model X while this machine's config pins a different Y.
+ * - `configReadFailed`: `config/read` failed; `legacyProfile` names the
+ *   profile of a top-level `profile = "x"` Codex no longer accepts.
+ */
+export type CodexConfigNotice =
+    | { kind: 'accountOverridesConfig'; accountModel: string; machineModel: string }
+    | { kind: 'configReadFailed'; reason: string; legacyProfile: string | null };
+
+export type CodexConfigReadError = { kind: 'legacyProfile' | 'invalidConfig' | 'failed'; reason: string };
+
+/** Whitelist read of the wrapper's raw `configReadError` (unknown shapes → none). */
+export function readCodexConfigReadError(raw: unknown): CodexConfigReadError | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const { kind, reason } = raw as { kind?: unknown; reason?: unknown };
+    if (typeof reason !== 'string') return null;
+    const known = kind === 'legacyProfile' || kind === 'invalidConfig' ? kind : 'failed';
+    return { kind: known, reason: reason.split(/\r?\n/)[0].trim().slice(0, 240) };
+}
+
+function trimmed(value: unknown): string | null {
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+export function codexConfigNotice(input: {
+    source: CodexModelSource;
+    /** metadata.configuredModel — on an account, the account's model. */
+    configuredModel: string | null | undefined;
+    machineConfigModel: string | null | undefined;
+    configReadError: unknown;
+}): CodexConfigNotice | null {
+    if (input.source.kind === 'none') return null;
+    const error = readCodexConfigReadError(input.configReadError);
+    if (error) {
+        const profile = error.kind === 'legacyProfile' ? /profile\s*=\s*"([^"]+)"/.exec(error.reason)?.[1] ?? null : null;
+        return { kind: 'configReadFailed', reason: error.reason, legacyProfile: error.kind === 'legacyProfile' ? profile ?? 'x' : null };
+    }
+    if (input.source.kind !== 'account') return null;
+    const accountModel = trimmed(input.configuredModel);
+    const machineModel = trimmed(input.machineConfigModel);
+    return accountModel && machineModel && accountModel !== machineModel
+        ? { kind: 'accountOverridesConfig', accountModel, machineModel }
+        : null;
+}
