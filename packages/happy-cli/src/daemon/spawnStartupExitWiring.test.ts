@@ -15,7 +15,7 @@ describe('daemon spawn awaiter (B-689)', () => {
         expect(awaiter).toContain("resolve({ type: 'error', errorMessage, startupExit });");
     });
     it('reports a timed-out wrapper as gone only after it is confirmed stopped (B-864b: with its tree)', () => {
-        expect(awaiter).toContain('terminateProcessTree(pid, (stopped) => fail({ exited: stopped, code: null, signal: null, timedOut: true }))');
+        expect(awaiter).toContain('terminateProcessTree(pid, (stopped) => fail({ exited: stopped, code: null, signal: null, timedOut: true }), wrapperStopDeps)');
     });
 });
 

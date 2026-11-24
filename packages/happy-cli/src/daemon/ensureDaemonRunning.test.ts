@@ -116,14 +116,28 @@ describe('a wrapper never makes the daemon its own child (B-965)', () => {
     expect(planEnsureDaemon({ running: true, matches: true })).toBe('ok')
   })
 
-  it('systemd: restarts the unit the daemon runs in, never spawns a replacement itself', async () => {
-    const run = vi.fn(() => ({ status: 0 }))
+  it('systemd: restarts the unit the daemon runs in under KillMode=process, otherwise keeps it', async () => {
     const cgroup = '0::/user.slice/user-1000.slice/user@1000.service/app.slice/very-happy-daemon.service\n'
-    expect(await handOverToSupervisor('systemd', 42, { readCgroup: () => cgroup, run })).toBe(true)
-    expect(run).toHaveBeenCalledWith('systemctl', ['--user', 'restart', 'very-happy-daemon.service'])
-    // A daemon outside any unit (or a failed restart) falls back to an orphaned replacement.
-    expect(await handOverToSupervisor('systemd', 42, { readCgroup: () => '0::/user.slice/session-3.scope\n', run })).toBe(false)
-    expect(await handOverToSupervisor('systemd', 42, { readCgroup: () => cgroup, run: () => ({ status: 1 }) })).toBe(false)
+    const systemctl = (killMode: string, restartStatus = 0) => vi.fn((_file: string, args: string[]) =>
+      args.includes('show') ? { status: 0, stdout: `${killMode}\n` } : { status: restartStatus })
+    const run = systemctl('process')
+    expect(await handOverToSupervisor('systemd', 42, { readCgroup: () => cgroup, run })).toBe('handed')
+    expect(run).toHaveBeenLastCalledWith('systemctl', ['--user', 'restart', 'very-happy-daemon.service'])
+    // control-group would stop every session with the restart; a daemon outside any
+    // unit or a failed restart: never stop it ourselves (the unit would go inactive).
+    const cg = systemctl('control-group')
+    expect(await handOverToSupervisor('systemd', 42, { readCgroup: () => cgroup, run: cg })).toBe('kept')
+    expect(cg).not.toHaveBeenCalledWith('systemctl', expect.arrayContaining(['restart']))
+    expect(await handOverToSupervisor('systemd', 42, { readCgroup: () => '0::/user.slice/session-3.scope\n', run })).toBe('kept')
+    expect(await handOverToSupervisor('systemd', 42, { readCgroup: () => cgroup, run: systemctl('process', 1) })).toBe('kept')
+  })
+
+  it('a systemd daemon that cannot be handed over is neither stopped nor replaced', async () => {
+    mocks.mockIsDaemonRunningCurrentlyInstalledHappyVersion.mockResolvedValue(false)
+    mocks.mockReadDaemonState.mockResolvedValue({ pid: 999999999, supervisor: 'systemd', serverUrl: 'https://api.example', webappUrl: 'https://web.example' })
+    await ensureDaemonRunning({ startedBy: 'terminal' })
+    expect(mocks.mockStopDaemon).not.toHaveBeenCalled()
+    expect(mocks.mockSpawnHappyCLI).not.toHaveBeenCalled()
   })
 
   it('launchd: stops the daemon and kickstarts the job', async () => {
@@ -132,8 +146,9 @@ describe('a wrapper never makes the daemon its own child (B-965)', () => {
       stop: async () => { order.push('stop') },
       kickstart: async () => { order.push('kickstart'); return true },
     })
-    expect(ok).toBe(true)
+    expect(ok).toBe('handed')
     expect(order).toEqual(['stop', 'kickstart'])
+    expect(await handOverToSupervisor('launchd', 42, { stop: async () => {}, kickstart: async () => false })).toBe('failed')
   })
 
   it('a daemon started from a wrapper does not claim the unit\'s supervisor', () => {

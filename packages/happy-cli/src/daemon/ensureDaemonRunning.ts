@@ -56,38 +56,54 @@ export function detachedDaemonEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 
 export type SupervisorHandoverDeps = {
   readCgroup?: (pid: number) => string
-  run?: (file: string, args: string[]) => { status: number | null }
+  run?: (file: string, args: string[]) => { status: number | null; stdout?: string }
   stop?: () => Promise<void>
   kickstart?: () => Promise<boolean>
 }
 
 /**
  * B-965: let the supervisor start the installed CLI as its own process.
- * systemd: `systemctl [--user] restart <the daemon's unit>` (the unit read from
- * the daemon's cgroup; `KillMode=process` keeps the wrappers). launchd: stop the
- * daemon (exit 0 keeps the job down) and kickstart the job (B-770). false = could
- * not hand over; the caller falls back to an orphaned replacement.
+ *
+ * - systemd: `systemctl [--user] restart <the daemon's unit>` (unit read from
+ *   the daemon's cgroup), only under `KillMode=process`, which keeps the
+ *   wrappers. Any other kill mode would take every session down with the
+ *   restart, and stopping the main process ourselves leaves the unit inactive
+ *   with nothing supervising the machine — so then nothing is done here
+ *   (`kept`): this session works with the running daemon, which hands itself
+ *   over (auto-update) when its sessions allow.
+ * - launchd: stop the daemon (exit 0 keeps the job down) and kickstart the job
+ *   (B-770). If the kickstart fails the daemon is already gone: `failed`, the
+ *   caller starts an orphaned replacement.
  */
 export async function handOverToSupervisor(
   supervisor: string | undefined,
   daemonPid: number | undefined,
   deps: SupervisorHandoverDeps = {},
-): Promise<boolean> {
-  try {
-    if (supervisor === 'systemd' && daemonPid) {
-      const owner = parseSystemdUnit((deps.readCgroup ?? ((pid) => readFileSync(`/proc/${pid}/cgroup`, 'utf8')))(daemonPid))
-      if (!owner) return false
-      const run = deps.run ?? ((file, args) => spawnSync(file, args, { stdio: 'ignore', timeout: 30_000 }))
-      return run('systemctl', [...(owner.user ? ['--user'] : []), 'restart', owner.unit]).status === 0
+): Promise<'handed' | 'kept' | 'failed'> {
+  if (supervisor === 'systemd') {
+    try {
+      const owner = daemonPid ? parseSystemdUnit((deps.readCgroup ?? ((pid) => readFileSync(`/proc/${pid}/cgroup`, 'utf8')))(daemonPid)) : null
+      if (!owner) return 'kept'
+      const run = deps.run ?? ((file, args) => spawnSync(file, args, { encoding: 'utf8', timeout: 30_000 }))
+      const scope = owner.user ? ['--user'] : []
+      const killMode = (run('systemctl', [...scope, 'show', '-p', 'KillMode', '--value', owner.unit]).stdout ?? '').trim()
+      if (killMode !== 'process') return 'kept'
+      return run('systemctl', [...scope, 'restart', owner.unit]).status === 0 ? 'handed' : 'kept'
+    } catch (error) {
+      logger.debug('systemd handover failed', error)
+      return 'kept'
     }
-    if (supervisor === 'launchd') {
-      await (deps.stop ?? stopDaemon)()
-      return await (deps.kickstart ?? (() => kickstartLaunchdJob()))()
-    }
-  } catch (error) {
-    logger.debug('Supervisor handover failed', error)
   }
-  return false
+  if (supervisor === 'launchd') {
+    try {
+      await (deps.stop ?? stopDaemon)()
+      return await (deps.kickstart ?? (() => kickstartLaunchdJob()))() ? 'handed' : 'failed'
+    } catch (error) {
+      logger.debug('launchd handover failed', error)
+      return 'failed'
+    }
+  }
+  return 'failed'
 }
 
 export async function ensureDaemonRunning(options: { startedBy?: string } = {}): Promise<void> {
@@ -113,9 +129,15 @@ export async function ensureDaemonRunning(options: { startedBy?: string } = {}):
   let action = planEnsureDaemon({ running, matches: false, supervisor: state?.supervisor })
   if (action === 'handover') {
     logger.debug(`Handing the daemon over to ${state?.supervisor}...`)
-    if (!await handOverToSupervisor(state?.supervisor, state?.pid)) {
-      logger.debug('Supervisor handover failed; replacing the daemon directly')
-      action = 'replace'
+    const outcome = await handOverToSupervisor(state?.supervisor, state?.pid)
+    if (outcome === 'kept') {
+      logger.debug('The supervisor cannot replace the daemon without stopping sessions; keeping the running one')
+      return
+    }
+    if (outcome === 'failed') {
+      // launchd: the daemon was stopped but the job did not start; start one ourselves.
+      logger.debug('Supervisor handover failed; starting the daemon directly')
+      action = 'start'
     }
   }
   if (action === 'replace') {

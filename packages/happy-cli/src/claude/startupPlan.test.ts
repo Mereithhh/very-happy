@@ -23,7 +23,7 @@ describe('planClaudeStartup (B-512)', () => {
     it('main() gates the claude path\'s ensureDaemonRunning on the plan', () => {
         const main = readFileSync(join(__dirname, '..', 'main.ts'), 'utf8');
         const claudePath = main.slice(main.lastIndexOf('await authAndSetupMachineIfNeeded();'));
-        expect(claudePath).toMatch(/if \(planClaudeStartup\(\{ startedBy: options\.startedBy, reconnect: false \}\)\.ensureDaemonRunning\) \{\s+await ensureDaemonRunning\(\)\s+\}/);
+        expect(claudePath).toMatch(/if \(planClaudeStartup\(\{ startedBy: options\.startedBy, reconnect: false \}\)\.ensureDaemonRunning\) \{\s+await ensureDaemonRunning\(\{ startedBy: options\.startedBy \}\)\s+\}/);
     });
 
     it('only fresh sessions open the socket before the webhook', () => {
