@@ -18,6 +18,13 @@ import { enableCompileCacheIfPossible } from './utils/compileCache'
 
 async function run(args: string[]): Promise<void> {
   enableCompileCacheIfPossible(packageJson.version)
+  // B-965: a handover preflight from a daemon that left its systemd unit /
+  // launchd job restarts the supervisor instead of answering (strandedDaemonGuard).
+  if (isStandaloneVersionRequest(args) && /(^|[\\/])vh-preflight-[^\\/]*$/.test(process.env.HAPPY_HOME_DIR ?? '')) {
+    const { guardStrandedPreflight } = await import('./daemon/strandedDaemonGuard')
+    const code = guardStrandedPreflight()
+    if (code !== null) process.exit(code)
+  }
   if (isStandaloneVersionRequest(args) || isSelfCheckRequest(args)) {
     // A bare version probe must not fall through into authentication or
     // forward to an agent CLI.
