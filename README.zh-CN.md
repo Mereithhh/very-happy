@@ -329,7 +329,7 @@ Very Happy 保留终端肌肉记忆：在 macOS 上，`Ctrl+K/J/N/R` 仍交给 r
 | 自定义 ACP 命令 | Beta · 已实现 | 面向兼容 Agent Client Protocol stdio 端点的通用运行器 |
 | OpenClaw | 已交付 | 使用自己的本地网关适配器，而非 ACP |
 | pi | 已交付 · 经 pi-acp | 基于外部 pi-acp 适配器的 ACP runner：结构化对话、插话进正在运行的回合、问题卡片、子代理卡片、由 Very Happy pi 扩展执行的权限模式、崩溃或重启后接回对话；也支持 Teams 与原生终端工具 |
-| DeepSeek Harness（dsh） | Beta · 已实现 | 使用 dsh 自带的 ACP 服务端（`dsh --profile acp`）：结构化对话、工具卡片、停止、恢复（恢复 dsh 上下文，不回放）、模型与推理强度选择、DeepSeek API key 账号、上下文占用（CLI 0.2.227+）。回复按条显示，不逐字流式；不支持计划模式、斜杠命令和图片；`/compact` 由 Very Happy 直接答复（dsh 在约 80% 时自动压缩）；不支持编辑、删除、重试和分叉（dsh 不能截断或分叉自己的历史）。需要 Node.js 24.9+ |
+| DeepSeek Harness（dsh） | Beta · 已实现 | 使用 dsh 自带的 ACP 服务端（`dsh --profile acp`）：结构化对话、工具卡片、停止、恢复（恢复 dsh 上下文，不回放）、模型与推理强度选择、DeepSeek API key 账号、上下文占用（CLI 0.2.227+）；模型支持时可发图片，停止期间的消息恢复后送达，可用于自动化和项目账号（CLI 0.2.228+）。回复按条显示，不逐字流式；不支持计划模式、斜杠命令和其他文件附件；`/compact` 由 Very Happy 直接答复（dsh 在约 80% 时自动压缩）；不支持编辑、删除、重试和分叉（dsh 不能截断或分叉自己的历史）。需要 Node.js 24.9+ |
 | 提供商感知路由 | 路线图 | 跨提供商子任务协作，并非已交付功能 |
 
 Agent Client Protocol 与同样缩写为 ACP 的旧 Agent Communication Protocol 并不相同。

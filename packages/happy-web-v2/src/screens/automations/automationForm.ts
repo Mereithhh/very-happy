@@ -25,10 +25,11 @@ import type { AgentProfileRef } from '@slopus/happy-wire';
 export const TRIGGER_KINDS = ['cron', 'interval', 'once', 'manual'] as const;
 export const ACTION_KINDS = ['spawn', 'send', 'script'] as const;
 /** mirrors the CLI's SPAWN_AGENTS / ALLOWED_SPAWN_PERMISSION_MODES (the daemon is the enforcer) */
-export const SPAWN_AGENTS = ['claude', 'codex', 'pi', 'gemini', 'openclaw'] as const;
+// B-970b: dsh (DeepSeek Harness) — the daemon has spawned it since B-952; its runs take a DeepSeek account.
+export const SPAWN_AGENTS = ['claude', 'codex', 'pi', 'dsh', 'gemini', 'openclaw'] as const;
 /** B-728 (UI-P1-10): product names for the agent select — the value stays the CLI id. */
 export const SPAWN_AGENT_LABELS: Record<(typeof SPAWN_AGENTS)[number], string> = {
-    claude: 'Claude Code', codex: 'Codex', pi: 'pi', gemini: 'Gemini', openclaw: 'OpenClaw',
+    claude: 'Claude Code', codex: 'Codex', pi: 'pi', dsh: 'DeepSeek Harness', gemini: 'Gemini', openclaw: 'OpenClaw',
 };
 export const SPAWN_PERMISSION_MODES = ['', 'default', 'acceptEdits', 'plan', 'yolo', 'bypassPermissions'] as const;
 /** B-548: a precheck is one shell line or an argv (split like the script command) */

@@ -29,6 +29,10 @@ describe('B-902 project accounts per machine', () => {
     it('settings: one cell per agent × machine, saved as edits onto the re-read project', () => {
         const section = src('screens/projects/ProjectAccountsSection.tsx');
         expect(section).toContain('const machineIds = projectAccountMachineIds(project.folders, saved);');
+        // B-970b: one group per agent that takes accounts — Claude, Codex and DeepSeek Harness.
+        expect(section).toContain('projectAccountDraft(saved, SESSION_ACCOUNT_AGENTS, machineIds)');
+        expect(section).toContain('{SESSION_ACCOUNT_AGENTS.map((agent) => (');
+        expect(section).toContain("dsh: 'DeepSeek Harness'");
         expect(section).toContain('const latest = (await projectsApi.get(project.id)).project;');
         expect(section).toContain('const next = applyProjectAccountEdits(latest.defaults.agentProfiles, edits);');
         expect(section).toContain('await projectsApi.update(project.id, { defaults: { ...latest.defaults, agentProfiles: next } });');

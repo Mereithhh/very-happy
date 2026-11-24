@@ -2846,7 +2846,7 @@ export async function startDaemon(): Promise<void> {
       ...(accountServiceRef ? {
         accounts: {
           sessionAccount: (id: string) => accountServiceRef!.sessionAccount(id),
-          resolve: (agent: 'claude' | 'codex', requested: string | null | undefined) => accountServiceRef!.resolveSpawnAccount(agent, requested),
+          resolve: (agent: 'claude' | 'codex' | 'dsh', requested: string | null | undefined) => accountServiceRef!.resolveSpawnAccount(agent, requested),
           rebind: async (sessionId: string, accountId: string | null) => {
             const result = await accountServiceRef!.bind({ sessionId, accountId });
             if (result.restart === 'failed') throw new Error(result.error ?? 'restart failed');

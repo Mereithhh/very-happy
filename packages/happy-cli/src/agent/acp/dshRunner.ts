@@ -184,7 +184,7 @@ export function dshToolKind(toolName: string | undefined): string | null {
 }
 
 /** B-952: the one-time line a new dsh session shows — the limits are dsh's ACP surface, not a fault. */
-export const DSH_SESSION_NOTICE = 'DeepSeek Harness session: replies appear one message at a time (dsh sends no word-by-word stream); resuming keeps this transcript but dsh does not replay it; plan mode, slash commands and images are not available. Tool permissions are asked here unless the session runs in yolo mode.';
+export const DSH_SESSION_NOTICE = 'DeepSeek Harness session: replies appear one message at a time (dsh sends no word-by-word stream); resuming keeps this transcript but dsh does not replay it; plan mode and slash commands are not available, and images only when the model accepts them. Tool permissions are asked here unless the session runs in yolo mode.';
 
 /**
  * B-970: dsh's ACP server has no `/compact` (it lists no commands and hands

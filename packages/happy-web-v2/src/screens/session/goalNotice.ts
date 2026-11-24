@@ -106,11 +106,14 @@ export function goalNoticeText(notice: GoalNotice, t: Translate): string {
     }
 }
 
-/** Same string as the CLI's dshRunner.ts DSH_SESSION_NOTICE (B-952). */
-export const DSH_SESSION_NOTICE = 'DeepSeek Harness session: replies appear one message at a time (dsh sends no word-by-word stream); resuming keeps this transcript but dsh does not replay it; plan mode, slash commands and images are not available. Tool permissions are asked here unless the session runs in yolo mode.';
+/** Same string as the CLI's dshRunner.ts DSH_SESSION_NOTICE (B-952; B-970b: images when the model accepts them). */
+export const DSH_SESSION_NOTICE = 'DeepSeek Harness session: replies appear one message at a time (dsh sends no word-by-word stream); resuming keeps this transcript but dsh does not replay it; plan mode and slash commands are not available, and images only when the model accepts them. Tool permissions are asked here unless the session runs in yolo mode.';
+/** The B-952 line older CLIs (≤ 0.2.227) still send; rendered with today's text. */
+export const LEGACY_DSH_SESSION_NOTICE = 'DeepSeek Harness session: replies appear one message at a time (dsh sends no word-by-word stream); resuming keeps this transcript but dsh does not replay it; plan mode, slash commands and images are not available. Tool permissions are asked here unless the session runs in yolo mode.';
 
 export function isDshSessionNotice(message: string): boolean {
-    return message.trim() === DSH_SESSION_NOTICE;
+    const line = message.trim();
+    return line === DSH_SESSION_NOTICE || line === LEGACY_DSH_SESSION_NOTICE;
 }
 
 /** Same string as the CLI's dshRunner.ts DSH_COMPACT_NOTICE (B-970): the answer to `/compact` in a dsh session. */

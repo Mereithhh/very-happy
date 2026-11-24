@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
   const sessionHandlers = new Map<string, (params: any) => Promise<any> | any>();
   let userMessageHandler: ((message: any) => void) | null = null;
   let killHandler: (() => Promise<void>) | null = null;
+  let signalHandler: (() => Promise<void>) | null = null;
 
   const mockSession = {
     sessionId: 'happy-session-1',
@@ -36,6 +37,9 @@ const mocks = vi.hoisted(() => {
     sendQueueCancelReason: vi.fn(),
     sendAgentUsageSnapshot: vi.fn(),
     updateMetadata: vi.fn(),
+    messageCursor: 41,
+    freezeInbound: vi.fn(),
+    updateMetadataAndWait: vi.fn(async (_handler: (metadata: any) => any, _timeoutMs?: number) => true),
     sendSessionDeath: vi.fn(),
     on: vi.fn(),
     flush: vi.fn(async () => {}),
@@ -66,6 +70,8 @@ const mocks = vi.hoisted(() => {
     sendPromptScript: null as null | ((emit: (message: any) => void) => Promise<unknown>),
     /** B-629: makes the mock's startSession throw (a restart that fails). */
     startSessionError: null as null | Error,
+    /** B-970b: what the mock agent's initialize said about promptCapabilities.image. */
+    supportsImages: false,
     /** B-633: what startSession was asked (loadSessionId) and what it answers. */
     startSessionOptions: [] as any[],
     startSessionResults: [] as any[],
@@ -81,9 +87,11 @@ const mocks = vi.hoisted(() => {
     mockStartHappyServer: vi.fn(),
     mockProjectPath: vi.fn(() => '/tmp/happy'),
     mockSetBackend: vi.fn(),
-    mockKillRegister: vi.fn((_rpc: unknown, handler: () => Promise<void>) => {
+    mockKillRegister: vi.fn((_rpc: unknown, handler: () => Promise<void>, _session?: unknown, opts?: { onSignal?: () => Promise<void> }) => {
       killHandler = handler;
+      signalHandler = opts?.onSignal ?? null;
     }),
+    getSignalHandler: () => signalHandler,
     mockLoggerDebug: vi.fn(),
     mockConsoleLog: vi.spyOn(console, 'log').mockImplementation(() => {}),
     sessionHandlers,
@@ -98,6 +106,7 @@ const mocks = vi.hoisted(() => {
     getKillHandler: () => killHandler,
     setKillHandler: (handler: (() => Promise<void>) | null) => {
       killHandler = handler;
+      signalHandler = null;
     },
     mockSession,
     backendState,
@@ -196,6 +205,7 @@ vi.mock('@/ui/logger', () => ({
 
 vi.mock('./AcpBackend', () => ({
   AcpBackend: class MockAcpBackend {
+    get supportsImageAttachments() { return mocks.backendState.supportsImages; }
     constructor(args: any) {
       mocks.backendState.constructorArgs = args;
     }
@@ -308,6 +318,7 @@ describe('runAcp', () => {
     mocks.backendState.constructorArgs = null;
     mocks.backendState.sendPromptScript = null;
     mocks.backendState.startSessionError = null;
+    mocks.backendState.supportsImages = false;
 
     mocks.mockApiCreate.mockResolvedValue({
       getOrCreateMachine: mocks.mockGetOrCreateMachine,
@@ -1059,6 +1070,55 @@ it('keeps the session usable after cancelling an in-flight turn', async () => {
     expect(consoleLines()).toContain('Status: error: spawn opencode ENOENT');
     expect(mocks.mockSession.close).toHaveBeenCalled();
     expect(mocks.backendState.disposeCalls).toBe(1);
+  });
+
+  it('B-970b: an offline exit (signal) pins the cursor, freezes inbound and stamps exitCursor before going offline', async () => {
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'dsh', command: 'dsh', args: [] });
+    await vi.waitFor(() => expect(mocks.getSignalHandler()).toBeTypeOf('function'));
+    await mocks.getSignalHandler()!();
+    await runPromise;
+    expect(mocks.mockSession.freezeInbound).toHaveBeenCalledTimes(1);
+    expect(mocks.mockSession.updateMetadataAndWait).toHaveBeenCalledTimes(1);
+    const handler = mocks.mockSession.updateMetadataAndWait.mock.calls[0][0];
+    const written = handler({ summary: 'keep' });
+    expect(written.summary).toBe('keep');
+    expect(written.exitCursor).toMatchObject({ seq: 41, v: 1 });
+    expect(mocks.mockSession.updateMetadataAndWait.mock.invocationCallOrder[0]).toBeLessThan(mocks.mockSession.sendSessionDeath.mock.invocationCallOrder[0]);
+  });
+
+  it('B-970b: a backend that never started goes offline with a stamp too; the user kill (archive) never stamps', async () => {
+    mocks.backendState.startSessionMessages = [{ type: 'status', status: 'error', detail: 'spawn dsh ENOENT' }];
+    await runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'dsh', command: 'dsh', args: [] });
+    expect(mocks.mockSession.updateMetadataAndWait).toHaveBeenCalledTimes(1);
+    vi.clearAllMocks();
+    mocks.setKillHandler(null);
+    mocks.backendState.startSessionMessages = [];
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'pi', command: 'pi-acp', args: [] });
+    await vi.waitFor(() => expect(mocks.getKillHandler()).toBeTypeOf('function'));
+    await mocks.getKillHandler()!();
+    await runPromise;
+    expect(mocks.mockSession.freezeInbound).not.toHaveBeenCalled();
+    expect(mocks.mockSession.updateMetadataAndWait).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['dsh', true, ['image/jpeg', 'image/png', 'image/gif', 'image/webp']],
+    ['dsh', false, []],
+    ['pi', true, ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf', '*/*']],
+    ['gemini', true, []],
+  ])('B-970b: %s with promptCapabilities.image=%s publishes attachmentKinds %j', async (agentName, image, kinds) => {
+    mocks.backendState.supportsImages = image as boolean;
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: agentName as string, command: agentName as string, args: [] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      await vi.waitFor(() => {
+        const published = mocks.mockSession.updateMetadata.mock.calls.map(([apply]) => apply({})).filter((m: any) => 'attachmentKinds' in m);
+        expect(published.at(-1)?.attachmentKinds).toEqual(kinds);
+      });
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
   });
 
   it('updates session metadata with ACP config options (models and operating modes)', async () => {

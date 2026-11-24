@@ -44,3 +44,16 @@ describe('B-850e automation account', () => {
         expect(describeAction({ ...action, agentProfile: undefined } as never, 'en', 'x').headline).not.toContain('account');
     });
 });
+
+describe('B-970b automation agent dsh', () => {
+    it('dsh is a spawn agent with its product name, takes an account, and its pick rides on the action', async () => {
+        const { SPAWN_AGENTS, SPAWN_AGENT_LABELS } = await import('./automationForm');
+        const { agentTakesAccount } = await import('@/sync/accountChoice');
+        expect(SPAWN_AGENTS).toContain('dsh');
+        expect(SPAWN_AGENT_LABELS.dsh).toBe('DeepSeek Harness');
+        expect(agentTakesAccount('dsh')).toBe(true);
+        const d = { ...spawnDraft(), agent: 'dsh', agentProfile: { id: 'ds-a', label: 'DeepSeek' } };
+        expect(actionFromDraft(d)).toMatchObject({ kind: 'spawn', agent: 'dsh', agentProfile: { id: 'ds-a' } });
+        expect(editDraft(d, 'agent', 'claude').agentProfile).toBeUndefined();
+    });
+});

@@ -10,7 +10,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import { AccountChoiceField } from '@/components/accounts/AccountChoiceField';
 import { AddAccountDialog } from '@/components/accounts/AddAccountDialog';
-import { ACCOUNT_AGENTS, accountsForAgent, machineHasAgentAccounts, readMachineAgentProfiles } from '@/sync/agentProfiles';
+import { SESSION_ACCOUNT_AGENTS, accountsForAgent, machineHasAgentAccounts, readMachineAgentProfiles } from '@/sync/agentProfiles';
 import {
   accountChoiceDisplay,
   applyProjectAccountEdits,
@@ -23,7 +23,8 @@ import {
 } from '@/sync/accountChoice';
 import type { ProjectCopy } from './projectCopy';
 
-const AGENT_NAMES: Record<string, string> = { claude: 'Claude Code', codex: 'Codex' };
+// B-970b: dsh sessions take DeepSeek accounts, so a project sets them per machine too.
+const AGENT_NAMES: Record<string, string> = { claude: 'Claude Code', codex: 'Codex', dsh: 'DeepSeek Harness' };
 
 /**
  * B-902 project settings 「账号」: per agent, one row per machine the project
@@ -38,7 +39,7 @@ export function ProjectAccountsSection({ project, c, editable, onChanged }: { pr
   const machines = useAllMachines({ includeOffline: true });
   const saved = project.defaults.agentProfiles ?? null;
   const machineIds = projectAccountMachineIds(project.folders, saved);
-  const [initial] = useState(() => projectAccountDraft(saved, ACCOUNT_AGENTS, machineIds));
+  const [initial] = useState(() => projectAccountDraft(saved, SESSION_ACCOUNT_AGENTS, machineIds));
   const [draft, setDraft] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState<{ machine: Machine; agent: string } | null>(null);
@@ -70,7 +71,7 @@ export function ProjectAccountsSection({ project, c, editable, onChanged }: { pr
         <p className="pj-muted" data-testid="project-accounts-empty">{t('accounts.projectNoMachines')} <a href="#folders" onClick={(e) => { e.preventDefault(); document.getElementById('pj-settings-folders')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }}>{t('accounts.projectAddFolder')}</a></p>
       ) : (
         <form className="pj-form" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-          {ACCOUNT_AGENTS.map((agent) => (
+          {SESSION_ACCOUNT_AGENTS.map((agent) => (
             <fieldset key={agent} className="pj-account-agent" data-testid={`project-account-${agent}`} disabled={!editable}>
               <legend>{AGENT_NAMES[agent] ?? agent}</legend>
               {machineIds.map((machineId) => {
