@@ -140,15 +140,15 @@ describe('switching a dsh session to auto-approve (B-969)', () => {
       }
     }
     const h = new H(session as any);
-    expect(h.approveAllPending()).toBe(0);
+    expect(h.approveAllPending()).toEqual([]);
     const a = h.ask('a');
     const b = h.ask('b');
-    expect(h.approveAllPending()).toBe(2);
+    expect(h.approveAllPending('why').map((r) => r.id)).toEqual(['a', 'b']);
     await expect(a).resolves.toEqual({ decision: 'approved' });
     await expect(b).resolves.toEqual({ decision: 'approved' });
     expect(state.requests).toEqual({});
-    expect(state.completedRequests.a).toMatchObject({ tool: 'bash', status: 'approved', decision: 'approved', kind: 'tool' });
-    expect(h.approveAllPending()).toBe(0);
+    expect(state.completedRequests.a).toMatchObject({ tool: 'bash', status: 'approved', decision: 'approved', kind: 'tool', reason: 'why' });
+    expect(h.approveAllPending()).toEqual([]);
   });
 
   it('the dsh wrapper advertises live permission switching and approves waiting asks on bypass', async () => {
@@ -157,6 +157,18 @@ describe('switching a dsh session to auto-approve (B-969)', () => {
     const { readFileSync } = await import('node:fs');
     const src = readFileSync(new URL('./runAcp.ts', import.meta.url), 'utf8');
     expect(src).toContain("...(opts.agentName === 'dsh' ? [DSH_LIVE_PERMISSION_CAPABILITY] : [])");
-    expect(src).toContain("if (opts.agentName === 'dsh' && dshAutoApproves(mode)) permissionHandler?.approveAllPending();");
+    expect(src).toContain("if (opts.agentName === 'dsh' && dshAutoApproves(mode)) {");
+    expect(src).toContain('const notice = dshAutoApprovedNotice(permissionHandler?.approveAllPending(DSH_AUTO_APPROVED_REASON) ?? []);');
+    expect(src).toContain("if (notice) session.sendSessionEvent({ type: 'message', message: notice });");
+  });
+
+  it('the transcript line names what was auto-approved', async () => {
+    const { dshAutoApprovedNotice } = await import('./dshRunner');
+    expect(dshAutoApprovedNotice([])).toBeNull();
+    expect(dshAutoApprovedNotice([{ toolName: 'bash', input: { command: 'echo  a\n b' } }]))
+      .toBe('Auto-approved the waiting request after switching to Auto-run — bash: echo a b');
+    expect(dshAutoApprovedNotice([{ toolName: 'write', input: { file_path: '/tmp/x' } }, { toolName: 'todo', input: {} }]))
+      .toBe('Auto-approved 2 waiting requests after switching to Auto-run — write: /tmp/x; todo');
+    expect(dshAutoApprovedNotice([{ toolName: 'bash', input: { command: 'x'.repeat(400) } }])!.length).toBeLessThan(260);
   });
 });

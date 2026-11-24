@@ -130,6 +130,28 @@ export function dshAutoApproves(mode: string | null | undefined): boolean {
  */
 export const DSH_LIVE_PERMISSION_CAPABILITY = 'dsh-live-permission-v1';
 
+/** B-969: kept as the reason of an ask approved by switching to auto-approve. */
+export const DSH_AUTO_APPROVED_REASON = 'Auto-approved: the session switched to Auto-run';
+
+/**
+ * B-969: the transcript line saying which waiting asks were approved by the
+ * switch, so they do not just vanish. Pure.
+ */
+export function dshAutoApprovedNotice(approved: Array<{ toolName: string; input: unknown }>): string | null {
+    if (approved.length === 0) return null;
+    const describe = ({ toolName, input }: { toolName: string; input: unknown }): string => {
+        const args = input && typeof input === 'object' ? input as Record<string, unknown> : {};
+        const detail = typeof args.command === 'string' ? args.command
+            : typeof args.file_path === 'string' ? args.file_path : null;
+        const line = detail ? `${toolName}: ${detail.replace(/\s+/g, ' ').trim()}` : toolName;
+        return line.length > 160 ? `${line.slice(0, 159)}…` : line;
+    };
+    const list = approved.map(describe).join('; ');
+    return approved.length === 1
+        ? `Auto-approved the waiting request after switching to Auto-run — ${list}`
+        : `Auto-approved ${approved.length} waiting requests after switching to Auto-run — ${list}`;
+}
+
 /**
  * B-969: extra fields for a pending permission request in agentState. dsh only
  * offers allow-once / reject-once (its approval service grants nothing wider)

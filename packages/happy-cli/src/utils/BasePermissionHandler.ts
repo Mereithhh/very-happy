@@ -193,11 +193,12 @@ export abstract class BasePermissionHandler {
     /**
      * B-969: approve every pending request (a dsh session switched to
      * bypassPermissions / yolo while asks were waiting). Each resolves as a plain
-     * `approved`, exactly as if the user had pressed Approve. Returns how many.
+     * `approved`, exactly as if the user had pressed Approve; `reason` is kept on
+     * the completed request. Returns what was approved.
      */
-    approveAllPending(): number {
+    approveAllPending(reason?: string): Array<{ id: string; toolName: string; input: unknown }> {
         const pendingSnapshot = Array.from(this.pendingRequests.entries());
-        if (pendingSnapshot.length === 0) return 0;
+        if (pendingSnapshot.length === 0) return [];
         this.pendingRequests.clear();
         for (const [id, pending] of pendingSnapshot) {
             try {
@@ -214,12 +215,12 @@ export abstract class BasePermissionHandler {
                 const request = requests[id];
                 if (!request) continue;
                 delete requests[id];
-                completedRequests[id] = { ...request, completedAt: Date.now(), status: 'approved', decision: 'approved' };
+                completedRequests[id] = { ...request, completedAt: Date.now(), status: 'approved', decision: 'approved', ...(reason ? { reason } : {}) };
             }
             return { ...currentState, requests, completedRequests };
         });
         logger.debug(`${this.getLogPrefix()} Approved ${pendingSnapshot.length} pending permission(s) after a switch to auto-approve`);
-        return pendingSnapshot.length;
+        return pendingSnapshot.map(([id, pending]) => ({ id, toolName: pending.toolName, input: pending.input }));
     }
 
     /**

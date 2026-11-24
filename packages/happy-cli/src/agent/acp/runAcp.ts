@@ -1,7 +1,7 @@
 import { VERY_HAPPY_DISCOVERY } from '@/skill/discovery';
 import { dshHintContext, loadDshWrapperAccount, MACHINE_DSH_ACCOUNT, type DshWrapperAccount } from '@/agentProfiles/dshAccount';
 import { SPAWN_ACCOUNT_ENV } from '@/agentProfiles/store';
-import { DSH_LIVE_PERMISSION_CAPABILITY, DSH_SESSION_NOTICE, acpPendingRequestExtras, dshAutoApproves, dshFailureHint } from './dshRunner';
+import { DSH_AUTO_APPROVED_REASON, DSH_LIVE_PERMISSION_CAPABILITY, DSH_SESSION_NOTICE, dshAutoApprovedNotice, acpPendingRequestExtras, dshAutoApproves, dshFailureHint } from './dshRunner';
 import { isSessionPeerPrompt } from '@/claude/nonUserPrompt';
 import { readPiModelsJson, resolvePiContextUsage, type PiContextReport } from './piContextUsage';
 import { buildAcpPrompt, routeAcpUserText } from './acpSlashCommand';
@@ -737,7 +737,10 @@ export async function runAcp(opts: {
     session.updateMetadata((currentMetadata) => ({ ...currentMetadata, permissionMode: mode }));
     logger.debug(`[${opts.agentName}] Published file-backed permission mode: ${mode}`);
     // B-969: dsh asks are answered here, so asks already waiting go through too.
-    if (opts.agentName === 'dsh' && dshAutoApproves(mode)) permissionHandler?.approveAllPending();
+    if (opts.agentName === 'dsh' && dshAutoApproves(mode)) {
+      const notice = dshAutoApprovedNotice(permissionHandler?.approveAllPending(DSH_AUTO_APPROVED_REASON) ?? []);
+      if (notice) session.sendSessionEvent({ type: 'message', message: notice });
+    }
     return true;
   };
 
