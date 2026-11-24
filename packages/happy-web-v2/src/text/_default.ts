@@ -3521,9 +3521,10 @@ export const en = {
                 tools: 'deepseek-v4.1-flash works in sessions with the full tool set.',
             },
             nov25a: {
-                title: 'DeepSeek Harness permission requests show what will run',
-                summary: 'A DeepSeek Harness (dsh) session asking for permission now names the tool and shows the command or file, instead of "Unknown tool" and an empty {}.',
+                title: 'DeepSeek Harness: clear permission requests, and Auto-run that applies at once',
+                summary: 'A DeepSeek Harness (dsh) session asking for permission now names the tool and shows the command or file, instead of "Unknown tool" and an empty {}. Switching it to Auto-run now takes effect immediately.',
                 card: 'The request shows the same tool name, command and file path as the tool card in the conversation, so you can judge the risk before you approve. dsh grants one call at a time, so its requests no longer show "Approve for session" (it only ever approved that one call).',
+                yolo: 'Switching a dsh session to Auto-run used to wait for your next message, so tool calls in the current reply still asked one by one. Now it applies at once: requests already waiting are approved, and the selector shows the mode the session really runs in, also after a restore.',
                 upgrade: 'Needs CLI 0.2.227.',
             },
             nov24c: {

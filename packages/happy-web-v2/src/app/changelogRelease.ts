@@ -145,7 +145,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.nov25a.title',
     summaryKey: 'changelog.releases.nov25a.summary',
-    itemKeys: ['changelog.releases.nov25a.card', 'changelog.releases.nov25a.upgrade'],
+    itemKeys: ['changelog.releases.nov25a.card', 'changelog.releases.nov25a.yolo', 'changelog.releases.nov25a.upgrade'],
   },
   {
     id: '2026-11-25-codex-model-source',

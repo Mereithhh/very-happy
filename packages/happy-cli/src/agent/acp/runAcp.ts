@@ -563,7 +563,7 @@ export async function runAcp(opts: {
     sandbox: settings.sandboxConfig,
     // B-852: a daemon-spawned pi session reports when it is quiescent, so the
     // daemon can restart it onto new code after an upgrade.
-    capabilities: [PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, ...(opts.agentName === 'pi' && opts.startedBy === 'daemon' ? [AUTO_RESTART_CAPABILITY] : []), ...(opts.agentName === 'dsh' ? [DSH_LIVE_PERMISSION_CAPABILITY] : [])],
+    capabilities: [PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, ...(opts.agentName === 'dsh' ? [DSH_LIVE_PERMISSION_CAPABILITY] : []), ...(opts.agentName === 'pi' && opts.startedBy === 'daemon' ? [AUTO_RESTART_CAPABILITY] : [])],
   });
   // B-874: issue_* tools (via HAPPY_MCP_URL) + issue digest (spec §5).
   metadata.capabilities = [...(metadata.capabilities ?? []), ISSUE_SESSION_CAPABILITY];

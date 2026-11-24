@@ -27,7 +27,7 @@ describe('session selectors write through the session flavor', () => {
         expect(agentInput).not.toContain('modelOverrideAfterSessionPick');
         expect(agentInput).toContain('const agentDefaults = resolveAgentDefaultConfig(agentDefaultOverrides, flavor);');
         // honesty subtitles cover pi too (it publishes permissionMode + currentModelCode); steer/live-RPC stay Claude-only
-        expect(agentInput).toContain('const publishesModeFacts = isClaudeFlavor || isPiAgent(flavor);');
+        expect(agentInput).toContain("const publishesModeFacts = isClaudeFlavor || isPiAgent(flavor) || flavor === 'dsh';");
         expect(agentInput).toContain('const permissionDisplayState = publishesModeFacts');
     });
 });
