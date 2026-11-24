@@ -247,7 +247,7 @@ ${chalk.bold('Trigger (one):')}
 
 ${chalk.bold('Action (one):')}
   --spawn-dir <dir> --prompt <text>|--prompt-file <file>
-      [--agent claude|codex|pi|gemini|openclaw] [--model <id>] [--permission-mode <m>]
+      [--agent claude|codex|pi|dsh|gemini|openclaw] [--model <id>] [--permission-mode <m>]
       [--worktree] [--sticky-key <template>] [--account <id>|machine]
   --send-session <id> --prompt <text>|--prompt-file <file>
   --send-main-agent --prompt <text>|--prompt-file <file>   (the account's main agent at run time)

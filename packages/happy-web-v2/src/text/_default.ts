@@ -3099,7 +3099,7 @@ export const en = {
         gateUpgrade: 'This machine\'s CLI needs an upgrade — the account choice will not take effect. You can save it, but it does nothing until the CLI is upgraded.',
         stickyNote: 'Changing the account switches this session in place on its next run (history kept).',
         projectSection: 'Accounts',
-        projectSectionHint: 'Which account Claude Code and Codex use when this project starts a session on each machine. Accounts belong to one machine, so each machine is set on its own; a machine left unset uses its machine default. New sessions from the Web, automations, teams, issues and forks all follow this.',
+        projectSectionHint: 'Which account Claude Code, Codex and DeepSeek Harness use when this project starts a session on each machine. Accounts belong to one machine, so each machine is set on its own; a machine left unset uses its machine default. New sessions from the Web, automations, teams, issues and forks all follow this.',
         projectNoMachines: 'This project has no folders yet. Accounts are set per machine — add a folder first.',
         projectAddFolder: 'Add a folder',
         projectNoAccountsHere: ({ machine, agent }: { machine: string; agent: string }) => `${machine} has no ${agent} account yet.`,

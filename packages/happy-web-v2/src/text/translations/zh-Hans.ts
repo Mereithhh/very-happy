@@ -3231,7 +3231,7 @@ export const zhHans: TranslationStructure = {
         gateUpgrade: '这台机器的 CLI 需要升级，账号选择不会生效：可以照样保存，但升级 CLI 之前保存了也不会生效。',
         stickyNote: '改账号会在下一次运行时原地切换这个会话（历史保留）。',
         projectSection: '账号',
-        projectSectionHint: '这个项目在每台电脑上新建会话时，Claude Code 和 Codex 各用哪个账号。账号属于某一台电脑，所以每台电脑分别设置；没设的电脑按它的机器默认。Web 新建、自动化、团队、issue 和 fork 都按这里来。',
+        projectSectionHint: '这个项目在每台电脑上新建会话时，Claude Code、Codex 和 DeepSeek Harness 各用哪个账号。账号属于某一台电脑，所以每台电脑分别设置；没设的电脑按它的机器默认。Web 新建、自动化、团队、issue 和 fork 都按这里来。',
         projectNoMachines: '项目还没有目录。账号按电脑设置，先给项目添加一个目录。',
         projectAddFolder: '添加目录',
         projectNoAccountsHere: ({ machine, agent }: { machine: string; agent: string }) => `${machine} 上还没有 ${agent} 账号。`,
