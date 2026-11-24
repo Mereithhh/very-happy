@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { TeamAction, TeamMessage, TeamOperation, TeamState, TeamTask } from '@slopus/happy-wire';
-import { reduceTeam, teamBotRepository, teamView, TeamError, type TeamActor } from './reducer';
-import { compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable, teamCapacity, warnCapacity, mergeArchivedMessages, TEAM_COMPACT_AGE_MS, TEAM_COMPACT_MIN_AGE_MS, TEAM_LIMITS, TEAM_OPEN_TASK_KEEP_MESSAGES } from './compaction';
+import { reduceTeam, teamBotRepository, teamView, type TeamActor } from './reducer';
+import { capacityCrossing, compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable, teamCapacity, warnCapacity, mergeArchivedMessages, TEAM_COMPACT_AGE_MS, TEAM_COMPACT_MIN_AGE_MS, TEAM_SOFT_LIMITS, TEAM_OPEN_TASK_KEEP_MESSAGES } from './compaction';
 import { advanceSchedules } from './schedules';
 import { TEAM_CAPACITY_HINT } from './errors';
 
@@ -200,7 +200,7 @@ describe('B-959 open tasks', () => {
     };
     it('a team over 2 MB is not refused: the write succeeds and the lead is warned once (observed, not a limit)', () => {
         const team = incident();
-        expect(JSON.stringify(team).length).toBeGreaterThan(TEAM_LIMITS.bytes);
+        expect(JSON.stringify(team).length).toBeGreaterThan(TEAM_SOFT_LIMITS.bytes);
         const r = reduceTeam(team, owner, { type: 'message', taskId: 'open0', body: 'still there?', recipientBotId: 'lead' }, { now: 2 * HOUR, id: () => `w${Math.random()}` });
         expect(r.team.version).toBe(1);
         const warning = r.team.messages.find(m => m.source === 'system' && m.taskId === null)!;
@@ -212,9 +212,13 @@ describe('B-959 open tasks', () => {
         const scheduled = { ...team, schedules: [{ id: 'sch', name: 'S', botId: 'lead', body: 'tick', machineId: 'machine', status: 'active' as const, nextRunAt: 1, intervalMs: null, fireCount: 0, version: 1, createdAt: 0 }] } as unknown as TeamState;
         expect(advanceSchedules(scheduled, 2 * HOUR).fired).toBe(1);
     });
-    it('a count near its limit still says new records are refused (they are)', () => {
+    it('B-966: a count near its soft limit is warned about, never called a refusal (nothing is refused)', () => {
         const team = { ...base(), bots: [lead], tasks: Array.from({ length: 170 }, (_, i) => task(`t${i}`, { status: 'running' })) };
-        expect(teamCapacity(team).warning).toContain('New tasks are refused at 100%');
+        const warning = teamCapacity(team).warning!;
+        expect(warning).toContain('tasks 170/200 (85%)');
+        expect(warning).toContain('Nothing is blocked');
+        expect(warning).toContain('不影响写入，会自动整理');
+        expect(warning).not.toMatch(/refuse|拒绝|上限/i);
     });
     it('the incident team is compacted on its next write: each open task keeps its newest N, the record shrinks', () => {
         const team = incident();
@@ -232,7 +236,7 @@ describe('B-822 capacity', () => {
     it('reports usage per limit and warns the lead once per crossing of 80%', () => {
         let next = 0; const id = () => `w${++next}`;
         const team = { ...base(), bots: [{ id: 'lead', name: 'Lead', root: true, managed: false, sessionId: 's', generation: 1, assistant: 'claude' as const, directory: null }], tasks: Array.from({ length: 160 }, (_, i) => task(`t${i}`, { status: 'running' })) };
-        expect(teamCapacity(team).metrics.tasks).toEqual({ used: 160, limit: TEAM_LIMITS.tasks });
+        expect(teamCapacity(team).metrics.tasks).toEqual({ used: 160, limit: TEAM_SOFT_LIMITS.tasks });
         expect(teamCapacity(team).warning).toContain('tasks 160/200 (80%)');
         warnCapacity(team, JSON.stringify(team).length, 5, id);
         expect(team.messages).toHaveLength(1);
@@ -251,14 +255,40 @@ describe('B-822 capacity', () => {
         expect(team.messages).toHaveLength(2);
     });
 
-    it('a full record is refused with 409, used / limit and a hint that says it is not rate limiting', () => {
-        const team = { ...base(), tasks: Array.from({ length: 200 }, (_, i) => task(`t${i}`, { status: 'running' })) };
-        let error: unknown;
-        try { reduceTeam(team, owner, { type: 'delegate', goal: 'g', acceptance: ['a'] }, { now: 1, id: () => 'x' }); } catch (e) { error = e; }
-        expect(error).toBeInstanceOf(TeamError);
-        expect(error).toMatchObject({ code: 'team_task_limit', status: 409, details: { used: 200, limit: 200, hint: TEAM_CAPACITY_HINT } });
+    it('B-966: past every soft limit (2000 messages, 1000 operations, 200 tasks) delegate and message still succeed; the lead is warned, never refused', () => {
+        let n = 0; const id = () => `n${++n}`;
+        const lead = { id: 'lead', name: 'Lead', root: true, managed: false, sessionId: 's', generation: 1, assistant: 'claude' as const, directory: null };
+        const open = (i: number) => task(`t${i}`, { status: 'running', closedAt: undefined, cleanup: 'none' });
+        const full: TeamState = { ...base(), bots: [lead], tasks: Array.from({ length: TEAM_SOFT_LIMITS.tasks }, (_, i) => open(i)),
+            messages: Array.from({ length: TEAM_SOFT_LIMITS.messages }, (_, i) => message(`m${i}`, 't0', { deliveredAt: null })),
+            operations: Array.from({ length: TEAM_SOFT_LIMITS.operations }, (_, i) => operation(`o${i}`, 't0', { status: 'pending', claimId: null, claimedAt: null })) };
+        const delegated = reduceTeam(full, owner, { type: 'delegate', goal: 'g', acceptance: ['a'], botName: 'Worker', directory: '/repo' }, { now: 1, id });
+        expect(delegated.taskId).toBeDefined();
+        expect(delegated.team.tasks).toHaveLength(TEAM_SOFT_LIMITS.tasks + 1);
+        expect(delegated.team.operations).toHaveLength(TEAM_SOFT_LIMITS.operations + 1);
+        expect(delegated.team.operations.at(-1)).toMatchObject({ type: 'spawn', status: 'pending', taskId: delegated.taskId });
+        const messaged = reduceTeam(delegated.team, owner, { type: 'message', taskId: delegated.taskId!, body: 'still there?' }, { now: 2, id });
+        expect(messaged.team.messages.filter(m => m.body.startsWith('still there?'))).toHaveLength(1);
+        expect(messaged.team.messages.length).toBeGreaterThan(TEAM_SOFT_LIMITS.messages + 1);
+        // The lead is warned once (the old ≥ 2000-messages skip is gone), and the warning never says refused.
+        const warnings = messaged.team.messages.filter(m => m.source === 'system' && m.taskId === null);
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]).toMatchObject({ recipientBotId: 'lead', deliveredAt: null });
+        expect(warnings[0].body).toMatch(/messages 2\d{3}\/2000/);
+        expect(warnings[0].body).not.toMatch(/refuse|拒绝/i);
+        expect([...messaged.team.capacityWarned!].sort()).toEqual(['messages', 'operations', 'tasks']);
+        const capacity = teamView(messaged.team, owner).capacity!;
+        expect(capacity.metrics.tasks).toEqual({ used: TEAM_SOFT_LIMITS.tasks + 1, limit: TEAM_SOFT_LIMITS.tasks });
+        expect(capacity.warning).not.toMatch(/refuse/i);
+        // Other limits (members, depth, schedules) still refuse with the capacity hint.
         expect(TEAM_CAPACITY_HINT).toContain('not rate limiting');
-        expect(teamView(team, owner).capacity?.metrics.tasks.used).toBe(200);
+    });
+
+    it('B-966: capacityCrossing reports only the metrics a transition newly crossed (what the server logs)', () => {
+        const after = { ...base(), capacityWarned: ['messages', 'tasks'] } as TeamState;
+        expect(capacityCrossing({ capacityWarned: ['tasks'] }, after)).toMatchObject({ metrics: ['messages'], used: { messages: 0, tasks: 0, operations: 0 } });
+        expect(capacityCrossing({ capacityWarned: ['tasks', 'messages'] }, after)).toBeNull();
+        expect(capacityCrossing({}, { ...base() })).toBeNull();
     });
 });
 
@@ -317,8 +347,11 @@ describe('B-822 long-running team', () => {
         return { state, peak, total, rootTask, stuckTask, stuckSpawn, leadId };
     }
 
-    it('without compaction the same run hits a limit (the incident)', () => {
-        expect(() => run(200, false)).toThrow(/team_size_limit|team_task_limit/);
+    it('B-966: without compaction the same run grows past the soft limits but no write is refused (the incident refused here)', () => {
+        const { peak, state } = run(240, false);
+        expect(peak.tasks).toBeGreaterThan(TEAM_SOFT_LIMITS.tasks);
+        expect(peak.bytes).toBeGreaterThan(TEAM_SOFT_LIMITS.bytes);
+        expect(state.capacityWarned).toEqual(expect.arrayContaining(['bytes', 'tasks']));
     }, 60_000);
 
     it('2000+ messages, 1000+ operations and 520 tasks over 11 days never reach a limit and keep all open state', () => {
@@ -326,10 +359,10 @@ describe('B-822 long-running team', () => {
         expect(total.messages).toBeGreaterThan(2000);
         expect(total.operations).toBeGreaterThan(1000);
         expect(total.tasks).toBeGreaterThan(200);
-        expect(peak.bytes).toBeLessThan(TEAM_LIMITS.bytes * 0.8);
-        expect(peak.messages).toBeLessThan(TEAM_LIMITS.messages * 0.8);
-        expect(peak.operations).toBeLessThan(TEAM_LIMITS.operations * 0.8);
-        expect(peak.tasks).toBeLessThan(TEAM_LIMITS.tasks * 0.8);
+        expect(peak.bytes).toBeLessThan(TEAM_SOFT_LIMITS.bytes * 0.8);
+        expect(peak.messages).toBeLessThan(TEAM_SOFT_LIMITS.messages * 0.8);
+        expect(peak.operations).toBeLessThan(TEAM_SOFT_LIMITS.operations * 0.8);
+        expect(peak.tasks).toBeLessThan(TEAM_SOFT_LIMITS.tasks * 0.8);
         // Open work survives: the root task, the stuck task and its claimed launch.
         expect(state.tasks.find(t => t.id === rootTask)?.status).toBe('running');
         expect(state.tasks.find(t => t.id === stuckTask)?.status).toBe('queued');

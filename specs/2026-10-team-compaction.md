@@ -105,6 +105,17 @@
 - 取舍：开着的任务的读响应大小和改前一样随对话增长（改前它们本来就在实时表里），这次只解决「写被卡死」；需要时再做按任务分页读。idle 判定看的是实时消息，旧消息归档后最多和 §1 一样多提示一次 idle。
 - 残余风险：消息数仍是硬上限。每个开着的任务保留 50 条，约 40 个开着的任务各有 ≥ 50 条消息时，实时消息数才会到 2000。
 
+### 6. B-966 修订：三个计数也不再拒绝写入
+
+B-959 之后剩下的三个计数上限（消息 2000、operation 1000、任务 200）也改成只观测。团队规模靠 §1/§5 的压缩控制，用量用 `capacity` 和 80% 提醒展示。
+
+- **去掉计数硬上限**：`reducer.ts`（message / spawn·stop operation / delegate / revive-lead）和 `schedules.advanceSchedules` 写死的 2000 都删掉，不再返回 `team_message_limit` / `team_operation_limit` / `team_task_limit`。成员数、委派深度、schedule 数、每账号团队数这几个上限（`team_bot_limit`、`team_depth_limit`、`team_schedule_limit`、`team_limit`）不变。
+- **软阈值**：`TEAM_LIMITS` 改名为 `TEAM_SOFT_LIMITS`，只用来判断压缩压力（≥ 50%）、80% 提醒 / 70% 清除，并作为 `capacity.metrics[k].limit` 的值，数值不变。
+- **提醒**：文案去掉「在 100% 时会被拒绝」，改成「不影响写入，会自动整理；请验收或取消已完成的任务」（中英文）。原来消息 ≥ 2000 时不插提醒（`warnCapacity`），也不发 idle 提醒（`escalateIdleMembers`：消息 + 任务 > 2000，或超过 2 MB），这几处都删掉，提醒不会因为团队大而被吞掉。
+- **服务端日志**：`persistTransition` 发现某项新越过 80%（`capacityWarned` 新增）时打一条 warn（`capacityCrossing`），带 teamId、越过的指标和四项用量。每次越过只打一次，降到 70% 以下以后再越过会再打。
+- **兼容**：CLI 和 Web 都没有专门处理这三个码的代码。CLI 按 `*_limit` 后缀统一处理，其他上限还在用，所以不改。旧 CLI 只是再也收不到这三个码。
+- **残余风险**：实时记录只剩开放工作：未关闭的任务、未送达的消息、仍可能执行的 operation、每个开着的任务最新的 50 条消息，以及 24 小时 / 1 小时 / 10 分钟内关闭的工作，这些没有硬上限。每次写入都要读完整实时记录、clone、多次 stringify，成本 O(实时大小)：纯 reducer CPU 在 4.4 MB 时约 18 ms，22 MB 约 90 ms，44 MB 约 260 ms。不加新的拒绝，靠 warn 日志发现异常团队。
+
 ## 兼容与发布顺序
 
 | 组合 | 行为 |

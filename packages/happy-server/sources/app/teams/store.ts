@@ -9,7 +9,7 @@ import { inTx, type Tx } from '@/storage/inTx';
 import { encryptString, decryptString } from '@/modules/encrypt';
 import { advanceSchedules } from './schedules';
 import { escalateIdleMembers } from './teamIdle';
-import { compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable, mergeArchivedMessages } from './compaction';
+import { capacityCrossing, TEAM_SOFT_LIMITS, compactTeam, messageArchivable, operationArchivable, repositorySpawnIds, taskArchivable, mergeArchivedMessages } from './compaction';
 import { requireCapacity } from './errors';
 import { machineJoinRefusal, ownerGuardMode } from '@/app/auth/ownerGuard';
 import { OWNER_LOGIN_REQUIRED } from '@/app/auth/tokenKind';
@@ -47,6 +47,9 @@ async function persistTransition(tx: Tx, row: Row, team: TeamState): Promise<voi
     const state = JSON.stringify({ ...team, messages: undefined, operations: undefined, projectId: undefined });
     const updated = await tx.$executeRaw`UPDATE "AgentTeam" SET "version"=${team.version},"state"=${state}::jsonb,"updatedAt"=now() WHERE "id"=${row.id} AND "accountId"=${row.accountId} AND "version"=${row.version}`;
     requireTeam(updated === 1, 'team_version_conflict');
+    // B-966: no metric refuses a write any more; crossing a soft limit is logged (once, until it drops below 70%).
+    const crossing = capacityCrossing(row.state, team);
+    if (crossing) warn({ module: 'teams', teamId: row.id, metrics: crossing.metrics, used: crossing.used, softLimits: TEAM_SOFT_LIMITS }, `team record crossed ${crossing.metrics.join(', ')} soft limit (80%); writes continue, compaction archives closed work`);
     const oldOperations = new Map(row.state.operations.map(op => [op.id, JSON.stringify(op)]));
     for (const op of team.operations) {
         const encoded = JSON.stringify(op);

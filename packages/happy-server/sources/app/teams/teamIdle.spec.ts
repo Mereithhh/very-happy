@@ -114,7 +114,8 @@ describe('B-769: member idle does not wake the task owner', () => {
         f.act({ type: 'session-event', sessionId: 'a', event: 'idle' });
         const full = structuredClone(f.state);
         full.messages = Array.from({ length: 2000 }, (_, i) => ({ id: `m${i}`, taskId: null, senderBotId: null, recipientBotId: f.b.id, body: '', deliveredAt: 1, createdAt: 1 }));
-        expect(escalateIdleMembers(full, 1000 + TEAM_IDLE_ESCALATE_MS, f.id)).toEqual({ team: full, fired: 0 });
+        // B-966: a team past the 2000-message soft limit still gets its idle reminder (it used to be dropped).
+        expect(escalateIdleMembers(full, 1000 + TEAM_IDLE_ESCALATE_MS, f.id).fired).toBe(1);
         expect(escalateIdleMembers({ ...f.state, archivedAt: 1 }, 1000 + TEAM_IDLE_ESCALATE_MS, f.id).fired).toBe(0);
     });
 });

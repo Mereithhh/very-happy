@@ -67,7 +67,6 @@ export function advanceSchedules(input: TeamState, now: number): { team: TeamSta
         if (schedule.status !== 'active' || schedule.nextRunAt === null || schedule.nextRunAt > now || schedule.pendingMessageId) continue;
         requireTeam(schedule.machineId === team.machineId && team.bots.some(b => b.id === schedule.botId), 'schedule_binding_invalid');
         pruneScheduleMessages(team);
-        requireCapacity(team.messages.length < 2000, 'team_message_limit', team.messages.length, 2000);
         const messageId = `${schedule.id}-${schedule.fireCount + 1}`;
         requireTeam(!team.messages.some(m => m.id === messageId), 'schedule_occurrence_conflict');
         team.messages.push({ id: messageId, taskId: null, scheduleId: schedule.id, senderBotId: null, source: 'system', recipientBotId: schedule.botId, body: schedule.body, deliveredAt: null, createdAt: now });
@@ -79,7 +78,7 @@ export function advanceSchedules(input: TeamState, now: number): { team: TeamSta
         fired++;
     }
     if (fired) team.version++;
-    // B-959: no byte-size refusal (it blocked every schedule of a team over 2 MB); the message count above still applies.
+    // B-959 / B-966: no size or count refusal (it blocked every schedule of a full team); compaction keeps the record in check.
     return { team, fired };
 }
 export function acknowledgeScheduleMessage(team: TeamState, messageId: string, now: number): void {
