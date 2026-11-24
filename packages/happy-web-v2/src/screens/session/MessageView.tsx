@@ -22,7 +22,7 @@ import { stripHarnessBlocks, parseLocalCommandMessage, parseTaskNotification } f
 import { estimateWrappedLines, shouldCollapseBubble } from './codeCollapse';
 import { stripThinkingWrapper, formatThoughtFor, thinkingPreview, isLiveThinking } from './thinking';
 import { presentServiceEvent } from './serviceEvent';
-import { dshKeyHintText, goalNoticeText, isDshSessionNotice, parseDshKeyHint, parseGoalNotice } from './goalNotice';
+import { dshKeyHintText, goalNoticeText, isDshCompactNotice, isDshSessionNotice, parseDshKeyHint, parseGoalNotice } from './goalNotice';
 import { runCodexHandoff } from './codexHandoffRun';
 import { isSharedWithMe } from '@/app/sessionAccess';
 import { toast } from '@/ui/Toast';
@@ -486,6 +486,12 @@ function AgentEventBlock({ message, sessionId, continueOffer = false }: { messag
                     }
                     if (isDshSessionNotice(ev.message)) {
                         label = t('session.chat.dshSessionNotice');
+                        subtle = true;
+                        break;
+                    }
+                    // B-970: the answer to /compact in a dsh session.
+                    if (isDshCompactNotice(ev.message)) {
+                        label = t('session.chat.dshCompactNotice');
                         subtle = true;
                         break;
                     }

@@ -9,7 +9,7 @@ import { summarizeCompactionTurn, type CompactionSummary } from './compaction';
 import { turnDiffSummary, type TurnDiff } from './turnDiffs';
 import { continueOfferStopId, isUserStopEvent } from './continueOffer';
 import { userAbortedAt } from './subagentAbort';
-import { parseDshKeyHint, parseGoalNotice } from './goalNotice';
+import { isDshCompactNotice, parseDshKeyHint, parseGoalNotice } from './goalNotice';
 import { LONG_CONTEXT_FALLBACK_EVENT_KIND, LONG_CONTEXT_INTERRUPTED_EVENT_KIND, LONG_CONTEXT_REFUSED_EVENT_KIND } from '@slopus/happy-wire';
 
 export type LeafRow =
@@ -206,7 +206,8 @@ const PINNED_NOTICE_KINDS: ReadonlySet<string> = new Set([LONG_CONTEXT_FALLBACK_
 function isPinnedNotice(message: Message): boolean {
     if (message.kind !== 'agent-event' || message.event.type !== 'message') return false;
     // B-954: a /goal receipt answers what the person just asked (show, budget, Stop's pause).
-    if (message.event.kind === undefined) return parseGoalNotice(message.event.message) !== null;
+    // B-970: so does the dsh answer to /compact.
+    if (message.event.kind === undefined) return parseGoalNotice(message.event.message) !== null || isDshCompactNotice(message.event.message);
     return PINNED_NOTICE_KINDS.has(message.event.kind);
 }
 

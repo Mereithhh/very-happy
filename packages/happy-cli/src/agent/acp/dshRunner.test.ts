@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+    DSH_COMPACT_NOTICE,
     DSH_INSTALL_COMMAND,
     dshAutoApproves,
+    dshContextUsageOf,
     dshFailureHint,
     dshPrerequisiteProblem,
     dshSetupMessage,
@@ -171,4 +173,22 @@ describe('switching a dsh session to auto-approve (B-969)', () => {
       .toBe('Auto-approved 2 waiting requests after switching to Auto-run — write: /tmp/x; todo');
     expect(dshAutoApprovedNotice([{ toolName: 'bash', input: { command: 'x'.repeat(400) } }])!.length).toBeLessThan(260);
   });
+});
+
+describe('dsh context usage (B-970)', () => {
+    it('ties a usage_update to the dsh session it measured', () => {
+        expect(dshContextUsageOf({ sessionUpdate: 'usage_update', used: 900, size: 1_000_000 }, 'dsh-1', 7)).toEqual({ sessionId: 'dsh-1', tokens: 900, contextWindow: 1_000_000, updatedAt: 7 });
+    });
+
+    it('drops a payload without a measurement or before the session id is known', () => {
+        expect(dshContextUsageOf({ used: 900, size: 1_000_000 }, null, 7)).toBeNull();
+        expect(dshContextUsageOf({ used: 900 }, 'dsh-1', 7)).toBeNull();
+        expect(dshContextUsageOf(undefined, 'dsh-1', 7)).toBeNull();
+    });
+});
+
+describe('dsh /compact notice (B-970)', () => {
+    it('is the exact line the web translates (goalNotice.ts DSH_COMPACT_NOTICE)', () => {
+        expect(DSH_COMPACT_NOTICE).toBe('DeepSeek Harness compacts the context automatically when it reaches about 80%; it has no manual compact command.');
+    });
 });

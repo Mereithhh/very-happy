@@ -29,6 +29,24 @@ afterEach(async () => {
 });
 
 describe('AcpBackend lifecycle (B-629)', () => {
+    it('B-970: forwards a usage_update as a usage_update event with its used / size', async () => {
+        const { backend, messages } = backendFor('usage');
+        backends.push(backend);
+        const { sessionId } = await backend.startSession();
+        await backend.sendPrompt(sessionId, 'go');
+        const usage = messages.filter((m) => m.type === 'event' && m.name === 'usage_update');
+        expect(usage).toHaveLength(1);
+        expect(usage[0].payload).toMatchObject({ sessionUpdate: 'usage_update', used: 4321, size: 1000000 });
+    });
+
+    it('B-970: an agent without usage_update emits no usage event (pi / Gemini unchanged)', async () => {
+        const { backend, messages } = backendFor('end-turn');
+        backends.push(backend);
+        const { sessionId } = await backend.startSession();
+        await backend.sendPrompt(sessionId, 'go');
+        expect(messages.some((m) => m.type === 'event' && m.name === 'usage_update')).toBe(false);
+    });
+
     it('ends the turn when the prompt is answered, even with a tool call still open', async () => {
         const { backend, messages } = backendFor('end-turn');
         backends.push(backend);

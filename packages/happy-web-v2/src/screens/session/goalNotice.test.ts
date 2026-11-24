@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { t } from '@/text';
 import { zhHans } from '@/text/translations/zh-Hans';
-import { DSH_SESSION_NOTICE, dshKeyHintText, goalNoticeText, isDshRawNoKeyLine, isDshSessionNotice, parseDshKeyHint, parseGoalNotice } from './goalNotice';
+import { DSH_COMPACT_NOTICE, DSH_SESSION_NOTICE, dshKeyHintText, goalNoticeText, isDshCompactNotice, isDshRawNoKeyLine, isDshSessionNotice, parseDshKeyHint, parseGoalNotice } from './goalNotice';
 import { presentServiceEvent } from './serviceEvent';
 
 // The exact lines CLI 0.2.220 sends (packages/happy-cli/src/codex/codexGoal.ts, agent/acp/dshRunner.ts).
@@ -87,5 +87,16 @@ describe('parseDshKeyHint (B-960)', () => {
         expect(presentServiceEvent(`dsh error: ${raw}`)).toEqual({ kind: 'hidden' });
         expect(presentServiceEvent(raw)).toEqual({ kind: 'hidden' });
         expect(presentServiceEvent('dsh error: something else')).toMatchObject({ kind: 'subtle' });
+    });
+});
+
+// B-970: the dsh answer to /compact (CLI dshRunner.ts DSH_COMPACT_NOTICE), in the interface language.
+describe('dsh /compact notice (B-970)', () => {
+    it('matches the CLI line exactly and renders through the text table', () => {
+        expect(DSH_COMPACT_NOTICE).toBe('DeepSeek Harness compacts the context automatically when it reaches about 80%; it has no manual compact command.');
+        expect(isDshCompactNotice(` ${DSH_COMPACT_NOTICE}\n`)).toBe(true);
+        expect(isDshCompactNotice('This session type does not support /compact')).toBe(false);
+        expect(t('session.chat.dshCompactNotice')).toBe(DSH_COMPACT_NOTICE);
+        expect(zhHans.session.chat.dshCompactNotice).toBe('dsh 会在上下文用到约 80% 时自动压缩，没有手动压缩命令。');
     });
 });

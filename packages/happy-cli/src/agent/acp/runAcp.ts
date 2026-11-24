@@ -1,7 +1,7 @@
 import { VERY_HAPPY_DISCOVERY } from '@/skill/discovery';
 import { dshHintContext, loadDshWrapperAccount, MACHINE_DSH_ACCOUNT, type DshWrapperAccount } from '@/agentProfiles/dshAccount';
 import { SPAWN_ACCOUNT_ENV } from '@/agentProfiles/store';
-import { DSH_AUTO_APPROVED_REASON, DSH_LIVE_PERMISSION_CAPABILITY, DSH_SESSION_NOTICE, dshAutoApprovedNotice, acpPendingRequestExtras, dshAutoApproves, dshFailureHint } from './dshRunner';
+import { DSH_AUTO_APPROVED_REASON, DSH_COMPACT_NOTICE, DSH_LIVE_PERMISSION_CAPABILITY, DSH_SESSION_NOTICE, dshAutoApprovedNotice, acpPendingRequestExtras, dshAutoApproves, dshContextUsageOf, dshFailureHint } from './dshRunner';
 import { isSessionPeerPrompt } from '@/claude/nonUserPrompt';
 import { readPiModelsJson, resolvePiContextUsage, type PiContextReport } from './piContextUsage';
 import { buildAcpPrompt, routeAcpUserText } from './acpSlashCommand';
@@ -19,7 +19,7 @@ import { acpNoticeMessage, type AcpNotice } from './acpNotices';
 import { describeAcpTurnFailure } from './acpTurnFailure';
 import { DefaultTransport } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
-import { ISSUE_SESSION_CAPABILITY, PI_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, type SessionEnvelope } from '@slopus/happy-wire';
+import { DSH_CONTEXT_CAPABILITY, ISSUE_SESSION_CAPABILITY, PI_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, type SessionEnvelope } from '@slopus/happy-wire';
 import { issueSessionMetadata } from '@/issues/sessionMetadata';
 import { createProjectInjector } from '@/projects/injector';
 import { sharedProjectsClient } from '@/projects/client';
@@ -567,6 +567,8 @@ export async function runAcp(opts: {
   });
   // B-874: issue_* tools (via HAPPY_MCP_URL) + issue digest (spec §5).
   metadata.capabilities = [...(metadata.capabilities ?? []), ISSUE_SESSION_CAPABILITY];
+  // B-970: dsh's usage_update is mirrored into agentState.dshContextUsage (composer meter).
+  if (opts.agentName === 'dsh') metadata.capabilities = [...metadata.capabilities, DSH_CONTEXT_CAPABILITY];
   metadata.attachmentKinds = [];
   // B-844: report the model the machine's Gemini config pins (null = none),
   // so the web's "follow latest" leaves it alone.
@@ -1070,6 +1072,11 @@ export async function runAcp(opts: {
       }));
     }
 
+    if (msg.type === 'event' && msg.name === 'usage_update' && opts.agentName === 'dsh') {
+      const usage = dshContextUsageOf(msg.payload, agentSessionId, Date.now());
+      if (usage) session.updateAgentState(state => ({ ...state, dshContextUsage: usage }));
+    }
+
     if (msg.type === 'event' && msg.name === 'config_options_update') {
       const configOptions = extractConfigOptionsFromPayload(msg.payload);
       if (configOptions) {
@@ -1273,7 +1280,7 @@ export async function runAcp(opts: {
       // Owner 10-30: a standalone `/compact` runs as a turn of its own — never steered
       // into a running turn or joined with queued messages, where the agent reads it
       // as chat — and an agent without compaction gets Very Happy's answer, not the model's.
-      const route = routeAcpUserText(message.content.text, agentCommands);
+      const route = routeAcpUserText(message.content.text, agentCommands, opts.agentName === 'dsh' ? { compactNotice: DSH_COMPACT_NOTICE } : {});
       if (route.kind === 'unsupported') {
         session.sendSessionEvent({ type: 'message', message: route.notice });
         return;

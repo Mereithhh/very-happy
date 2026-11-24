@@ -44,3 +44,17 @@ describe('routeAcpUserText (Owner 10-30: /compact must run or be refused by Very
         expect(routeAcpUserText('please /compact', pi)).toEqual({ kind: 'prompt', text: 'please /compact' });
     });
 });
+
+describe('routeAcpUserText on dsh (B-970)', () => {
+    const notice = 'dsh compacts by itself';
+    it('answers /compact (every spelling) with the given notice and never sends it to the model', () => {
+        for (const text of ['/compact', ' /compact ', '／compact', '/Compact']) {
+            expect(routeAcpUserText(text, null, { compactNotice: notice })).toEqual({ kind: 'unsupported', notice });
+        }
+    });
+    it('leaves other text and the agents without the option as before', () => {
+        expect(routeAcpUserText('compact the file', null, { compactNotice: notice })).toEqual({ kind: 'prompt', text: 'compact the file' });
+        expect(routeAcpUserText('/compact', null)).toEqual({ kind: 'command', text: '/compact' });
+        expect(routeAcpUserText('/compact', ['compact'], {})).toEqual({ kind: 'command', text: '/compact' });
+    });
+});

@@ -8,6 +8,7 @@
  * module error that reads like a crash, so it is checked up front.
  */
 
+import { dshUsageUpdateOccupancy, type DshContextUsage } from '@slopus/happy-wire';
 import { AGENT_SEARCH_LOCATIONS } from '@/utils/agentSearchLocations';
 
 export const DSH_PACKAGE = '@deepseek-ai/dsh';
@@ -184,3 +185,22 @@ export function dshToolKind(toolName: string | undefined): string | null {
 
 /** B-952: the one-time line a new dsh session shows — the limits are dsh's ACP surface, not a fault. */
 export const DSH_SESSION_NOTICE = 'DeepSeek Harness session: replies appear one message at a time (dsh sends no word-by-word stream); resuming keeps this transcript but dsh does not replay it; plan mode, slash commands and images are not available. Tool permissions are asked here unless the session runs in yolo mode.';
+
+/**
+ * B-970: dsh's ACP server has no `/compact` (it lists no commands and hands
+ * the text to the model as chat); dsh compacts on its own at ~80% of the window
+ * (deepseek-harness compaction-basic `src/config.ts`). Very Happy answers the
+ * command with this line instead. The web renders its own translation of this
+ * exact text (goalNotice.ts DSH_COMPACT_NOTICE).
+ */
+export const DSH_COMPACT_NOTICE = 'DeepSeek Harness compacts the context automatically when it reaches about 80%; it has no manual compact command.';
+
+/**
+ * B-970: the `agentState.dshContextUsage` record for one ACP `usage_update`,
+ * or null (not dsh's measurement, or no dsh session id yet to tie it to).
+ */
+export function dshContextUsageOf(payload: unknown, dshSessionId: string | null, now: number): DshContextUsage | null {
+  if (!dshSessionId) return null;
+  const occupancy = dshUsageUpdateOccupancy(payload);
+  return occupancy ? { sessionId: dshSessionId, ...occupancy, updatedAt: now } : null;
+}

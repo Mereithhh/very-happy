@@ -1051,6 +1051,7 @@ export const en = {
             dshNoKeyAddAccount: 'This machine has no DeepSeek key. Add a DeepSeek account under Settings → Models & accounts, or set DEEPSEEK_API_KEY in the daemon\'s environment.',
             dshNoKeyUseAccount: ({ label }: { label: string }) => `This machine's DeepSeek default is the machine login, but there is no key here. Set the default to "${label}" under Settings → Models & accounts, or pick it when starting a session.`,
             dshSessionNotice: 'DeepSeek Harness session: replies appear one message at a time (dsh sends no word-by-word stream); resuming keeps this transcript but dsh does not replay it; plan mode, slash commands and images are not available. Tool permissions are asked here unless the session runs in yolo mode.',
+            dshCompactNotice: 'DeepSeek Harness compacts the context automatically when it reaches about 80%; it has no manual compact command.',
             subagentPrompt: 'prompt',
             subagentLog: 'process',
             subagentNoActivity: 'This sub-agent has not reported anything yet.',
@@ -3507,6 +3508,13 @@ export const en = {
                 summary: 'When an agent tries to preview a file that does not exist (or a folder), it is told so instead of being told the preview went out, so it stops saying "preview opened" for nothing.',
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
+            },
+            nov25b: {
+                title: 'Context used, for DeepSeek Harness sessions',
+                summary: 'DeepSeek Harness (dsh) sessions now show how full the context is, and /compact gets a straight answer.',
+                context: 'The meter under the composer in a dsh session shows the tokens in context against the window dsh reports, updated after each reply. It is still there after a reload or resume. Needs the session restarted on CLI 0.2.227.',
+                compact: '/compact in a dsh session is no longer sent to the model as chat: dsh compacts by itself at about 80% of the window and has no manual command, and the session says so.',
+                edit: 'Edit, delete, retry and fork stay unavailable in dsh sessions: dsh cannot cut or branch its history yet, so those buttons are not shown.',
             },
             nov25c: {
                 title: 'The Codex model picker says who chose the model',

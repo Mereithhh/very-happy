@@ -112,7 +112,7 @@ export function composerContextUsage(
     runningModel?: string | null,
     /** B-908: the window the wrapper reports Claude Code measures against — beats the id guess. */
     reportedWindow?: number | null,
-    /** B-963: Codex sessions read only Codex's own figures (null = none reported); undefined = not Codex. */
+    /** B-963 / B-970: Codex and dsh sessions read only the agent's own figures (null = none reported); undefined = neither. */
     codex?: { tokens: number | null; contextWindow?: number | null } | null,
 ): ComposerContextUsage {
     if (codex !== undefined) {

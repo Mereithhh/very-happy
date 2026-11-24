@@ -1205,6 +1205,12 @@ export class AcpBackend implements AgentBackend {
       return;
     }
 
+    // B-970: dsh reports context occupancy (`used` / `size`) after each committed answer.
+    if (updateType === 'usage_update') {
+      this.emit({ type: 'event', name: 'usage_update', payload: update });
+      return;
+    }
+
     if (updateType === 'current_mode_update') {
       const currentModeId = (update as { currentModeId?: unknown }).currentModeId;
       if (typeof currentModeId === 'string' && currentModeId.length > 0) {
@@ -1233,6 +1239,7 @@ export class AcpBackend implements AgentBackend {
       'config_option_update',
       'config_options_update',
       'current_mode_update',
+      'usage_update',
     ];
     if (updateType &&
         !handledTypes.includes(updateType) &&

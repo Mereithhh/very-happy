@@ -908,6 +908,8 @@ export type AgentState = {
   codexGoal?: import('@slopus/happy-wire').CodexGoal | null
   /** B-963: context occupancy of the Codex thread and its sub-agent threads. */
   codexContextUsage?: import('@slopus/happy-wire').CodexContextUsage | null
+  /** B-970: context occupancy of the dsh session (its ACP `usage_update`). */
+  dshContextUsage?: import('@slopus/happy-wire').DshContextUsage | null
   requests?: {
     [id: string]: {
       tool: string,
