@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { daemonLineage, detectDaemonSupervisor, ownsSystemdUnit, probeSystemdUnit, type SystemdUnitEvidence, handoverWaitsForSessions, kickstartLaunchdJob, parseSystemdUnit, probeLaunchdJob, probeSystemdKillMode, SYSTEMD_RESTART_HINT, wrappersSurviveHandover, type HandoverSurvivalEvidence } from './daemonSupervisor';
+import { daemonLineage, detectDaemonSupervisor, handoverSupervisor, ownsSystemdUnit, probeSystemdUnitWithRetry, probeSystemdUnit, type SystemdUnitEvidence, handoverWaitsForSessions, kickstartLaunchdJob, parseSystemdUnit, probeLaunchdJob, probeSystemdKillMode, SYSTEMD_RESTART_HINT, wrappersSurviveHandover, type HandoverSurvivalEvidence } from './daemonSupervisor';
 import { HANDOVER_EXIT_CODE } from './shutdownExit';
 
 /**
@@ -52,9 +52,42 @@ describe('detectDaemonSupervisor', () => {
         expect(await probeSystemdUnit(async () => '0::/user.slice/session-2.scope\n', exec, async () => [7])).toBeNull();
     });
 
+    it('an unreadable unit at startup is retried (3 tries, 1 s apart); a readable answer is final', async () => {
+        const sleeps: number[] = [];
+        const sleep = async (ms: number) => { sleeps.push(ms); };
+        let n = 0;
+        const flaky = async () => (++n < 3 ? null : OWNED);
+        const unit = await probeSystemdUnitWithRetry(flaky, 3, 1_000, sleep);
+        expect(unit).toEqual(OWNED);
+        expect(sleeps).toEqual([1_000, 1_000]);
+        expect(detectDaemonSupervisor({ HAPPY_DAEMON_SUPERVISOR: 'systemd' }, 'linux', null, unit)).toBe('systemd');
+        // readable but unproven: no retry
+        let m = 0;
+        const unproven = async () => { m++; return { activeState: 'inactive', mainPid: 0, ancestorPids: [1] }; };
+        expect(await probeSystemdUnitWithRetry(unproven, 3, 1_000, sleep)).toMatchObject({ activeState: 'inactive' });
+        expect(m).toBe(1);
+        // never readable → null after 3 tries (a throw counts as unreadable)
+        let k = 0;
+        expect(await probeSystemdUnitWithRetry(async () => { k++; throw new Error('timeout'); }, 3, 1_000, sleep)).toBeNull();
+        expect(k).toBe(3);
+    });
+
+    it('the handover re-checks a systemd claim and that answer overrides the startup decision', async () => {
+        const env = { HAPPY_DAEMON_SUPERVISOR: 'systemd' };
+        expect(await handoverSupervisor('none', env, 'linux', async () => OWNED)).toBe('systemd');
+        expect(await handoverSupervisor('systemd', env, 'linux', async () => ({ activeState: 'inactive', mainPid: 0, ancestorPids: [500] }))).toBe('none');
+        expect(await handoverSupervisor('systemd', env, 'linux', async () => null)).toBe('none');
+        // no systemd claim: the startup decision stands, nothing is probed
+        let probed = false;
+        expect(await handoverSupervisor('launchd', { XPC_SERVICE_NAME: 'x' }, 'darwin', async () => { probed = true; return null; })).toBe('launchd');
+        expect(await handoverSupervisor('none', {}, 'linux', async () => { probed = true; return OWNED; })).toBe('none');
+        expect(probed).toBe(false);
+    });
+
     it('run.ts gives the systemd decision the unit probe', () => {
         const run = readFileSync(join(__dirname, 'run.ts'), 'utf8');
-        expect(run).toContain('const systemdUnit = process.platform === \'linux\' ? await probeSystemdUnit() : null;');
+        expect(run).toContain('const systemdUnit = process.platform === \'linux\' ? await probeSystemdUnitWithRetry() : null;');
+        expect(run).toMatch(/const exitSupervisor = await handoverSupervisor\(daemonSupervisor, process\.env, process\.platform\);[\s\S]{0,300}if \(exitSupervisor !== 'none'\) \{\s+[^\n]*\n\s+process\.exit\(HANDOVER_EXIT_CODE\);/);
         expect(run).toContain('detectDaemonSupervisor(process.env, process.platform, launchdJob, systemdUnit)');
     });
 
@@ -148,7 +181,7 @@ describe('daemon run wiring (B-505 systemd / B-770 launchd handover)', () => {
 
     it('any supervised daemon (launchd or systemd) exits HANDOVER_EXIT_CODE after releasing ownership, before any spawn', () => {
         const release = run.indexOf('await releaseDaemonLock(daemonLockHandle);\n        await stopCaffeinate();');
-        const gate = run.indexOf("if (daemonSupervisor !== 'none') {");
+        const gate = run.indexOf("if (exitSupervisor !== 'none') {");
         const spawn = run.indexOf("spawnHappyCLI(['daemon', 'start'], {");
         expect(release).toBeGreaterThan(-1);
         expect(gate).toBeGreaterThan(release);

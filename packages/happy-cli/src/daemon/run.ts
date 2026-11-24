@@ -125,7 +125,7 @@ import { createMainAgentProactive, type MainAgentProactive } from './mainAgentPr
 import { sendRemoteMessage } from '@/sessions/remoteSessionClient';
 import { waitForSessionKey } from '@/commands/sessionMessage';
 import { daemonExitCode, HANDOVER_EXIT_CODE, type ShutdownSource } from './shutdownExit';
-import { daemonLineage, detectDaemonSupervisor, probeLaunchdJob, probeSystemdUnit, probeSystemdKillMode, wrappersSurviveHandover, handoverWaitsForSessions } from './daemonSupervisor';
+import { daemonLineage, detectDaemonSupervisor, probeLaunchdJob, probeSystemdUnitWithRetry, handoverSupervisor, probeSystemdKillMode, wrappersSurviveHandover, handoverWaitsForSessions } from './daemonSupervisor';
 
 import { shellescape } from '@/utils/shellescape';
 import { sanitizeImportTitle } from './importTitle';
@@ -2231,7 +2231,7 @@ export async function startDaemon(): Promise<void> {
     // B-505/B-770: decides how the auto-update handover leaves this process.
     const launchdJob = process.platform === 'darwin' ? await probeLaunchdJob() : null;
     // B-965: a systemd claim from the env needs the unit's own word (active, MainPID = us or an ancestor).
-    const systemdUnit = process.platform === 'linux' ? await probeSystemdUnit() : null;
+    const systemdUnit = process.platform === 'linux' ? await probeSystemdUnitWithRetry() : null;
     const daemonSupervisor = detectDaemonSupervisor(process.env, process.platform, launchdJob, systemdUnit);
     if (daemonSupervisor === 'none' && (process.env.INVOCATION_ID || process.env.HAPPY_DAEMON_SUPERVISOR?.trim().toLowerCase() === 'systemd')) {
       logger.warn(`[DAEMON RUN] The environment says systemd, but this daemon is not its unit's main process (${systemdUnit ? `ActiveState=${systemdUnit.activeState} MainPID=${systemdUnit.mainPid}` : 'unit unreadable'}); running unsupervised`);
@@ -2754,8 +2754,11 @@ export async function startDaemon(): Promise<void> {
         // escapes the job and the exit 0 below leaves the job `not running`;
         // under systemd the default KillMode would also SIGTERM every wrapper.
         // See daemonSupervisor.ts, ops/dev-sg and ops/mac-office.
-        if (daemonSupervisor !== 'none') {
-          logger.debug(`[DAEMON RUN] ${daemonSupervisor}-supervised: exiting ${HANDOVER_EXIT_CODE} for the supervisor to restart on the new bundle`);
+        // B-965: a systemd claim is re-checked right before the exit is chosen; this answer wins.
+        const exitSupervisor = await handoverSupervisor(daemonSupervisor, process.env, process.platform);
+        if (exitSupervisor !== daemonSupervisor) logger.warn(`[DAEMON RUN] supervisor re-checked for the handover: ${daemonSupervisor} → ${exitSupervisor}`);
+        if (exitSupervisor !== 'none') {
+          logger.debug(`[DAEMON RUN] ${exitSupervisor}-supervised: exiting ${HANDOVER_EXIT_CODE} for the supervisor to restart on the new bundle`);
           process.exit(HANDOVER_EXIT_CODE);
         }
 

@@ -247,6 +247,41 @@ async function ancestorPidChain(exec: (file: string, args: string[]) => Promise<
     return chain;
 }
 
+/**
+ * B-965: an unreadable unit (null) is retried — a `systemctl show` that times
+ * out under load at startup must not turn a unit-owned daemon into `none` for
+ * its whole life. A readable answer (even one that proves nothing) is final.
+ */
+export async function probeSystemdUnitWithRetry(
+    probe: () => Promise<SystemdUnitEvidence | null> = () => probeSystemdUnit(),
+    attempts = 3,
+    delayMs = 1_000,
+    sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<SystemdUnitEvidence | null> {
+    for (let i = 0; i < attempts; i++) {
+        if (i > 0) await sleep(delayMs);
+        const unit = await probe().catch(() => null);
+        if (unit) return unit;
+    }
+    return null;
+}
+
+/**
+ * B-965: the supervisor the handover exits for. A daemon whose env claims
+ * systemd asks the unit again right before choosing the exit (the startup
+ * answer may be stale or was unreadable); that answer wins. Anything else
+ * keeps the startup decision.
+ */
+export async function handoverSupervisor(
+    startup: DaemonSupervisor,
+    env: NodeJS.ProcessEnv,
+    platform: NodeJS.Platform,
+    probe: () => Promise<SystemdUnitEvidence | null> = () => probeSystemdUnitWithRetry(),
+): Promise<DaemonSupervisor> {
+    if (!claimsSystemd(env, platform) || env.HAPPY_DAEMON_SUPERVISOR?.trim().toLowerCase() === 'none') return startup;
+    return detectDaemonSupervisor(env, platform, null, await probe().catch(() => null));
+}
+
 /** linux only; any failure reads as "unknown" (null), which keeps the turn gate unless the unit said so explicitly. */
 export async function probeSystemdKillMode(
     readCgroup: () => Promise<string> = () => readFile('/proc/self/cgroup', 'utf8'),
