@@ -172,6 +172,7 @@ import { shouldApplyPermissionModeLive } from './livePermissionMode';
 import { derivePermissionModeDisplay } from './permissionModeDisplay';
 import { resolveIntentSource } from '@/sync/yoloEnforcement';
 import { getAgentDefaultOverride } from '@/sync/agentDefaults';
+import { codexModelSource } from '@/sync/codexModelSource';
 import { isAgentWorkLive } from '@/sync/agentLiveness';
 import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 import { yieldForSendFeedback } from './sendFeedback';
@@ -474,8 +475,9 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         ? `${nameOfBaseModel(id.slice(0, -LONG_CONTEXT_SUFFIX.length))} · ${t('session.chat.modelPicker.longContext')}`
         : nameOfBaseModel(id);
     const machineConfigName = machineConfigId ? t('session.chat.machineConfigModel', { model: nameOfModel(machineConfigId) }) : t('session.chat.machineDefaultModel');
+    // B-971: on an account the reported model is the account's, not the machine config's.
     const followName = followState.kind === 'machineConfig'
-        ? t('session.chat.followMachineConfig', { model: nameOfModel(followState.model) })
+        ? t(session && sessionAccount.facts?.profile ? 'session.chat.followAccountModel' : 'session.chat.followMachineConfig', { model: nameOfModel(followState.model) })
         : followState.kind === 'latest'
             ? t('session.chat.followLatestOption', { model: followState.model.endsWith(LONG_CONTEXT_SUFFIX) ? nameOfModel(followState.model) : baseModels.find((option) => option.key === followState.model)?.name ?? followState.label ?? followState.model })
             : followState.kind === 'machineDefault'
@@ -612,6 +614,25 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     // B-849a: an old CLI's Codex/Gemini wrapper does not report its machine
     // config model, so what follow-latest runs there is unknown — say that.
     const runFactsUnknown = offersFollowLatest && followState.kind === 'machineDefault' && displayedModelKey === LATEST_MODEL_MODE;
+    // B-971: say who chose the model — a pinned new-session default is named as
+    // such, and when it hides a model this machine's Codex config pins, the
+    // picker says so and offers the config back (for this session only).
+    const modelSource = codexModelSource({
+        flavor,
+        explicitModelMode,
+        defaultModelMode: getAgentDefaultOverride(agentDefaultOverrides, flavor).modelMode,
+        configuredModel: session ? metadata?.configuredModel : launcherContext?.configuredModel,
+        onAccount: !!(session && sessionAccount.facts?.profile),
+    });
+    const newSessionDefaultLabel = modelSource.kind === 'newSessionDefault' && displayedModelKey === modelSource.model
+        ? t('session.chat.newSessionDefaultModel', { model: nameOfModel(modelSource.model) })
+        : undefined;
+    const configOverriddenNotice = modelSource.kind === 'newSessionDefault' && modelSource.overriddenConfig && offersFollowLatest
+        ? {
+            text: t('session.chat.modelPicker.configOverridden', { model: nameOfModel(modelSource.overriddenConfig) }),
+            extra: <button type="button" className="me-link" data-use-machine-config onClick={() => setMode('updateSessionModelMode', 'modelMode', LATEST_MODEL_MODE)}>{t('session.chat.modelPicker.useMachineConfig')}</button>,
+        }
+        : undefined;
     const upgradeMachineId = metadata?.machineId ?? pending?.machineId;
     // B-850c: 账号 on top of the panel; switching restarts in place (confirm says
     // so). An API account pins its model: the list is that account's models and
@@ -1923,9 +1944,9 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                         } : undefined}
                         subtitle={modelSubtitle}
                         rowExtra={upgradeMachineId ? (option) => codexGatedKeys.has(option.key) ? <UpgradeAgentLink machineId={upgradeMachineId} label={t('session.chat.modelPicker.updateCodex')} /> : null : undefined}
-                        notice={runFactsUnknown ? { text: t('session.chat.modelPicker.unknownNote'), extra: upgradeMachineId ? <UpgradeCliLink machineId={upgradeMachineId} label={t('session.chat.modelPicker.upgradeCli')} /> : undefined } : undefined}
+                        notice={runFactsUnknown ? { text: t('session.chat.modelPicker.unknownNote'), extra: upgradeMachineId ? <UpgradeCliLink machineId={upgradeMachineId} label={t('session.chat.modelPicker.upgradeCli')} /> : undefined } : apiModelOptions ? undefined : configOverriddenNotice}
                         readOnly={isGemini ? { value: metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.modelPicker.geminiReadOnly'), hint: t('session.chat.modelPicker.geminiReadOnlyHint') } : undefined}
-                        triggerLabel={isGemini ? (metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.machineDefaultModel')) : runningTriggerLabel}
+                        triggerLabel={isGemini ? (metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.machineDefaultModel')) : runningTriggerLabel ?? (apiModelOptions ? undefined : newSessionDefaultLabel)}
                         pickRow={apiModelOptions ? undefined : pickModelRow}
                         onLongContextToggle={apiModelOptions ? undefined : rememberLongContext}
                         effort={{ label: t('session.chat.effortLabel'), options: effortOptions, value: selectedEffortKey, onChange: setEffort }}

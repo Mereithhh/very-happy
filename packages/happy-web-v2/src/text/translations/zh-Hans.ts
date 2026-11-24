@@ -1293,6 +1293,8 @@ export const zhHans: TranslationStructure = {
             modelRunning: ({ model }: { model: string }) => `实际在跑：${model}`,
             modelRunningOther: ({ model }: { model: string }) => `这个会话当前在跑 ${model}；从这里发下一条消息时会切过去`,
             followMachineConfig: ({ model }: { model: string }) => `本机配置 · ${model}`,
+            followAccountModel: ({ model }: { model: string }) => `账号 · ${model}`,
+            newSessionDefaultModel: ({ model }: { model: string }) => `新会话默认 · ${model}`,
             followLatestOption: ({ model }: { model: string }) => `跟随最新 · ${model}`,
             followLatestUpgradeCli: '实际模型未知 · 升级 CLI',
             followLatestDepends: '跟随最新',
@@ -1338,6 +1340,8 @@ export const zhHans: TranslationStructure = {
                 setDefaultDone: '已设为新会话默认',
                 upgradeCli: '升级 CLI',
                 unknownNote: '这台机器的 Very Happy CLI 太旧，不上报实际在跑的模型和思考强度。',
+                configOverridden: ({ model }: { model: string }) => `本机配置是 ${model}，被新会话默认覆盖了`,
+                useMachineConfig: '改用本机配置',
                 geminiReadOnly: '由本机配置决定',
                 geminiReadOnlyHint: '在 设置 → 模型与账号 → 本机配置 里改这台机器的 Gemini 配置',
                 desc: {
@@ -3661,6 +3665,12 @@ export const zhHans: TranslationStructure = {
                 summary: '终端所在的机器没连上时，打开终端只有黑屏，别人分享给你的终端尤其如此。现在终端里会写明这台机器没连上，以及是哪台机器。',
                 shared: '别人分享给你的终端会写明是谁的哪台机器（比如「Alex 的 mac-studio」）：连接时显示正在连接，机器没连上时显示没连上，看的过程中掉线也一样。',
                 recover: '机器重新连上后，终端会自动恢复，不用刷新，也不用点重试。你自己的终端也一样。',
+            },
+            nov25c: {
+                title: 'Codex 模型选择器标出模型来源',
+                summary: '模型选择器会标明 Codex 会话的模型从哪来：本机配置、新会话默认，还是账号。',
+                source: '分别显示为「本机配置 · X」「新会话默认 · X」「账号 · X」，一眼能看出是谁决定的模型。',
+                override: '如果你设过的新会话默认盖住了这台机器 Codex config.toml 里的模型，选择器会提示，并提供「改用本机配置」，只对这个会话生效。',
             },
             nov24d: {
                 title: '模型列表里可以直接选 Kimi K3.1 Pro 和 DeepSeek V4.1 Flash',
