@@ -86,7 +86,7 @@ export interface AutomationRunnerDeps {
      */
     accounts?: {
         sessionAccount: (sessionId: string) => string | null;
-        resolve: (agent: 'claude' | 'codex', requested: string | null | undefined) => string | null;
+        resolve: (agent: AccountAgent, requested: string | null | undefined) => string | null;
         rebind: (sessionId: string, accountId: string | null) => Promise<void>;
     };
     home?: string;
@@ -147,6 +147,9 @@ export function turnFailureReason(turn: Pick<TurnState, 'status' | 'refusal'>): 
     return `turn_${turn.status}`;
 }
 
+/** The agents whose automation runs carry an account (B-850d; B-970b dsh). */
+export type AccountAgent = 'claude' | 'codex' | 'dsh';
+
 /**
  * B-850d: before a sticky session gets this run, make it run on the run's
  * account (`requested` undefined = keep its own). Returns the refusal, or null.
@@ -154,7 +157,7 @@ export function turnFailureReason(turn: Pick<TurnState, 'status' | 'refusal'>): 
  */
 export async function alignStickyAccount(
     accounts: NonNullable<AutomationRunnerDeps['accounts']>,
-    agent: 'claude' | 'codex',
+    agent: AccountAgent,
     sessionId: string,
     requested: string | null | undefined,
 ): Promise<{ error: string; reason: string } | null> {
@@ -416,7 +419,8 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         const stickyKey = action.sticky ? renderTemplate(action.sticky.key, context) : undefined;
         // B-850d: the run's account — its own choice > the project's for this agent here > (absent) the machine default.
         const requestedAccount = resolveLaunchAgentProfile({ explicit: action.agentProfile, project: claimed.projectAgentProfiles, agent, machineId: deps.machineId }).agentProfileId;
-        const accountAgent = agent === 'claude' || agent === 'codex' ? agent : null;
+        // B-970b: dsh sessions take DeepSeek accounts too (agent-profile-bind is agent-agnostic).
+        const accountAgent = agent === 'claude' || agent === 'codex' || agent === 'dsh' ? agent : null;
         if (stickyKey) {
             const bound = claimed.stickies.find((sticky) => sticky.key === stickyKey);
             if (bound && (wakeable(bound.sessionId) || deps.live(bound.sessionId)) && deps.accounts && accountAgent) {

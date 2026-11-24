@@ -7,7 +7,8 @@ import { readPiModelsJson, resolvePiContextUsage, type PiContextReport } from '.
 import { buildAcpPrompt, routeAcpUserText } from './acpSlashCommand';
 import { registerAgentAttachmentDownloads } from '@/utils/agentAttachments';
 import { configuration } from '@/configuration';
-import { appendStagedAttachmentsToPrompt, stageClaudeAttachments, CLAUDE_ATTACHMENT_KINDS } from '@/claude/utils/attachmentContent';
+import { appendStagedAttachmentsToPrompt, stageClaudeAttachments } from '@/claude/utils/attachmentContent';
+import { acpAttachmentKinds } from './promptAttachments';
 import { preparePiTeamsRuntime } from '@/teams/piRuntime';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -37,7 +38,8 @@ import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
 import { claimSessionOrExit } from '@/utils/sessionLock';
-import { applyServerSnapshot, mergeReconnectMetadata, withoutServerSnapshot } from '@/utils/reconnectSession';
+import { applyReconnectReplay, applyServerSnapshot, exitCursorStamp, mergeReconnectMetadata, withoutServerSnapshot, type ReconnectReplay, type ExitCursor } from '@/utils/reconnectSession';
+import { OFFLINE_EXIT_STAMP_TIMEOUT_MS } from '@/claude/sessionExitLifecycle';
 import { piRestartNotice, readAcpReconnectEnv } from './acpSessionResume';
 import { takeReconnectEnv } from '@/utils/reconnectEnv';
 import { OUT_OF_TURN_QUIET_MS, outOfTurnAction } from './acpOutOfTurn';
@@ -606,12 +608,20 @@ export async function runAcp(opts: {
   // without --permission-mode used to fall back to `default`, stopping the first
   // turn at an approval the session had never asked for).
   let resumedPermissionMode: AcpPermissionMode | null = null;
+  // B-970b: B-679 for ACP (pi, gemini, dsh) — what was typed while the session was offline.
+  let reconnectReplay: ReconnectReplay | null = null;
   if (reconnect && response) {
     const snapshot = await api.getSession(response.id, response.encryptionKey, response.encryptionVariant);
     if (snapshot.ok) {
       response = applyServerSnapshot(response, snapshot.session);
       reconnectSeeded = true;
       resumedPermissionMode = normalizeAcpPermissionMode(snapshot.session.metadata?.permissionMode) ?? null;
+      // B-970b / B-679: start the cursor at the previous wrapper's offline-exit
+      // stamp so messages sent while the session was offline are routed now.
+      const wake = applyReconnectReplay(response);
+      response = wake.response;
+      reconnectReplay = wake.replay;
+      if (wake.replay) logger.debug(`[acp] Resuming (${wake.replay.source}): replaying records after seq=${response.seq}`);
     } else {
       response = withoutServerSnapshot(response);
       logger.debug(`[acp] Reconnect without server snapshot (${snapshot.reason}); skipping existing messages`);
@@ -639,7 +649,8 @@ export async function runAcp(opts: {
   if (reconnect) {
     session.suppressNextArchiveSignal();
     if (!reconnectSeeded) session.skipExistingMessages();
-    void session.cancelUndeliveredQueuedInputs();
+    // B-970b: never tombstone the records being replayed (only those at/below the replay cursor).
+    if (reconnectReplay?.source !== 'hibernation') void session.cancelUndeliveredQueuedInputs(reconnectReplay ? { maxSeq: reconnectReplay.seq } : undefined);
     session.updateMetadata((meta) => mergeReconnectMetadata(meta, metadata, Date.now()));
   }
 
@@ -865,8 +876,17 @@ export async function runAcp(opts: {
   // are tombstoned with; null = the runner ended unexpectedly.
   // (`as`: assigned only in callbacks — keep TS from narrowing it to null.)
   let exit = null as AcpExit | null;
+  // B-970b / B-679: an offline exit pins the message cursor and routes nothing
+  // more; the stamp tells the next wrapper where to resume routing.
+  let exitCursor: ExitCursor | undefined;
   const beginExit = (intent: AcpExit['intent'], reason: AcpExit['reason']) => {
-    if (!exit) exit = { intent, reason };
+    if (!exit) {
+      exit = { intent, reason };
+      if (intent === 'offline' && session) {
+        exitCursor = exitCursorStamp(session.messageCursor, Date.now());
+        session.freezeInbound();
+      }
+    }
     shouldExit = true;
     heldInput.drop(exit.reason);
     messageQueue.discardAll(exit.reason);
@@ -1396,8 +1416,7 @@ export async function runAcp(opts: {
     }
     session.updateMetadata((current) => ({
       ...current,
-      attachmentKinds: opts.agentName === 'pi' && backend.supportsImageAttachments
-        ? [...CLAUDE_ATTACHMENT_KINDS] : [],
+      attachmentKinds: acpAttachmentKinds(opts.agentName, backend.supportsImageAttachments),
     }));
     if (permissionModeIsFileBacked()) {
       fileBackedModeActive = true;
@@ -1653,6 +1672,11 @@ export async function runAcp(opts: {
       heldInput.drop(exit?.reason ?? 'failed');
       messageQueue.discardAll(exit?.reason ?? 'failed');
       const intent = acpExitIntent(exit);
+      // An unexpected end of the runner (no beginExit) goes offline too: stamp it the same way.
+      if (intent === 'offline' && !exit && !exitCursor) {
+        session.freezeInbound();
+        exitCursor = exitCursorStamp(session.messageCursor, Date.now());
+      }
       if (intent === 'archive') {
         session.updateMetadata((currentMetadata) => ({
           ...currentMetadata,
@@ -1661,6 +1685,12 @@ export async function runAcp(opts: {
           archivedBy: 'cli',
           archiveReason: 'Session ended',
         }));
+      }
+      // B-970b / B-679: the offline-exit stamp lands before the session goes offline.
+      if (intent === 'offline' && exitCursor) {
+        const stamp = exitCursor;
+        const landed = await session.updateMetadataAndWait((current) => ({ ...current, exitCursor: stamp }), OFFLINE_EXIT_STAMP_TIMEOUT_MS);
+        if (!landed) logger.debug(`[${opts.agentName}] offline exit cursor not confirmed before going offline`);
       }
       // B-864: a superseded runner writes nothing — the session is the successor's.
       if (intent !== 'superseded') {

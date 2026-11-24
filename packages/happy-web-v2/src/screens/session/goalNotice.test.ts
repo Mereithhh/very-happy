@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { t } from '@/text';
 import { zhHans } from '@/text/translations/zh-Hans';
-import { DSH_COMPACT_NOTICE, DSH_SESSION_NOTICE, dshKeyHintText, goalNoticeText, isDshCompactNotice, isDshRawNoKeyLine, isDshSessionNotice, parseDshKeyHint, parseGoalNotice } from './goalNotice';
+import { DSH_COMPACT_NOTICE, DSH_SESSION_NOTICE, LEGACY_DSH_SESSION_NOTICE, dshKeyHintText, goalNoticeText, isDshCompactNotice, isDshRawNoKeyLine, isDshSessionNotice, parseDshKeyHint, parseGoalNotice } from './goalNotice';
 import { presentServiceEvent } from './serviceEvent';
 
 // The exact lines CLI 0.2.220 sends (packages/happy-cli/src/codex/codexGoal.ts, agent/acp/dshRunner.ts).
@@ -42,6 +42,8 @@ describe('parseGoalNotice (B-954)', () => {
         expect(goalNoticeText({ type: 'budget-set', tokens: '5k' }, t)).toBe('Goal token budget set to 5k');
         expect(goalNoticeText({ type: 'paused-on-stop' }, t)).toBe('Goal paused — send /goal resume to continue');
         expect(isDshSessionNotice(` ${DSH_SESSION_NOTICE}\n`)).toBe(true);
+        // B-970b: the line older CLIs send (images "not available") still renders as today's notice.
+        expect(isDshSessionNotice(LEGACY_DSH_SESSION_NOTICE)).toBe(true);
         expect(t('session.chat.dshSessionNotice')).toBe(DSH_SESSION_NOTICE);
     });
 

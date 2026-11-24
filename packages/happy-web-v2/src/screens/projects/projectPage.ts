@@ -18,7 +18,8 @@ export type InjectionState =
   /** Metadata not loaded yet (e.g. another machine's session this browser cannot decrypt). */
   | { kind: 'unknown' };
 
-const INJECTABLE_FLAVORS = new Set(['claude', 'codex', 'gemini', 'pi', 'acp']);
+// B-970b: dsh runs on the same ACP wrapper (project-v1 since B-952).
+const INJECTABLE_FLAVORS = new Set(['claude', 'codex', 'gemini', 'pi', 'acp', 'dsh']);
 
 /**
  * The truth for the 「已注入 vN / 旧版 / 未注入」 badge (准则 1): capability from

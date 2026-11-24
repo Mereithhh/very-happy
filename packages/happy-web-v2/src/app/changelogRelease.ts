@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-25-dsh-batch-2',
+    cliVersion: '0.2.228',
+    date: '2026-11-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov25e.title',
+    summaryKey: 'changelog.releases.nov25e.summary',
+    itemKeys: ['changelog.releases.nov25e.offline', 'changelog.releases.nov25e.images', 'changelog.releases.nov25e.automations', 'changelog.releases.nov25e.projects'],
+  },
+  {
     id: '2026-11-25-codex-machine-config',
     cliVersion: '0.2.227',
     date: '2026-11-25',

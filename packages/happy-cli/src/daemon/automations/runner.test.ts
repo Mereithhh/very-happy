@@ -654,6 +654,26 @@ describe('B-850d automation runner: accounts', () => {
             expect(client.report).toHaveBeenLastCalledWith('r1', expect.objectContaining({ status: 'failed', sessionId: 'old', attentionReason: 'account_unavailable', error: expect.stringMatching(/^Account unavailable \(invalid\)/) }));
         });
 
+        it('B-970b: a dsh sticky session is aligned to the run\'s DeepSeek account like Claude/Codex; pi never is', async () => {
+            live.add('old');
+            const acc = accounts('ds-a');
+            const dshSticky = automation({ action: { kind: 'spawn', agent: 'dsh', directory: '/repo', prompt: 'x', agentProfile: { id: 'ds-b' }, sticky: { key: 'k' } } as any });
+            let runner = start(fakeClient([claimed(run(), dshSticky, bound)]), { accounts: acc }); await settled(runner);
+            expect(acc.resolve).toHaveBeenCalledWith('dsh', 'ds-b');
+            expect(acc.rebind).toHaveBeenCalledWith('old', 'ds-b');
+            runner.stop();
+            const piAcc = accounts('x');
+            const piSticky = automation({ action: { kind: 'spawn', agent: 'pi', directory: '/repo', prompt: 'x', agentProfile: { id: 'ds-b' }, sticky: { key: 'k' } } as any });
+            runner = start(fakeClient([claimed(run({ id: 'r2' }), piSticky, bound)]), { accounts: piAcc }); await settled(runner);
+            expect(piAcc.resolve).not.toHaveBeenCalled();
+        });
+
+        it('B-970b: a dsh run spawns dsh with the run\'s account', async () => {
+            const dshRun = automation({ action: { kind: 'spawn', agent: 'dsh', directory: '/repo', prompt: 'x', agentProfile: { id: 'ds-a' } } as any });
+            const runner = start(fakeClient([claimed(run({ id: 'rd1' }), dshRun)])); await settled(runner);
+            expect(spawn.mock.calls[0][0]).toMatchObject({ agent: 'dsh', agentProfileId: 'ds-a' });
+        });
+
         it('a hibernated sticky session is aligned before it is woken', async () => {
             const acc = accounts(null);
             const wakeHibernated = vi.fn(async (id: string) => { live.add(id); return true; });
