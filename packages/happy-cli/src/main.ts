@@ -412,7 +412,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
-      await ensureDaemonRunning()
+      await ensureDaemonRunning({ startedBy })
 
       await runGemini({credentials, startedBy});
     } catch (error) {
@@ -462,7 +462,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
 
       const resolved = resolveAcpAgentConfig(['pi', ...parsed.passthrough]);
       const { credentials } = await authAndSetupMachineIfNeeded();
-      await ensureDaemonRunning()
+      await ensureDaemonRunning({ startedBy: parsed.startedBy })
 
       await runAcp({
         credentials,
@@ -512,7 +512,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');
       const resolved = resolveAcpAgentConfig(['dsh', ...parsed.passthrough]);
       const { credentials } = await authAndSetupMachineIfNeeded();
-      await ensureDaemonRunning()
+      await ensureDaemonRunning({ startedBy: parsed.startedBy })
 
       await runAcp({
         credentials,
@@ -562,7 +562,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
 
       const resolved = resolveAcpAgentConfig(acpArgs);
       const { credentials } = await authAndSetupMachineIfNeeded();
-      await ensureDaemonRunning()
+      await ensureDaemonRunning({ startedBy })
 
       await runAcp({
         credentials,
@@ -600,7 +600,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       }
 
       const { credentials } = await authAndSetupMachineIfNeeded();
-      await ensureDaemonRunning()
+      await ensureDaemonRunning({ startedBy })
 
       await runOpenClaw({
         credentials,
@@ -1087,7 +1087,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
     // B-512: a daemon-spawned wrapper does not check on its own daemon (see
     // claude/startupPlan.ts); terminal launches still make sure one runs.
     if (planClaudeStartup({ startedBy: options.startedBy, reconnect: false }).ensureDaemonRunning) {
-      await ensureDaemonRunning()
+      await ensureDaemonRunning({ startedBy: options.startedBy })
     }
 
     // Start the CLI

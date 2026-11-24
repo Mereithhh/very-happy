@@ -81,8 +81,16 @@ export const readLiveProcessTable: ProcessTableReader = () => {
     }
 };
 
-/** Every descendant of `rootPid` in `table` (breadth-first, root excluded). */
-export function descendantsOf(rootPid: number, table: readonly ProcessEntry[]): ProcessEntry[] {
+/**
+ * Every descendant of `rootPid` in `table` (breadth-first, root excluded).
+ *
+ * B-965: a pid in `prune` met BELOW the root is left out together with its
+ * whole subtree. The daemon passes its own pid: a daemon started by a session
+ * wrapper (an upgrade) is that wrapper's child, and stopping the wrapper's tree
+ * must not take the daemon's other sessions with it. A walk that starts AT a
+ * pruned pid (a wrapper reaping its own children) is unaffected.
+ */
+export function descendantsOf(rootPid: number, table: readonly ProcessEntry[], prune: ReadonlySet<number> = new Set()): ProcessEntry[] {
     const children = new Map<number, ProcessEntry[]>();
     for (const entry of table) {
         if (entry.pid === entry.ppid) continue;
@@ -97,6 +105,7 @@ export function descendantsOf(rootPid: number, table: readonly ProcessEntry[]): 
         for (const child of children.get(pid) ?? []) {
             if (seen.has(child.pid)) continue;
             seen.add(child.pid);
+            if (prune.has(child.pid)) continue;
             out.push(child);
             queue.push(child.pid);
         }
@@ -104,11 +113,38 @@ export function descendantsOf(rootPid: number, table: readonly ProcessEntry[]): 
     return out;
 }
 
-/** The tree under (and optionally including) a live root, or [] when it cannot be read. */
-export function snapshotTree(rootPid: number, options: { includeRoot?: boolean; read?: ProcessTableReader } = {}): ProcessEntry[] {
+/**
+ * The pids of this process and every process below it in `table` — what a tree
+ * stop issued from here must never signal (B-965).
+ */
+export function selfTreePids(table: readonly ProcessEntry[], selfPid: number = process.pid): Set<number> {
+    return new Set([selfPid, ...descendantsOf(selfPid, table).map((entry) => entry.pid)]);
+}
+
+/** `pid`'s parent chain in `table`, nearest first (pid itself excluded; stops on a loop or at init). */
+export function ancestorsOf(pid: number, table: readonly ProcessEntry[]): number[] {
+    const parent = new Map(table.map((entry) => [entry.pid, entry.ppid]));
+    const out: number[] = [];
+    const seen = new Set<number>([pid]);
+    let current = parent.get(pid);
+    while (current !== undefined && current > 1 && !seen.has(current)) {
+        out.push(current);
+        seen.add(current);
+        current = parent.get(current);
+    }
+    return out;
+}
+
+/**
+ * The tree under (and optionally including) a live root, or [] when it cannot
+ * be read. B-965: never includes this process or anything below it — a root
+ * that is an ANCESTOR of this process (the daemon under a session wrapper)
+ * yields only the root's other branches.
+ */
+export function snapshotTree(rootPid: number, options: { includeRoot?: boolean; read?: ProcessTableReader; selfPid?: number } = {}): ProcessEntry[] {
     const table = (options.read ?? readProcessTable)();
     if (!table) return [];
-    const descendants = descendantsOf(rootPid, table);
+    const descendants = descendantsOf(rootPid, table, new Set([options.selfPid ?? process.pid]));
     const root = options.includeRoot ? table.find((entry) => entry.pid === rootPid) : undefined;
     return root ? [root, ...descendants] : descendants;
 }
@@ -122,6 +158,13 @@ export function survivorsOf(snapshot: readonly ProcessEntry[], table: readonly P
 export type ReapDeps = {
     read?: ProcessTableReader;
     kill?: (pid: number, signal: NodeJS.Signals) => void;
+    /**
+     * B-965: also spare everything currently below this process. For a tree
+     * stop of ANOTHER process's tree (the daemon stopping a wrapper); a wrapper
+     * reaping its own children must leave it off.
+     */
+    spareSelfTree?: boolean;
+    selfPid?: number;
 };
 
 /** SIGKILL every snapshot member still alive as itself. Returns the pids signalled. */
@@ -130,9 +173,11 @@ export function killSurvivors(snapshot: readonly ProcessEntry[], deps: ReapDeps 
     const table = (deps.read ?? readProcessTable)();
     if (!table) return [];
     const kill = deps.kill ?? ((pid, signal) => process.kill(pid, signal));
+    const selfPid = deps.selfPid ?? process.pid;
+    const spared = deps.spareSelfTree ? selfTreePids(table, selfPid) : new Set([selfPid]);
     const killed: number[] = [];
     for (const entry of survivorsOf(snapshot, table)) {
-        if (entry.pid === process.pid) continue;
+        if (spared.has(entry.pid)) continue;
         try {
             kill(entry.pid, 'SIGKILL');
             killed.push(entry.pid);

@@ -109,7 +109,8 @@ import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager'
 import { createDaemonControlToken } from './controlAuth';
 import { withDaemonHeartbeat } from './daemonState';
 import { DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS, fetchCliUpdateState, resolveCliUpdateCheckInterval } from '@/update/cliUpdate';
-import { isProcessAlive, terminateProcessTree } from './processTermination';
+import { isProcessAlive, terminateProcessTree, type TerminateTreeDeps } from './processTermination';
+import { ancestorsOf, readProcessTable } from '@/utils/processTreeSnapshot';
 import { describeStartupExit, readStartupExitReason, type StartupExit } from './startupExit';
 import { findAllHappyProcesses } from './doctor';
 import { findSessionWrapperPids, mergeRestoreMetadata } from './sessionProcessRecovery';
@@ -401,6 +402,17 @@ export async function startDaemon(): Promise<void> {
     let projectPresence: ReturnType<typeof createProjectPresenceReporter> | undefined;
     const persisted = readPersistedSessions();
     const liveHappyProcesses = await findAllHappyProcesses();
+    // B-965: a daemon started by a session wrapper (an older CLI replacing
+    // its daemon during an upgrade) is that wrapper's child. Say so: stopping
+    // that wrapper later must spare this daemon's subtree (processTermination).
+    {
+      const table = readProcessTable();
+      const ancestors = new Set(table ? ancestorsOf(process.pid, table) : []);
+      const wrapperAncestors = liveHappyProcesses.filter((p) => ancestors.has(p.pid) && p.type !== 'daemon' && p.type !== 'dev-daemon');
+      for (const wrapper of wrapperAncestors) {
+        logger.warn(`[DAEMON RUN] This daemon runs under session wrapper ${wrapper.pid} (${wrapper.type}); stopping that session will spare the daemon and its sessions`);
+      }
+    }
     for (const [id, s] of Object.entries(persisted)) {
       const tracked: TrackedSession = {
         startedBy: 'persisted',
@@ -446,6 +458,12 @@ export async function startDaemon(): Promise<void> {
     if (Object.keys(persisted).length > 0) {
       logger.debug(`[DAEMON RUN] Loaded ${Object.keys(persisted).length} persisted sessions from disk`);
     }
+
+    // B-965: every wrapper tree stop from here spares this daemon's own subtree
+    // (processTermination prunes it); this only adds the log line.
+    const wrapperStopDeps: TerminateTreeDeps = {
+      onAncestor: (pid) => logger.warn(`[DAEMON RUN] Wrapper ${pid} is an ancestor of this daemon; stopping it without the daemon's subtree`),
+    };
 
     // Session spawning awaiter system
     const pidToAwaiter = new Map<number, (session: TrackedSession) => void>();
@@ -1252,7 +1270,7 @@ export async function startDaemon(): Promise<void> {
           try {
             // B-864b: with its tree — a wrapper that got as far as starting Claude
             // Code but not the webhook would otherwise leave it running.
-            const started = terminateProcessTree(pid, (stopped) => fail({ exited: stopped, code: null, signal: null, timedOut: true }));
+            const started = terminateProcessTree(pid, (stopped) => fail({ exited: stopped, code: null, signal: null, timedOut: true }), wrapperStopDeps);
             if (!started) fail({ exited: false, code: null, signal: null, timedOut: true });
           } catch {
             fail({ exited: false, code: null, signal: null, timedOut: true });
@@ -1555,7 +1573,7 @@ export async function startDaemon(): Promise<void> {
             pidToTrackedSession.delete(pid);
           }
           done();
-        });
+        }, wrapperStopDeps);
         if (!requested) done();
         setTimeout(done, timeoutMs).unref?.();
       })));
@@ -1750,7 +1768,7 @@ export async function startDaemon(): Promise<void> {
             }
             pidToTrackedSession.delete(pid);
             logger.debug(`[DAEMON RUN] Verified session ${sessionId} stopped and removed it from tracking`);
-          });
+          }, wrapperStopDeps);
           if (requested) {
             logger.debug(`[DAEMON RUN] Requested verified termination for session ${sessionId} (PID ${pid})`);
           } else {

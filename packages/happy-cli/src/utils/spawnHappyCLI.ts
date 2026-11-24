@@ -111,3 +111,46 @@ export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): Child
     ...options,
   });
 }
+
+/**
+ * B-965: the node program of the throwaway parent in `spawnHappyCLIOrphaned`.
+ * It starts argv[1] with the rest as arguments, detached, and exits — so the
+ * started process re-parents to init / the user's subreaper.
+ */
+export const ORPHAN_LAUNCHER_SCRIPT =
+  "const c=require('node:child_process').spawn(process.argv[1],process.argv.slice(2),{detached:true,stdio:'ignore'});c.on('error',()=>process.exit(1));c.unref();";
+
+/** B-965: the argv of the intermediate launcher (testable). */
+export function orphanLauncherArgs(runtime: string, nodeArgs: string[]): string[] {
+  return ['-e', ORPHAN_LAUNCHER_SCRIPT, runtime, ...nodeArgs];
+}
+
+/**
+ * B-965: like `spawnHappyCLI`, but the started CLI is NOT a child of this
+ * process. `detached: true` only makes a new session: the parent stays the
+ * caller until it exits, so a parentage-based tree stop of the caller (the
+ * daemon restarting a session wrapper) would reach it. Here a throwaway node
+ * process starts the CLI and exits at once; the CLI re-parents to init or the
+ * user's subreaper (systemd --user, launchd). Windows: plain detached spawn
+ * (there is no parentage tree stop that reaches a detached process).
+ * Returns the launcher (already unref'd); the CLI's own pid is not known here.
+ */
+export function spawnHappyCLIOrphaned(args: string[], options: SpawnOptions = {}): ChildProcess {
+  if (process.platform === 'win32') {
+    const child = spawnHappyCLI(args, { ...options, detached: true, stdio: 'ignore' });
+    child.unref();
+    return child;
+  }
+  const entrypoint = join(projectPath(), 'dist', 'index.mjs');
+  if (!existsSync(entrypoint)) throw new Error(`Entrypoint ${entrypoint} does not exist`);
+  const runtime = isBun() ? 'bun' : 'node';
+  logger.debug(`[SPAWN HAPPY CLI] Spawning orphaned: happy ${args.join(' ')}`);
+  const launcher = crossSpawn(process.execPath, orphanLauncherArgs(runtime, ['--no-warnings', '--no-deprecation', entrypoint, ...args]), {
+    windowsHide: true,
+    ...options,
+    detached: true,
+    stdio: 'ignore',
+  });
+  launcher.unref();
+  return launcher;
+}
