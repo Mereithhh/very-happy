@@ -173,7 +173,7 @@ import { shouldApplyPermissionModeLive } from './livePermissionMode';
 import { derivePermissionModeDisplay } from './permissionModeDisplay';
 import { resolveIntentSource } from '@/sync/yoloEnforcement';
 import { getAgentDefaultOverride } from '@/sync/agentDefaults';
-import { codexModelSource } from '@/sync/codexModelSource';
+import { codexConfigNotice, codexModelSource, readCodexConfigReadError } from '@/sync/codexModelSource';
 import { isAgentWorkLive } from '@/sync/agentLiveness';
 import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 import { yieldForSendFeedback } from './sendFeedback';
@@ -476,19 +476,21 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         ? `${nameOfBaseModel(id.slice(0, -LONG_CONTEXT_SUFFIX.length))} · ${t('session.chat.modelPicker.longContext')}`
         : nameOfBaseModel(id);
     const machineConfigName = machineConfigId ? t('session.chat.machineConfigModel', { model: nameOfModel(machineConfigId) }) : t('session.chat.machineDefaultModel');
+    // B-971b: a wrapper that says config/read failed is not too old — the label says the config failed.
+    const configReadFailed = !!session && normalizeAgentKey(flavor) === 'codex' && !!readCodexConfigReadError(metadata?.configReadError);
     // B-971: on an account the reported model is the account's, not the machine config's.
     const followName = followState.kind === 'machineConfig'
         ? t(session && sessionAccount.facts?.profile ? 'session.chat.followAccountModel' : 'session.chat.followMachineConfig', { model: nameOfModel(followState.model) })
         : followState.kind === 'latest'
             ? t('session.chat.followLatestOption', { model: followState.model.endsWith(LONG_CONTEXT_SUFFIX) ? nameOfModel(followState.model) : baseModels.find((option) => option.key === followState.model)?.name ?? followState.label ?? followState.model })
             : followState.kind === 'machineDefault'
-                ? t('session.chat.followLatestUpgradeCli')
+                ? t(configReadFailed ? 'session.chat.followConfigReadFailed' : 'session.chat.followLatestUpgradeCli')
                 : t('session.chat.followLatestDepends');
     const pickedModels = withCustomModels(
         offersFollowLatest
             ? withFollowLatestOption(baseModels, {
                 flavor,
-                follow: { name: followName, description: t(followLatestDescriptionKey(followState)) },
+                follow: { name: followName, description: t(followLatestDescriptionKey(followState, { configReadFailed })) },
                 latestModel: followEntryModel(followState),
                 selectedKey: followingLatest ? LATEST_MODEL_MODE : modelKey,
                 followsMachineConfig: followState.kind === 'machineConfig',
@@ -636,6 +638,23 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
             extra: <button type="button" className="me-link" data-use-machine-config onClick={() => setMode('updateSessionModelMode', 'modelMode', LATEST_MODEL_MODE)}>{t('session.chat.modelPicker.useMachineConfig')}</button>,
         }
         : undefined;
+    // B-971b: a 0.2.227+ wrapper also reports this machine's own config model
+    // and why config/read failed — an account session says the account's
+    // model replaces the config's; a failed read says why and how to fix it.
+    const configNotice = session ? codexConfigNotice({
+        source: modelSource,
+        configuredModel: metadata?.configuredModel,
+        machineConfigModel: metadata?.machineConfigModel,
+        configReadError: metadata?.configReadError,
+    }) : null;
+    const machineConfigNotice = configNotice?.kind === 'configReadFailed'
+        ? {
+            text: t('session.chat.modelPicker.configReadFailed', { reason: configNotice.reason }),
+            extra: configNotice.legacyProfile ? <span data-config-fix>{t('session.chat.modelPicker.configLegacyProfileFix', { profile: configNotice.legacyProfile })}</span> : undefined,
+        }
+        : configNotice?.kind === 'accountOverridesConfig'
+            ? { text: t('session.chat.modelPicker.configAccountOverrides', { machine: nameOfModel(configNotice.machineModel), account: nameOfModel(configNotice.accountModel) }) }
+            : undefined;
     const upgradeMachineId = metadata?.machineId ?? pending?.machineId;
     // B-850c: 账号 on top of the panel; switching restarts in place (confirm says
     // so). An API account pins its model: the list is that account's models and
@@ -1947,7 +1966,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                         } : undefined}
                         subtitle={modelSubtitle}
                         rowExtra={upgradeMachineId ? (option) => codexGatedKeys.has(option.key) ? <UpgradeAgentLink machineId={upgradeMachineId} label={t('session.chat.modelPicker.updateCodex')} /> : null : undefined}
-                        notice={runFactsUnknown ? { text: t('session.chat.modelPicker.unknownNote'), extra: upgradeMachineId ? <UpgradeCliLink machineId={upgradeMachineId} label={t('session.chat.modelPicker.upgradeCli')} /> : undefined } : apiModelOptions ? undefined : configOverriddenNotice}
+                        notice={configNotice?.kind === 'configReadFailed' ? machineConfigNotice : runFactsUnknown ? { text: t('session.chat.modelPicker.unknownNote'), extra: upgradeMachineId ? <UpgradeCliLink machineId={upgradeMachineId} label={t('session.chat.modelPicker.upgradeCli')} /> : undefined } : machineConfigNotice ?? (apiModelOptions ? undefined : configOverriddenNotice)}
                         readOnly={isGemini ? { value: metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.modelPicker.geminiReadOnly'), hint: t('session.chat.modelPicker.geminiReadOnlyHint') } : undefined}
                         triggerLabel={isGemini ? (metadata?.currentModelCode ? t('session.chat.machineConfigModel', { model: metadata.currentModelCode }) : t('session.chat.machineDefaultModel')) : runningTriggerLabel ?? (apiModelOptions ? undefined : newSessionDefaultLabel)}
                         pickRow={apiModelOptions ? undefined : pickModelRow}

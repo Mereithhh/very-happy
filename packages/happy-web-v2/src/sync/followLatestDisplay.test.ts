@@ -207,7 +207,7 @@ describe('follow entry descriptions say what really happens (B-844c, QA22c P2-2/
         const { readFileSync } = await import('node:fs');
         const input = readFileSync(new URL('../screens/session/AgentInput.tsx', import.meta.url), 'utf8');
         const settings = readFileSync(new URL('../screens/settings/SettingsRoutes.tsx', import.meta.url), 'utf8');
-        expect(input).toContain("description: t(followLatestDescriptionKey(followState))");
+        expect(input).toContain("description: t(followLatestDescriptionKey(followState, { configReadFailed }))");
         expect(settings).toContain("? { ...option, name: t('settingsAgents.machineDefault'), description: t(agent === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') }");
         expect(input).toContain("description: t(normalizeAgentKey(flavor) === 'claude' ? 'session.chat.machineDefaultModelDescription' : 'session.chat.machineDefaultModelDescriptionOther') }");
         expect(settings).toContain("detail={o.key === 'default' ? undefined : o.key}");

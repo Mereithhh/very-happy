@@ -165,8 +165,11 @@ export function summarizeFollowLatest(entries: readonly MachineFollowLatest[]): 
  */
 export function followLatestDescriptionKey(
     state: FollowLatestState,
-): 'session.chat.modelLatestDescription' | 'session.chat.modelLatestDescriptionUpgradeCli' {
-    return state.kind === 'machineDefault' ? 'session.chat.modelLatestDescriptionUpgradeCli' : 'session.chat.modelLatestDescription';
+    opts: { configReadFailed?: boolean } = {},
+): 'session.chat.modelLatestDescription' | 'session.chat.modelLatestDescriptionUpgradeCli' | 'session.chat.modelLatestDescriptionConfigReadFailed' {
+    // B-971b: a wrapper that reported a failed config/read is not too old — say the config failed.
+    if (state.kind === 'machineDefault') return opts.configReadFailed ? 'session.chat.modelLatestDescriptionConfigReadFailed' : 'session.chat.modelLatestDescriptionUpgradeCli';
+    return 'session.chat.modelLatestDescription';
 }
 
 /**

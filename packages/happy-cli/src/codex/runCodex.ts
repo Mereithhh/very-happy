@@ -83,6 +83,7 @@ import {
     type CodexEnhancedMode,
 } from './codexPrompt';
 import { codexEventLogMetadata, logValueMetadata, safeCodexErrorMetadata } from './logMetadata';
+import { codexConfigReportFields, type CodexConfigReport } from './codexConfigReport';
 import { DEFAULT_CODEX_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
 import { CODEX_REMOTE_PERMISSION_MODES, codexLaunchPublishablePermissionMode, codexPublishablePermissionMode } from './codexPermissionMode';
 import { EditReportThrottle, extractCodexPatchPaths } from '@/sessions/editPaths';
@@ -1344,10 +1345,13 @@ export async function runCodex(opts: {
             // "follow latest" and is what `default` really runs. Unknown
             // (no config/read) leaves the field absent.
             let configured: { model: string | null } | null = null;
+            let configReport: CodexConfigReport;
             try {
                 configured = { model: await client.readConfiguredModel(process.cwd()) };
+                configReport = codexConfigReportFields(configured);
             } catch (error) {
                 logger.debug('[Codex] config/read unavailable', safeCodexErrorMetadata(error));
+                configReport = codexConfigReportFields({ error });
             }
             machineDefaultModel = configured?.model ?? discoveredModels.find((model) => model.isDefault)?.model;
             // B-850b: on an account, "default" = the account's model (the
@@ -1359,9 +1363,11 @@ export async function runCodex(opts: {
                 machineDefaultModel = accountDefault;
                 if (codexAccount.models?.length) discoveredModels = accountModelsAsCatalog(codexAccount.models, discoveredModels);
             }
-            if (discoveredModels.length > 0 || configured) {
+            if (discoveredModels.length > 0 || configured || configReport.configReadError) {
                 session.updateMetadata((metadata) => ({
                     ...metadata,
+                    // B-971b: the machine config's own model / why config/read failed; configuredModel keeps its meaning.
+                    ...configReport,
                     ...(discoveredModels.length > 0 ? {
                         models: discoveredModels.map((model) => ({
                             code: model.model, value: model.displayName, description: model.description,

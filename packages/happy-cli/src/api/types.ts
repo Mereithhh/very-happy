@@ -711,6 +711,17 @@ export type Metadata = {
    */
   configuredModel?: string | null,
   /**
+   * B-971b: Codex — the model this machine's config.toml pins via
+   * `config/read` (null = none), even when an account's model is what
+   * `configuredModel` reports. Absent = unknown / older wrapper.
+   */
+  machineConfigModel?: string | null,
+  /**
+   * B-971b: Codex — why `config/read` failed: a category and one line of
+   * Codex's reason (no file content). Absent = it worked or is unknown.
+   */
+  configReadError?: { kind: 'legacyProfile' | 'invalidConfig' | 'failed'; reason: string },
+  /**
    * B-844c: the explicit model this wrapper keeps applying to turns that carry
    * no `model` (sticky per-session override, e.g. an earlier pick). null =
    * none, turns run the machine default; absent = this wrapper cannot tell.
