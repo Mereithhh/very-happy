@@ -109,8 +109,11 @@ How the workflow uses it:
 - `publish` and `promote` both have `permissions: id-token: write`; the
   workflow runs only on `v*` tags and `workflow_dispatch`, never on
   `pull_request`, so fork code can never mint an id-token.
-- Node 22 and a pinned npm (`npm@11.21.2`; trusted publishing needs ≥ 11.5.1,
-  dist-tag over OIDC ≥ 11.21.0) are installed in both jobs.
+- The `publish` job installs and **builds on Node 20** (pkgroll targets the
+  running Node; the CLI still supports `^20.19`), then switches to Node 22
+  with a pinned npm (`npm@11.21.2`; trusted publishing needs Node ≥ 22.14 and
+  npm ≥ 11.5.1, dist-tag over OIDC ≥ 11.21.0) only for the publish steps.
+  `promote` builds nothing and uses Node 22 + the same npm throughout.
 - Every npm write goes through `scripts/release/npm-oidc-or-token.sh`, which
   first runs the command with no usable token, so it can only succeed via
   OIDC. Provenance attestations are generated automatically on that path (no
