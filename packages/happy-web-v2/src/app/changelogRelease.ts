@@ -139,6 +139,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-25-codex-model-source',
+    date: '2026-11-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov25c.title',
+    summaryKey: 'changelog.releases.nov25c.summary',
+    itemKeys: ['changelog.releases.nov25c.source', 'changelog.releases.nov25c.override'],
+  },
+  {
     id: '2026-11-24-gateway-models',
     date: '2026-11-24',
     buildVersion: __APP_VERSION__,

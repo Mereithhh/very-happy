@@ -1086,6 +1086,8 @@ export const en = {
             modelRunning: ({ model }: { model: string }) => `Running now: ${model}`,
             modelRunningOther: ({ model }: { model: string }) => `This session is running ${model}; your next message from here switches it`,
             followMachineConfig: ({ model }: { model: string }) => `Machine config · ${model}`,
+            followAccountModel: ({ model }: { model: string }) => `Account · ${model}`,
+            newSessionDefaultModel: ({ model }: { model: string }) => `New-session default · ${model}`,
             followLatestOption: ({ model }: { model: string }) => `Latest · ${model}`,
             followLatestUpgradeCli: 'Actual model unknown · Update CLI',
             followLatestDepends: 'Latest',
@@ -1131,6 +1133,8 @@ export const en = {
                 setDefaultDone: 'New sessions will use this',
                 upgradeCli: 'Update CLI',
                 unknownNote: 'The Very Happy CLI on this machine is too old to report the model and thinking level it runs.',
+                configOverridden: ({ model }: { model: string }) => `Machine config is ${model}; the new-session default overrides it.`,
+                useMachineConfig: 'Use machine config',
                 geminiReadOnly: 'Set by the machine config',
                 geminiReadOnlyHint: 'Change this machine\'s Gemini config in Settings → Models & accounts → Machine config',
                 desc: {
@@ -3503,6 +3507,12 @@ export const en = {
                 summary: 'When an agent tries to preview a file that does not exist (or a folder), it is told so instead of being told the preview went out, so it stops saying "preview opened" for nothing.',
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
+            },
+            nov25c: {
+                title: 'The Codex model picker says who chose the model',
+                summary: 'The model picker now shows where a Codex session\'s model comes from: your machine config, your new-session default, or the account.',
+                source: 'It reads 「Machine config · X」, 「New-session default · X」 or 「Account · X」, so you can tell what decides the model.',
+                override: 'When a new-session default you set replaces the model in this machine\'s Codex config.toml, the picker says so and offers 「Use machine config」 for this session.',
             },
             nov24d: {
                 title: 'Kimi K3.1 Pro and DeepSeek V4.1 Flash in the model list',
