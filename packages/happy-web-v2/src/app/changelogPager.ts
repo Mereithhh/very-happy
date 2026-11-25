@@ -9,7 +9,7 @@
  * the set; the watermark then advances over every contiguous read release, so
  * the set stays tiny and old clients that only know the receipt keep working.
  */
-import { CHANGELOG_RELEASES, normalizeChangelogSeen, unseenChangelogReleases, type ChangelogRelease } from './changelogRelease';
+import { CHANGELOG_RELEASES, changelogCliTarget, isChangelogReleaseVisible, normalizeChangelogSeen, unseenChangelogReleases, visibleChangelogReleases, type ChangelogRelease } from './changelogRelease';
 
 export const CHANGELOG_READ_KEY = 'vh.changelog.read';
 
@@ -34,13 +34,34 @@ export function parseChangelogRead(raw: string | null): string[] {
   }
 }
 
-/** Unread releases, newest first: the receipt diff (B-320) minus the ones read one by one. */
+/**
+ * Unread releases, newest first: the receipt diff (B-320) minus the ones read
+ * one by one, minus those whose feature this account does not have (B-974g).
+ */
 export function pendingChangelogReleases(
   state: ChangelogReadState,
   releases: readonly ChangelogRelease[] = CHANGELOG_RELEASES,
+  features: readonly string[] = [],
 ): ChangelogRelease[] {
   const read = new Set(state.read);
-  return unseenChangelogReleases(state.seen, releases).filter((release) => !read.has(release.id));
+  const seenId = normalizeChangelogSeen(state.seen);
+  // The receipt may name a hidden release, so it is looked up in the full list.
+  const unseen = releases.some((release) => release.id === seenId)
+    ? visibleChangelogReleases(features, unseenChangelogReleases(state.seen, releases))
+    : visibleChangelogReleases(features, releases).slice(0, 1);
+  return unseen.filter((release) => !read.has(release.id));
+}
+
+/**
+ * B-974g: the CLI the notice recommends. A hidden entry's CLI shipped all the
+ * same, so it counts here; only its text stays out.
+ */
+export function pendingChangelogCliTarget(
+  state: ChangelogReadState,
+  releases: readonly ChangelogRelease[] = CHANGELOG_RELEASES,
+): ChangelogRelease | null {
+  const read = new Set(state.read);
+  return changelogCliTarget(unseenChangelogReleases(state.seen, releases).filter((release) => !read.has(release.id)));
 }
 
 /**
@@ -99,23 +120,34 @@ export function changelogAutoAction(opts: { pending: number; deepLink: boolean; 
  * Record `ids` as read. The watermark advances over every release directly
  * above it that is now read; ids it passes leave the set. With no receipt (a
  * fresh browser only ever sees the head, B-320) the watermark starts just
- * below the head.
+ * below the head. A release hidden from this account (B-974g) is never passed
+ * over: the watermark stays below it and what was read above it stays in the set.
  */
 export function markChangelogRead(
   state: ChangelogReadState,
   ids: readonly string[],
   releases: readonly ChangelogRelease[] = CHANGELOG_RELEASES,
+  features: readonly string[] = [],
 ): ChangelogReadState {
   if (releases.length === 0) return state;
   const read = new Set([...state.read, ...ids]);
   const seenId = normalizeChangelogSeen(state.seen);
   const seenIndex = seenId === null ? -1 : releases.findIndex((release) => release.id === seenId);
   // Index of the newest release counted as read; `releases.length` = nothing read.
-  let floor = seenIndex === -1 ? 1 : seenIndex;
+  let floor = seenIndex;
+  if (seenIndex === -1) {
+    const hidden = releases.map((release) => !isChangelogReleaseVisible(release, features));
+    const head = hidden.indexOf(false);
+    // Nothing the person could see was read yet: no receipt to write.
+    if (head === -1 || !read.has(releases[head].id)) return { seen: state.seen, read: [] };
+    floor = Math.max(head, hidden.lastIndexOf(true)) + 1;
+    // History below the head is never shown to a fresh browser; hidden entries stay unread.
+    releases.slice(head, floor).forEach((release, i) => { if (!hidden[head + i]) read.add(release.id); });
+  }
   while (floor > 0 && read.has(releases[floor - 1].id)) floor -= 1;
   const valid = new Set(releases.slice(0, floor).map((release) => release.id));
   const nextRead = [...read].filter((id) => valid.has(id));
-  const advanced = seenIndex === -1 ? floor < 1 : floor < seenIndex;
+  const advanced = seenIndex === -1 ? floor < releases.length : floor < seenIndex;
   return {
     seen: advanced ? releases[floor].id : state.seen,
     read: nextRead,

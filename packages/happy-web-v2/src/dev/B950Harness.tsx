@@ -13,7 +13,7 @@ import { storage } from '@/sync/storage';
 import { ChatList } from '@/screens/session/ChatList';
 import { TerminalNoticeView } from '@/screens/terminal/TerminalConnectionNotice';
 import { ChangelogNotice } from '@/app/ChangelogNotice';
-import { CHANGELOG_RELEASES, CHANGELOG_STORAGE_KEY } from '@/app/changelogRelease';
+import { CHANGELOG_STORAGE_KEY, visibleChangelogReleases } from '@/app/changelogRelease';
 import { CHANGELOG_READ_KEY } from '@/app/changelogPager';
 import { setEnteredByDeepLinkForTest } from '@/app/entryKind';
 import { ActionDropdownMenu } from '@/ui/Menu';
@@ -69,7 +69,7 @@ function NotesPart() {
   const [ready] = useState(() => {
     try {
       localStorage.removeItem(CHANGELOG_READ_KEY);
-      localStorage.setItem(CHANGELOG_STORAGE_KEY, CHANGELOG_RELEASES[1]?.id ?? '');
+      localStorage.setItem(CHANGELOG_STORAGE_KEY, visibleChangelogReleases([])[1]?.id ?? '');
     } catch { /* private window */ }
     setEnteredByDeepLinkForTest(true); // a session page opened by link: the notes leave a toast
     return true;

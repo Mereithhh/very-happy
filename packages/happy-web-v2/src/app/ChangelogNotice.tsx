@@ -10,8 +10,8 @@ import {
   changelogCliNotices,
   changelogCliTarget,
 } from './changelogRelease';
-import { changelogAutoAction, changelogPages, pageReleaseIds, pendingChangelogReleases, type ChangelogPage } from './changelogPager';
-import { acknowledgeAllChangelog, changelogAutoShownThisVisit, changelogReadState, markChangelogReleasesRead, noteChangelogAutoShown, noteChangelogClosed, noteChangelogOpened, onChangelogOpenRequest } from './changelogReadStore';
+import { changelogAutoAction, changelogPages, pageReleaseIds, pendingChangelogCliTarget, type ChangelogPage } from './changelogPager';
+import { changelogAutoShownThisVisit, changelogReadState, currentPendingChangelog, markChangelogReleasesRead, noteChangelogAutoShown, noteChangelogClosed, noteChangelogOpened, onChangelogOpenRequest, usePendingChangelog } from './changelogReadStore';
 import { enteredByDeepLink } from './entryKind';
 import { userHasInteracted } from './afterFirstScreen';
 import './changelogNotice.css';
@@ -42,6 +42,7 @@ export function ChangelogNotice() {
   const machines = useAllMachines({ includeOffline: true });
   // Snapshot when opened: marking a page read must not reshuffle the pager under the reader.
   const [pages, setPages] = useState<readonly ChangelogPage[]>(NO_PAGES);
+  const [pendingCliTarget, setPendingCliTarget] = useState<ChangelogRelease | null>(null);
   const [index, setIndex] = useState(0);
   const [open, setOpen] = useState(false);
   // B-697: a dialog the person opened (e.g. a `?task=` deep link) goes first;
@@ -49,9 +50,10 @@ export function ChangelogNotice() {
   const turn = useOverlayTurn(open, OVERLAY_PRIORITY.notice);
 
   const start = useCallback(() => {
-    const next = changelogPages(pendingChangelogReleases(changelogReadState()));
+    const next = changelogPages(currentPendingChangelog());
     if (next.length === 0) return;
     setPages(next);
+    setPendingCliTarget(pendingChangelogCliTarget(changelogReadState()));
     setIndex(0);
     setOpen(true);
   }, []);
@@ -59,11 +61,17 @@ export function ChangelogNotice() {
   // typing or tapping, the notes do not grab focus mid-sentence. B-842: they
   // leave a toast instead (once, after any dialog above `notice` is gone), so
   // this visit still shows that something is unread; the sidebar entry stays.
-  const [auto] = useState(() => changelogAutoShownThisVisit() ? 'none' : changelogAutoAction({
-    pending: pendingChangelogReleases(changelogReadState()).length,
+  const decideAuto = () => changelogAutoShownThisVisit() ? 'none' : changelogAutoAction({
+    pending: currentPendingChangelog().length,
     deepLink: enteredByDeepLink(),
     interacted: userHasInteracted(),
-  }));
+  });
+  const [auto, setAuto] = useState(decideAuto);
+  // B-974g: `/v1/features` answers after mount; an entry it brings in surfaces like any other.
+  const pendingCount = usePendingChangelog().length;
+  useEffect(() => {
+    if (pendingCount > 0 && auto === 'none' && !open) setAuto(decideAuto());
+  }, [pendingCount]);
   const heldAbove = useOverlayHeldAbove(OVERLAY_PRIORITY.notice);
   const hinted = useRef(false);
   useEffect(() => {
@@ -71,7 +79,7 @@ export function ChangelogNotice() {
   }, [auto, start]);
   useEffect(() => {
     if (auto !== 'hint' || hinted.current || heldAbove || open) return;
-    const count = pendingChangelogReleases(changelogReadState()).length;
+    const count = currentPendingChangelog().length;
     if (count === 0) return;
     hinted.current = true;
     noteChangelogAutoShown();
@@ -90,7 +98,7 @@ export function ChangelogNotice() {
   }, [open]);
 
   const releases = useMemo(() => pages.flatMap((page) => (page.kind === 'major' ? [page.release] : page.releases)), [pages]);
-  const cliTarget = useMemo(() => changelogCliTarget(releases), [releases]);
+  const cliTarget = useMemo(() => changelogCliTarget(pendingCliTarget ? [...releases, pendingCliTarget] : releases), [releases, pendingCliTarget]);
   const cliNotices = useMemo(
     () => (cliTarget ? changelogCliNotices(machines, cliTarget) : []),
     [machines, cliTarget],
@@ -109,8 +117,9 @@ export function ChangelogNotice() {
   // B-315: only a deliberate acknowledgement marks releases read. On the last
   // page Esc and the backdrop still close without writing the receipt (earlier
   // pages are already recorded, so only that page comes back next time).
+  const markAllRead = () => markChangelogReleasesRead(releases.map((release) => release.id));
   const acknowledge = () => {
-    acknowledgeAllChangelog();
+    markAllRead();
     setOpen(false);
   };
   const next = () => {
@@ -200,8 +209,8 @@ export function ChangelogNotice() {
               </div>
             </div>
           )}
-          {last && major?.featured && hasHighlights && <a className="wn-more is-full" href={`${BASE}/whats-new`} onClick={acknowledgeAllChangelog}>{t('changelog.fullPage')}</a>}
-          {last && <a className="wn-more" href={`${BASE}/changelog`} onClick={acknowledgeAllChangelog}>{t('changelog.viewAll')}</a>}
+          {last && major?.featured && hasHighlights && <a className="wn-more is-full" href={`${BASE}/whats-new`} onClick={markAllRead}>{t('changelog.fullPage')}</a>}
+          {last && <a className="wn-more" href={`${BASE}/changelog`} onClick={markAllRead}>{t('changelog.viewAll')}</a>}
           {locked && <p className="wn-locked-hint">{t('changelog.lockedHint', { total })}</p>}
           <div className="wn-nav" data-paged={total > 1 || undefined}>
             {total > 1 && index > 0 && (
