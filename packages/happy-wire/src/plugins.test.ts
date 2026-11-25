@@ -14,7 +14,9 @@ import {
     attentionItemNeedsOwner,
     attentionPushKind,
     attentionQueryIncludesPlugin,
+    ATTENTION_ITEM_LINK_TYPES,
     ATTENTION_LINK_TYPES,
+    AttentionItemLinkSchema,
     attentionLinkedSessionId,
     isAttentionPluginItem,
     isSessionAttentionItem,
@@ -609,7 +611,9 @@ describe('r1 host views', () => {
         expect(ATTENTION_ITEM_SOURCES).toContain('owner-system');
         expect(ATTENTION_SOURCES).not.toContain('owner-system');
         expect(AttentionItemPostSchema.safeParse({ sessionId: 's', source: 'owner-system', kind: 'report', title: 'T' }).success).toBe(false);
-        expect(ATTENTION_LINK_TYPES).toContain('session');
+        expect(ATTENTION_ITEM_LINK_TYPES).toContain('session');
+        expect(ATTENTION_LINK_TYPES).not.toContain('session');
+        expect(AttentionItemLinkSchema.safeParse({ type: 'session', ref: 's' }).success).toBe(true);
         expect(attentionLinkedSessionId({ links: [{ type: 'pr', ref: '1' }, { type: 'session', ref: 'sess_1' }] })).toBe('sess_1');
         expect(attentionLinkedSessionId({ links: null })).toBeNull();
         expect(isAttentionPluginItem({ source: 'owner-system', sessionId: null })).toBe(true);

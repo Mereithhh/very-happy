@@ -150,13 +150,23 @@ export type AttentionOption = z.infer<typeof AttentionOptionSchema>;
 const options = z.array(AttentionOptionSchema).min(ATTENTION_LIMITS.options.min).max(ATTENTION_LIMITS.options.max)
     .refine(o => new Set(o.map(x => x.id)).size === o.length, 'option ids must be unique');
 
-/** `session` (B-974 r4): a plugin card's related session (`ref` = sessionId); plugin items keep `sessionId` null. */
-export const ATTENTION_LINK_TYPES = ['task', 'pr', 'commit', 'url', 'panel', 'issue', 'session'] as const;
-export const AttentionLinkSchema = z.object({
-    type: z.enum(ATTENTION_LINK_TYPES),
-    ref: z.string().trim().min(1).max(ATTENTION_LIMITS.linkRefChars),
-    label: z.string().max(ATTENTION_LIMITS.linkLabelChars).optional(),
-});
+export const ATTENTION_LINK_TYPES = ['task', 'pr', 'commit', 'url', 'panel', 'issue'] as const;
+/**
+ * B-974 r4: link types an item can carry. `session` = a plugin card's related
+ * session (`ref` = sessionId; plugin items keep `sessionId` null). Server-written
+ * only, so it is not in `ATTENTION_LINK_TYPES` (the agents' post / tool enum).
+ */
+export const ATTENTION_ITEM_LINK_TYPES = [...ATTENTION_LINK_TYPES, 'session'] as const;
+export const AttentionItemLinkSchema = AttentionLinkSchemaBase(ATTENTION_ITEM_LINK_TYPES);
+export type AttentionItemLink = z.infer<typeof AttentionItemLinkSchema>;
+function AttentionLinkSchemaBase<T extends readonly [string, ...string[]]>(types: T) {
+    return z.object({
+        type: z.enum(types),
+        ref: z.string().trim().min(1).max(ATTENTION_LIMITS.linkRefChars),
+        label: z.string().max(ATTENTION_LIMITS.linkLabelChars).optional(),
+    });
+}
+export const AttentionLinkSchema = AttentionLinkSchemaBase(ATTENTION_LINK_TYPES);
 export type AttentionLink = z.infer<typeof AttentionLinkSchema>;
 const links = z.array(AttentionLinkSchema).max(ATTENTION_LIMITS.links);
 
