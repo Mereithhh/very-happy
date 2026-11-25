@@ -16,7 +16,7 @@ const codexSession = (metadata: Record<string, unknown>, contextMode?: string | 
         models: [{ code: 'gpt-6.2-astra', reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'] }],
         ...metadata,
     },
-});
+}) as unknown as Parameters<typeof resolveMessageModeMeta>[0];
 
 describe('B-977 meta.codexContext', () => {
     it('sends the mode a session with an extendable model runs', () => {
@@ -28,7 +28,7 @@ describe('B-977 meta.codexContext', () => {
     it('sends nothing for a model with one window, an older wrapper, or another agent', () => {
         expect(resolveMessageModeMeta(codexSession({ currentModelCode: 'gpt-5.5' })).codexContext).toBeUndefined();
         expect(resolveMessageModeMeta(codexSession({ codexContextWindows: undefined, codexContextMode: undefined }, 'extended')).codexContext).toBeUndefined();
-        expect(resolveMessageModeMeta({ ...codexSession({}), metadata: { ...codexSession({}).metadata, flavor: 'claude' } }).codexContext).toBeUndefined();
+        expect(resolveMessageModeMeta({ ...codexSession({}), metadata: { ...codexSession({}).metadata, flavor: 'claude' } } as unknown as Parameters<typeof resolveMessageModeMeta>[0]).codexContext).toBeUndefined();
     });
 
     it('the account default applies when the session has no report', () => {
