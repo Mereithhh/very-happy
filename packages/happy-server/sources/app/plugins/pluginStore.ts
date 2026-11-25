@@ -504,7 +504,8 @@ export async function eventResult(row: InstallRow, input: { eventId: string; sta
             return { delivery: 'delivered' };
         }
         const attempts = event.attempts + 1;
-        const next = nextAttemptAt(event.createdAt.getTime(), attempts, now);
+        // r6: the daemon retries on its own schedule while online and says `gave_up` when it stops — that is final.
+        const next = input.error === 'gave_up' ? null : nextAttemptAt(event.createdAt.getTime(), attempts, now);
         await tx.pluginEvent.update({
             where: { id: event.id },
             data: { attempts, lastError: input.error?.slice(0, 200) ?? null, ...(next === null ? { delivery: 'failed' } : { nextAttemptAt: new Date(next) }) },
@@ -514,10 +515,24 @@ export async function eventResult(row: InstallRow, input: { eventId: string; sta
     });
 }
 
-/** Retries come due while the daemon is online: one sweep per replica nudges the hosting daemons; 24 h-old events give up. */
+/**
+ * Server-side fallback (r6): the daemon owns retries while online. An event past its retry time whose machine has
+ * been offline for more than 24 h is marked failed here; a due retry on an online machine gets a nudge.
+ */
 export async function sweepPluginEvents(now = Date.now()): Promise<number> {
-    const giveUp = new Date(now - 24 * 3600_000);
-    const failed = await db.pluginEvent.updateMany({ where: { delivery: 'pending', ackedAt: null, createdAt: { lt: giveUp } }, data: { delivery: 'failed' } });
+    const dayAgo = new Date(now - 24 * 3600_000);
+    const stale = await db.pluginEvent.findMany({
+        where: { delivery: 'pending', ackedAt: null, createdAt: { lt: dayAgo }, nextAttemptAt: { lte: new Date(now) } },
+        select: { id: true, install: { select: { accountId: true, machineId: true } } }, take: 1000,
+    });
+    const offline = new Set<string>();
+    for (const m of new Set(stale.map(e => `${e.install.accountId}\u0000${e.install.machineId}`))) {
+        const [accountId, machineId] = m.split('\u0000');
+        const machine = await db.machine.findFirst({ where: { id: machineId, accountId }, select: { lastActiveAt: true } });
+        if (!machine || machine.lastActiveAt < dayAgo) offline.add(m);
+    }
+    const ids = stale.filter(e => offline.has(`${e.install.accountId}\u0000${e.install.machineId}`)).map(e => e.id);
+    const failed = ids.length ? await db.pluginEvent.updateMany({ where: { id: { in: ids } }, data: { delivery: 'failed' } }) : { count: 0 };
     const due = await db.pluginEvent.findMany({
         where: { delivery: 'pending', ackedAt: null, attempts: { gt: 0 }, nextAttemptAt: { lte: new Date(now) } },
         distinct: ['installId'], select: { installId: true, install: { select: { accountId: true, machineId: true } } }, take: 500,

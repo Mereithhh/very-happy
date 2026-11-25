@@ -195,3 +195,13 @@ describe('window limiter', () => {
 });
 
 void ({} as PluginManifest);
+
+describe('plugin card links (r5 AttentionItemLink)', () => {
+    it('the related session is the `session` link only', async () => {
+        const { linkedSession } = await import('./pluginDecisions');
+        expect(linkedSession([{ type: 'url', ref: 'https://x.example' }, { type: 'session', ref: 's1' }])).toBe('s1');
+        expect(linkedSession([{ type: 'url', ref: 'https://x.example' }])).toBeNull();
+        expect(linkedSession([{ type: 'bogus', ref: 's1' }])).toBeNull();
+        expect(linkedSession(null)).toBeNull();
+    });
+});

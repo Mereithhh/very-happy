@@ -171,6 +171,7 @@ describe('B-974 plugins through startApi (pglite)', () => {
         expect(submitted.body).toMatchObject({ state: 'pending', reviewUrl: expect.stringMatching(/^\/settings\/plugins\/pi_/), manifestHash: expect.stringMatching(/^[0-9a-f]{64}$/) });
         expect((await call('POST', '/v1/plugins/installs', { manifest }, machineToken)).body).toEqual({ error: 'machine_id_required' });
         expect((await call('GET', '/v1/features')).body).toEqual({ features: ['plugins-v1'] });
+        expect((await call('GET', '/v1/features', undefined, machineToken)).body).toEqual({ features: ['plugins-v1'] });
         installId = submitted.body.installId;
         const listed = await call('GET', '/v1/plugins/installs');
         expect(listed.body.installs[0]).toMatchObject({ id: installId, state: 'pending', origin: expect.stringMatching(/^http:\/\/hello-board-[a-z2-7]{8}\.p\.test:/) });
@@ -397,6 +398,21 @@ describe('B-974 plugins through startApi (pglite)', () => {
         await call('POST', `/v1/plugins/installs/${installId}/disable`, {});
         expect((await call('POST', `/v1/attention-items/${card.result.item.itemId}/owner-respond`, { action: 'resolve' })).body.error).toBe('plugin_disabled');
         await call('POST', `/v1/plugins/installs/${installId}/enable`);
+        // r6: `gave_up` from the daemon is final; the card shows failed.
+        const ask = await plugin('decision.post', { key: 'gu:1', kind: 'choice', title: 'g', options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], push: false });
+        await call('POST', `/v1/attention-items/${ask.result.item.itemId}/owner-respond`, { action: 'choose', choice: 'a' });
+        const ev = (await plugin('events.pull', {})).result.events.find((e: any) => e.data.itemId === ask.result.item.itemId);
+        expect((await plugin('events.result', { eventId: ev.id, status: 'failed', attempt: 7, error: 'gave_up' })).result).toEqual({ delivery: 'failed' });
+        expect((await plugin('decision.list', { state: 'all' })).result.items.find((i: any) => i.key === 'gu:1').delivery).toBe('failed');
+        // Fallback sweep: an overdue event is failed only once its machine has been offline > 24 h.
+        const { sweepPluginEvents } = await import('./pluginStore');
+        const stale = await db.pluginEvent.create({ data: { id: 'evt_stale', installId, accountId, seq: 9999, type: 'ping', data: {}, createdAt: new Date(Date.now() - 25 * 3600_000), nextAttemptAt: new Date(Date.now() - 3600_000) } });
+        await sweepPluginEvents();
+        expect((await db.pluginEvent.findUniqueOrThrow({ where: { id: stale.id } })).delivery).toBe('pending');
+        await db.machine.update({ where: { id: machineId }, data: { lastActiveAt: new Date(Date.now() - 25 * 3600_000) } });
+        await sweepPluginEvents();
+        expect((await db.pluginEvent.findUniqueOrThrow({ where: { id: stale.id } })).delivery).toBe('failed');
+        await db.machine.update({ where: { id: machineId }, data: { lastActiveAt: new Date() } });
         // An agent's reply_to cannot settle a plugin card.
         await call('POST', '/v1/attention-items', { sessionId, source: 'agent', kind: 'report', title: 'r', replyToId: card.result.item.itemId }, machineToken);
         expect((await db.attentionItem.findUniqueOrThrow({ where: { id: card.result.item.itemId } })).state).toBe('open');

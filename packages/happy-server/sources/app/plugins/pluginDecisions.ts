@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import {
-    PLUGIN_DECISION_ATTENTION_KIND, PLUGIN_LIMITS, parsePluginPayload,
+    AttentionItemLinkSchema, PLUGIN_DECISION_ATTENTION_KIND, PLUGIN_LIMITS, parsePluginPayload,
     type AttentionPluginPayload, type PluginDecisionDelete, type PluginDecisionPatch, type PluginDecisionPost, type PluginManifest,
 } from '@slopus/happy-wire';
 import { db } from '@/storage/db';
@@ -62,13 +62,23 @@ export function decisionView(row: AttentionRow) {
         itemId: row.id, key: row.key!, kind: p.decisionKind, title: row.title, bodyMd: row.bodyMd,
         options: Array.isArray(row.options) ? (row.options as Array<{ id: string; label: string; detail?: string }>).map(o => ({ ...o, ...(p.optionStyles?.[o.id] ? { style: p.optionStyles[o.id] } : {}) })) : null,
         input: p.input ?? null,
-        sessionId: ((row.links as Array<{ type: string; ref: string }> | null) ?? []).find(l => l.type === 'session')?.ref ?? null,
+        sessionId: linkedSession(row.links),
         panelPath: p.panelPath ?? null,
         state: p.pluginState,
         response: p.response ?? null,
         delivery: p.delivery ?? 'pending',
         version: row.version, createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime(),
     };
+}
+
+/** r5: plugin card links are `AttentionItemLink`s (`session` included), never the agents' `AttentionLink`. */
+export function linkedSession(links: unknown): string | null {
+    if (!Array.isArray(links)) return null;
+    for (const raw of links) {
+        const link = AttentionItemLinkSchema.safeParse(raw);
+        if (link.success && link.data.type === 'session') return link.data.ref;
+    }
+    return null;
 }
 
 function announce(tx: Tx, row: AttentionRow, push: boolean) {
@@ -112,7 +122,7 @@ export async function postDecision(install: InstallRow, input: PluginDecisionPos
         const content = {
             title: input.title, bodyMd: input.bodyMd ?? null,
             options: (input.options ? stripStyle(input.options) : Prisma.DbNull) as never,
-            links: (input.sessionId ? [{ type: 'session', ref: input.sessionId }] : Prisma.DbNull) as never,
+            links: (input.sessionId ? [AttentionItemLinkSchema.parse({ type: 'session', ref: input.sessionId })] : Prisma.DbNull) as never,
             lastRequestId: requestId ?? null,
         };
         let row: AttentionRow;
