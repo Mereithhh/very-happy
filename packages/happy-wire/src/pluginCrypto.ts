@@ -144,6 +144,53 @@ export function pluginCanonicalJson(value: unknown): string {
 
 // ─── Signatures (DESIGN §5.5) ─────────────────────────────────────────────────
 
+/** Decoded secret length. */
+export const PLUGIN_SECRET_BYTES = 32;
+const B64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+/**
+ * Decode the plugin `secret` file: 32 random bytes as unpadded base64url
+ * (exactly 43 characters), optionally followed by a newline. Surrounding
+ * whitespace is trimmed; anything else (a prefix, padding, standard base64
+ * `+` / `/`, a wrong length, non-zero trailing bits) throws. The returned 32
+ * bytes are the HMAC key; the text itself is never the key.
+ */
+export function decodePluginSecret(fileText: string): Uint8Array {
+    if (typeof fileText !== 'string') throw new TypeError('plugin secret file text must be a string');
+    const t = fileText.trim();
+    const out = new Uint8Array(PLUGIN_SECRET_BYTES);
+    let acc = 0, bits = 0, n = 0;
+    for (const ch of t) {
+        const v = B64URL.indexOf(ch);
+        if (v < 0) throw new Error('plugin secret must be base64url (A-Z a-z 0-9 - _)');
+        acc = (acc << 6) | v;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out[n++] = (acc >> bits) & 0xff; // bitwise ops keep the low 32 bits; only the low `bits + 8` matter
+        }
+    }
+    // 43 chars = 258 bits: 256 data bits + 2 trailing bits that must be zero (canonical encoding).
+    if (t.length !== 43 || n !== PLUGIN_SECRET_BYTES || (acc & ((1 << bits) - 1)) !== 0) {
+        throw new Error('plugin secret must be 43 base64url characters decoding to exactly 32 bytes (no padding, no prefix)');
+    }
+    return out;
+}
+
+/** Encode 32 secret bytes as the `secret` file text (unpadded base64url, no newline). */
+export function encodePluginSecret(bytes: Uint8Array): string {
+    if (!(bytes instanceof Uint8Array) || bytes.length !== PLUGIN_SECRET_BYTES) throw new Error('plugin secret must be 32 bytes');
+    let out = '', acc = 0, bits = 0;
+    for (const b of bytes) {
+        acc = (acc << 8) | b;
+        bits += 8;
+        while (bits >= 6) { bits -= 6; out += B64URL[(acc >> bits) & 63]; }
+        acc &= (1 << bits) - 1;
+    }
+    if (bits > 0) out += B64URL[(acc << (6 - bits)) & 63];
+    return out;
+}
+
 /** Signature scheme prefix in `X-VH-Signature: v1=<hex>`. */
 export const PLUGIN_SIGNATURE_VERSION = 'v1';
 /** Allowed clock skew between the signer and the verifier. */
@@ -158,8 +205,9 @@ export function pluginEventSigningInput(timestamp: number, eventId: string, rawB
 }
 
 /** `X-VH-Signature` of an event delivery (push callback, and the `signature` of a pulled event). */
-export function signPluginEvent(secret: string, timestamp: number, eventId: string, rawBody: PluginBytes): string {
+export function signPluginEvent(secret: Uint8Array, timestamp: number, eventId: string, rawBody: PluginBytes): string {
     assertTimestamp(timestamp);
+    assertSecretKey(secret);
     return `${PLUGIN_SIGNATURE_VERSION}=${pluginHmacSha256Hex(secret, pluginEventSigningInput(timestamp, eventId, rawBody))}`;
 }
 
@@ -173,8 +221,9 @@ export function pluginRequestSigningInput(timestamp: number, requestId: string, 
 }
 
 /** `X-VH-Signature` the daemon adds to a forwarded panel request (§4.6 step 6). */
-export function signPluginRequest(secret: string, timestamp: number, requestId: string, method: string, pathWithQuery: string, body?: PluginBytes): string {
+export function signPluginRequest(secret: Uint8Array, timestamp: number, requestId: string, method: string, pathWithQuery: string, body?: PluginBytes): string {
     assertTimestamp(timestamp);
+    assertSecretKey(secret);
     return `${PLUGIN_SIGNATURE_VERSION}=${pluginHmacSha256Hex(secret, pluginRequestSigningInput(timestamp, requestId, method, pathWithQuery, body))}`;
 }
 
@@ -191,7 +240,7 @@ export function pluginTimestampFresh(timestampHeader: string | number, nowSec: n
 }
 
 /** Verify an event delivery. Callers still dedupe on `X-VH-Event-Id` (at-least-once delivery). */
-export function verifyPluginEvent(args: { secret: string; signature: string | null | undefined; timestamp: string | number | null | undefined; eventId: string; rawBody: PluginBytes; nowSec: number }): PluginSignatureCheck {
+export function verifyPluginEvent(args: { secret: Uint8Array; signature: string | null | undefined; timestamp: string | number | null | undefined; eventId: string; rawBody: PluginBytes; nowSec: number }): PluginSignatureCheck {
     if (!args.signature || args.timestamp === null || args.timestamp === undefined || !args.eventId) return { ok: false, reason: 'malformed' };
     if (!/^\d{1,12}$/.test(String(args.timestamp))) return { ok: false, reason: 'malformed' };
     const ts = pluginTimestampFresh(args.timestamp, args.nowSec);
@@ -201,13 +250,19 @@ export function verifyPluginEvent(args: { secret: string; signature: string | nu
 }
 
 /** Verify a forwarded panel request (`X-VH-Request-Id`, `X-VH-Timestamp`, `X-VH-Signature`). */
-export function verifyPluginRequest(args: { secret: string; signature: string | null | undefined; timestamp: string | number | null | undefined; requestId: string; method: string; pathWithQuery: string; body?: PluginBytes; nowSec: number }): PluginSignatureCheck {
+export function verifyPluginRequest(args: { secret: Uint8Array; signature: string | null | undefined; timestamp: string | number | null | undefined; requestId: string; method: string; pathWithQuery: string; body?: PluginBytes; nowSec: number }): PluginSignatureCheck {
     if (!args.signature || args.timestamp === null || args.timestamp === undefined || !args.requestId) return { ok: false, reason: 'malformed' };
     if (!/^\d{1,12}$/.test(String(args.timestamp))) return { ok: false, reason: 'malformed' };
     const ts = pluginTimestampFresh(args.timestamp, args.nowSec);
     if (ts === null) return { ok: false, reason: 'stale' };
     const expected = signPluginRequest(args.secret, ts, args.requestId, args.method, args.pathWithQuery, args.body);
     return pluginTimingSafeEqual(expected, args.signature) ? { ok: true } : { ok: false, reason: 'mismatch' };
+}
+
+function assertSecretKey(secret: unknown): void {
+    if (!(secret instanceof Uint8Array)) {
+        throw new TypeError('plugin signing key must be the decoded secret bytes (Uint8Array from decodePluginSecret), not text');
+    }
 }
 
 function assertTimestamp(ts: number): void {

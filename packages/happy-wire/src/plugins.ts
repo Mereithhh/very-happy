@@ -232,7 +232,15 @@ const callbackUrl = z.string().refine(v => parsePluginLoopbackUrl(v, true) !== n
  * The daemon applies the full request-path rules (§4.6 step 3) with
  * `normalizePluginRequestPath`.
  */
-export const PluginPanelPathSchema = z.string().max(PLUGIN_LIMITS.pathChars).refine(v => normalizePluginRequestPath(v) !== null, 'must be an origin-relative path starting with /');
+export const PluginPanelPathSchema = z.string().max(PLUGIN_LIMITS.pathChars).refine(isPluginPanelPath, 'must be an origin-relative path starting with / (query and #fragment allowed)');
+/** r3: a panel path may carry `?query` and `#fragment`; the fragment is passed to the iframe URL as is. */
+export function isPluginPanelPath(v: string): boolean {
+    if (typeof v !== 'string') return false;
+    const hash = v.indexOf('#');
+    const fragment = hash === -1 ? '' : v.slice(hash + 1);
+    if (/[\\\u0000-\u001f\u007f\s]/.test(fragment)) return false;
+    return normalizePluginRequestPath(hash === -1 ? v : v.slice(0, hash)) !== null;
+}
 
 export const PluginPanelSchema = z.object({
     id: z.string().regex(PLUGIN_LIMITS.panelIdPattern),
@@ -406,6 +414,46 @@ export function pluginPrivilegedDiff(approved: PluginManifest, next: PluginManif
 export function pluginUpdateNeedsApproval(approved: PluginManifest, next: PluginManifest): boolean {
     if (pluginPrivilegedHash(approved) === pluginPrivilegedHash(next)) return false;
     return pluginPrivilegedDiff(approved, next).some(c => c.requiresApproval);
+}
+
+/**
+ * r1 `pendingDiff` for the review page: every changed manifest field (display
+ * fields included), each marked `privileged` when it belongs to the
+ * `privilegedHash` set. `approved` null = first install (everything is new).
+ */
+export function pluginPendingDiff(approved: PluginManifest | null, next: PluginManifest): PluginPendingDiff {
+    const flat = (m: PluginManifest | null): Record<string, { v: string | number | boolean | null; privileged: boolean }> => {
+        const out: Record<string, { v: string | number | boolean | null; privileged: boolean }> = {};
+        if (!m) return out;
+        const put = (k: string, v: string | number | boolean | null | undefined, privileged: boolean) => { out[k] = { v: v ?? null, privileged }; };
+        put('id', m.id, true); put('name', m.name, true); put('icon', m.icon ?? PLUGIN_DEFAULT_ICON, true);
+        put('version', m.version, false); put('description', m.description, false);
+        put('publisher.name', m.publisher?.name, false); put('publisher.url', m.publisher?.url, false);
+        put('minApi', m.minApi, false);
+        put('sidebar.title', m.sidebar?.title, false); put('sidebar.panel', m.sidebar?.panel, true);
+        for (const p of m.panels ?? []) {
+            put(`panels.${p.id}.upstream`, p.upstream, true);
+            put(`panels.${p.id}.title`, p.title, false);
+            put(`panels.${p.id}.entry`, p.entry, false);
+        }
+        put('callback.url', m.callback?.url, true);
+        put('sessionWidget', m.sessionWidget === true, true);
+        return out;
+    };
+    const a = flat(approved), b = flat(next);
+    const changes: PluginPendingDiff['changes'] = [];
+    for (const k of [...new Set([...Object.keys(a), ...Object.keys(b)])].sort()) {
+        const before = a[k]?.v ?? null, after = b[k]?.v ?? null;
+        if (before !== after) changes.push({ field: k, before, after, privileged: (a[k] ?? b[k]).privileged });
+    }
+    const was = new Set(approved?.permissions ?? []), now = new Set(next.permissions);
+    return {
+        manifestHash: pluginManifestHash(next),
+        version: next.version,
+        changes,
+        addedPermissions: next.permissions.filter(p => !was.has(p)).sort(),
+        removedPermissions: [...was].filter(p => !now.has(p)).sort(),
+    };
 }
 
 // ─── Per-install origin (§4.1) ───────────────────────────────────────────────
@@ -779,22 +827,27 @@ export type PluginEventsPullResponse = { events: PluginPulledEvent[]; cursor: st
 export const PluginEventsAckSchema = z.object({ upTo: z.string().min(1).max(256) });
 export type PluginEventsAckResponse = { acked: number };
 
-// ─── daemon ↔ server: plugin-op (§5.6) ───────────────────────────────────────
+// ─── daemon ↔ server: plugin-op (§5.6, §5.10 r4) ─────────────────────────────
 
 export const PLUGIN_OPS = [
+    'info',
     'badge.put',
     'decision.post', 'decision.patch', 'decision.delete', 'decision.list',
     'widget.put', 'widget.delete', 'widget.get',
-    'events.pull', 'events.ack',
-    'install.disable', 'install.remove', 'install.seen',
+    'events.pull', 'events.ack', 'events.result',
+    'audit.sensitiveRead',
+    'install.sync', 'install.disable', 'install.remove',
 ] as const;
 export type PluginOp = typeof PLUGIN_OPS[number];
 /**
  * Base permission each op needs (server checks `∈ grants` with the *current*
  * grants). Decision ops add `pluginDecisionMissingPermission`; widget ops with
- * `panelPath` add `panel`. `null` = no grant needed (install lifecycle, own events).
+ * `panelPath` add `panel`; `audit.sensitiveRead` needs the permission named in
+ * its payload (`pluginOpMissingPermission` applies all of it). `null` = only a
+ * valid install (or, for `install.sync`, the machine) is needed.
  */
 export const PLUGIN_OP_PERMISSION: Record<PluginOp, PluginPermission | null> = {
+    'info': null,
     'badge.put': 'sidebar',
     'decision.post': 'decisions',
     'decision.patch': 'decisions',
@@ -805,22 +858,120 @@ export const PLUGIN_OP_PERMISSION: Record<PluginOp, PluginPermission | null> = {
     'widget.get': 'session.widget',
     'events.pull': null,
     'events.ack': null,
+    'events.result': null,
+    'audit.sensitiveRead': null,
+    'install.sync': null,
     'install.disable': null,
     'install.remove': null,
-    'install.seen': null,
 };
-/** Socket event `plugin-op` (machine-scoped socket) → ack `PluginOpResult`. `requestId` doubles as the idempotency key. */
+
+const opKey = z.object({ key: decisionKey });
+const opSession = z.object({ sessionId: sessionIdField });
+export const PluginEventsResultSchema = z.object({
+    eventId: z.string().min(1).max(128),
+    status: z.enum(['delivered', 'failed']),
+    attempt: z.number().int().min(1),
+    error: z.string().max(500).optional(),
+});
+export const PluginAuditSensitiveReadSchema = z.object({
+    permission: z.enum(['sessions.list', 'sessions.read']),
+    sessionIds: z.array(sessionIdField).max(PLUGIN_LIMITS.sessionsListMax),
+});
+/** Payload schema per op (route params merged into the body). */
+export const PLUGIN_OP_PAYLOAD_SCHEMAS = {
+    'info': z.object({}),
+    'badge.put': PluginBadgePutSchema,
+    'decision.post': PluginDecisionPostSchema,
+    'decision.patch': opKey.extend(PluginDecisionPatchSchema.shape),
+    'decision.delete': opKey.extend(PluginDecisionDeleteSchema.shape),
+    'decision.list': PluginDecisionListQuerySchema,
+    'widget.put': opSession.extend(PluginWidgetPutSchema.shape),
+    'widget.delete': opSession,
+    'widget.get': opSession,
+    'events.pull': z.object({ after: z.string().max(256).optional(), limit: z.number().int().min(1).max(100).optional() }),
+    'events.ack': PluginEventsAckSchema,
+    'events.result': PluginEventsResultSchema,
+    'audit.sensitiveRead': PluginAuditSensitiveReadSchema,
+    'install.sync': z.object({}),
+    'install.disable': z.object({ reason: plainText(PLUGIN_LIMITS.reasonChars).optional() }),
+    'install.remove': z.object({ keepItems: z.boolean().optional() }),
+} as const satisfies Record<PluginOp, z.ZodType>;
+
+/** `install.sync` item: the machine's installs as the daemon needs them (approved manifest only). */
+export const PluginInstallSyncItemSchema = z.object({
+    id: z.string(),
+    pluginId: z.string(),
+    state: z.string(),
+    grants: z.array(z.string()),
+    /** The approved manifest (null while never approved). */
+    manifest: z.unknown().nullable(),
+    manifestHash: z.string().nullable(),
+    /** A newer manifest waits for approval (`pending` / `update_pending`). */
+    pending: z.boolean(),
+    disabledBy: z.enum(['owner', 'machine', 'operator']).optional(),
+}).passthrough();
+export type PluginInstallSyncItem = z.infer<typeof PluginInstallSyncItemSchema>;
+
+/** Result schema per op (`ack.result` when `ok`). */
+export const PLUGIN_OP_RESULT_SCHEMAS = {
+    'info': PluginInfoResponseSchema,
+    'badge.put': z.object({ badge: PluginBadgeSchema }).passthrough(),
+    'decision.post': z.object({ item: PluginDecisionSchema, created: z.boolean() }).passthrough(),
+    'decision.patch': z.object({ item: PluginDecisionSchema }).passthrough(),
+    'decision.delete': z.object({ item: PluginDecisionSchema }).passthrough(),
+    'decision.list': z.object({ items: z.array(PluginDecisionSchema) }).passthrough(),
+    'widget.put': z.object({ widget: PluginWidgetSchema }).passthrough(),
+    'widget.delete': z.object({ removed: z.literal(true) }).passthrough(),
+    'widget.get': z.object({ widget: PluginWidgetSchema }).passthrough(),
+    /** Unsigned events; the daemon signs each one when it pushes it or serves it from `/plugin/v1/events`. */
+    'events.pull': z.object({ events: z.array(PluginEventReadSchema), cursor: z.string().nullable() }).passthrough(),
+    'events.ack': z.object({ acked: z.number() }).passthrough(),
+    'events.result': z.object({}).passthrough(),
+    'audit.sensitiveRead': z.object({}).passthrough(),
+    'install.sync': z.object({ installs: z.array(PluginInstallSyncItemSchema) }).passthrough(),
+    'install.disable': z.object({}).passthrough(),
+    'install.remove': z.object({}).passthrough(),
+} as const satisfies Record<PluginOp, z.ZodType>;
+
+/** Socket event `plugin-op` (machine socket, `emitWithAck`). `installId` is null only for `install.sync`. `requestId` doubles as the idempotency key. */
 export const PluginOpRequestSchema = z.object({
-    installId: z.string().min(1).max(128),
+    installId: z.string().min(1).max(128).nullable(),
     op: z.enum(PLUGIN_OPS),
-    /** Route params (`key`, `sessionId`) plus the validated request body / query. */
     payload: z.record(z.string(), z.unknown()),
     requestId: z.string().min(1).max(PLUGIN_LIMITS.idempotencyKeyChars),
-});
+}).refine(r => (r.op === 'install.sync') === (r.installId === null), { message: 'installId is null exactly for install.sync', path: ['installId'] });
 export type PluginOpRequest = z.infer<typeof PluginOpRequestSchema>;
-export type PluginOpResult =
-    | { ok: true; status: number; body: unknown }
-    | { ok: false; status: number; body: PluginErrorBody };
+/** `plugin-op` ack. Errors use the §5.1 codes plus their details. */
+export const PluginOpAckSchema = z.union([
+    z.object({ ok: z.literal(true), result: z.unknown() }),
+    z.object({ ok: z.literal(false), status: z.number().int(), error: z.string(), message: z.string().optional() }).passthrough(),
+]);
+export type PluginOpAck = { ok: true; result: unknown } | ({ ok: false; status: number; error: string } & Omit<PluginErrorBody, 'error'>);
+export function pluginOpError(error: PluginErrorCode, message: string, details?: Omit<PluginErrorBody, 'error' | 'message'>): PluginOpAck {
+    return { ok: false, status: PLUGIN_ERROR_STATUS[error], error, message, ...(details ?? {}) };
+}
+
+/** First missing permission for an op with its payload, or null (decision / widget extras, sensitive-read audit). */
+export function pluginOpMissingPermission(op: PluginOp, payload: Record<string, unknown>, grants: readonly string[]): PluginPermission | null {
+    const base = PLUGIN_OP_PERMISSION[op];
+    if (base && !grants.includes(base)) return base;
+    const panelPath = typeof payload.panelPath === 'string' ? payload.panelPath : undefined;
+    if (op === 'decision.post' || op === 'decision.patch') {
+        return pluginDecisionMissingPermission({ sessionId: typeof payload.sessionId === 'string' ? payload.sessionId : undefined, panelPath }, grants);
+    }
+    if (op === 'widget.put' && panelPath && !grants.includes('panel')) return 'panel';
+    if (op === 'audit.sensitiveRead') {
+        const p = payload.permission;
+        if (p !== 'sessions.list' && p !== 'sessions.read') return 'sessions.read';
+        if (!grants.includes(p)) return p;
+    }
+    return null;
+}
+
+/** server → daemon socket notices (machine room). The daemon then calls `events.pull` / `install.sync`. */
+export const PLUGIN_SOCKET_EVENTS = { eventsDue: 'plugin-events-due', installChanged: 'plugin-install-changed', op: 'plugin-op' } as const;
+export const PluginEventsDueSchema = z.object({ installId: z.string().min(1).max(128) });
+export const PluginInstallChangedNoticeSchema = z.object({ installId: z.string().min(1).max(128) });
 
 // ─── server ↔ daemon: plugin-http (§4.5) ─────────────────────────────────────
 
@@ -894,15 +1045,20 @@ export type PluginWidgetActionResponse = { eventId: string };
 /** Owner mute (§11 Q5): per plugin install, stops push and the global badge contribution. */
 export const PluginInstallMuteSchema = z.object({ muted: z.boolean() });
 
-/** One privileged change, as the review page lists it. */
-export const PluginPendingDiffEntrySchema = z.object({
-    field: z.string(),
-    change: z.string(),
-    ref: z.string().optional(),
-    before: z.union([z.string(), z.boolean()]).nullable().optional(),
-    after: z.union([z.string(), z.boolean()]).nullable().optional(),
-    requiresApproval: z.boolean(),
+/**
+ * r1 `pendingDiff` (server-computed, Web renders it): every changed field of the
+ * waiting manifest against the approved one. `privileged` marks fields in the
+ * `privilegedHash` set. Build it with `pluginPendingDiff`.
+ */
+const diffValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+export const PluginPendingDiffSchema = z.object({
+    manifestHash: z.string(),
+    version: z.string(),
+    changes: z.array(z.object({ field: z.string(), before: diffValue, after: diffValue, privileged: z.boolean() }).passthrough()),
+    addedPermissions: z.array(z.string()),
+    removedPermissions: z.array(z.string()),
 }).passthrough();
+export type PluginPendingDiff = z.infer<typeof PluginPendingDiffSchema>;
 
 /** `PluginInstallView`: never includes upstream ports, callback URL, token or secret. */
 export const PluginInstallViewSchema = z.object({
@@ -921,13 +1077,13 @@ export const PluginInstallViewSchema = z.object({
     requested: z.array(z.string()).optional(),
     manifestHash: z.string().optional(),
     pendingManifestHash: z.string().nullable().optional(),
-    pendingDiff: z.array(PluginPendingDiffEntrySchema).nullable().optional(),
+    pendingDiff: PluginPendingDiffSchema.nullable().optional(),
     sidebar: z.object({ title: z.string(), panel: z.string() }).passthrough().nullable().optional(),
     panels: z.array(z.object({ id: z.string(), title: z.string() }).passthrough()),
     sessionWidget: z.boolean().optional(),
     hasCallback: z.boolean().optional(),
     badge: PluginBadgeSchema.nullable().optional(),
-    muted: z.boolean().optional(),
+    muted: z.boolean(),
     /** `https://<pluginId>-<h8>.<pluginHost>`; null when the server has no plugin host (panels unavailable). */
     origin: z.string().nullable(),
     lastSeenAt: z.number().nullable(),
@@ -938,28 +1094,50 @@ export type PluginInstallView = z.infer<typeof PluginInstallViewSchema>;
 export type PluginInstallListResponse = { installs: PluginInstallView[] };
 export type PluginInstallResponse = { install: PluginInstallView };
 
+/** r1 `GET /v1/plugins/installs/:id`: the only place upstream and callback addresses are returned. */
+export const PluginInstallDetailSchema = z.object({
+    install: PluginInstallViewSchema,
+    review: z.object({
+        /** The manifest waiting for approval (or the approved one when nothing waits), complete. */
+        manifest: z.unknown(),
+        manifestHash: z.string(),
+        approvedManifest: z.unknown().nullable().optional(),
+        approvedHash: z.string().nullable().optional(),
+        submittedAt: z.number(),
+        machineId: z.string(),
+    }).passthrough(),
+}).passthrough();
+export type PluginInstallDetail = z.infer<typeof PluginInstallDetailSchema>;
+
+/** r1 `PluginWidgetView` (`GET /v1/plugins/widgets?sessionId=…`, socket `plugin-widget`). */
+export const PluginWidgetViewSchema = PluginWidgetSchema.extend({ installId: z.string() });
+export type PluginWidgetView = z.infer<typeof PluginWidgetViewSchema>;
+export type PluginWidgetListResponse = { widgets: PluginWidgetView[] };
+
 /** Socket `update` bodies. */
 export const UpdatePluginInstallBodySchema = z.object({ t: z.literal('plugin-install'), install: PluginInstallViewSchema });
-export const UpdatePluginWidgetBodySchema = z.object({
-    t: z.literal('plugin-widget'),
-    installId: z.string(),
-    sessionId: z.string(),
-    /** null = removed or hidden. */
-    widget: PluginWidgetSchema.nullable(),
-});
+/** Socket `plugin-widget`: the widget view, or `{ installId, sessionId, removed: true }` when it is removed or hidden. */
+export const UpdatePluginWidgetBodySchema = z.union([
+    z.object({ t: z.literal('plugin-widget'), installId: z.string(), sessionId: z.string(), removed: z.literal(true) }),
+    PluginWidgetViewSchema.extend({ t: z.literal('plugin-widget') }),
+]);
 export type UpdatePluginInstallBody = z.infer<typeof UpdatePluginInstallBodySchema>;
 export type UpdatePluginWidgetBody = z.infer<typeof UpdatePluginWidgetBodySchema>;
 
+export const PLUGIN_AUDIT_ACTORS = ['owner', 'machine', 'plugin', 'operator'] as const;
+/** r1 audit entry (`GET /v1/plugins/installs/:id/audit?limit≤100`). */
 export const PluginAuditEntrySchema = z.object({
     id: z.string(),
-    installId: z.string(),
+    at: z.number(),
     actor: z.string(),
     action: z.string(),
-    requestId: z.string().nullable().optional(),
     detail: z.string().nullable().optional(),
-    createdAt: z.number(),
+    requestId: z.string().nullable().optional(),
 }).passthrough();
 export type PluginAuditEntry = z.infer<typeof PluginAuditEntrySchema>;
+export const PluginAuditListQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(100).optional() });
+export const PluginAuditListResponseSchema = z.object({ entries: z.array(PluginAuditEntrySchema), sensitiveReads24h: z.number() }).passthrough();
+export type PluginAuditListResponse = z.infer<typeof PluginAuditListResponseSchema>;
 
 // ─── postMessage bridge (§4.4) ───────────────────────────────────────────────
 

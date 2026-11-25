@@ -50,9 +50,11 @@ export const ATTENTION_KINDS = ['decision', 'todo', 'blocked', 'report', 'answer
  * `?include=plugin`.
  */
 export const ATTENTION_PLUGIN_SOURCE = 'plugin' as const;
+/** Host-generated cards about plugins themselves (「插件安装待批准」); server-written only. */
+export const ATTENTION_OWNER_SYSTEM_SOURCE = 'owner-system' as const;
 export const ATTENTION_INPUT_KIND = 'input' as const;
-/** Every source an item can carry (agents' `ATTENTION_SOURCES` + `plugin`). */
-export const ATTENTION_ITEM_SOURCES = [...ATTENTION_SOURCES, ATTENTION_PLUGIN_SOURCE] as const;
+/** Every source an item can carry (agents' `ATTENTION_SOURCES` + server-only `plugin` and `owner-system`). */
+export const ATTENTION_ITEM_SOURCES = [...ATTENTION_SOURCES, ATTENTION_PLUGIN_SOURCE, ATTENTION_OWNER_SYSTEM_SOURCE] as const;
 export type AttentionItemSource = typeof ATTENTION_ITEM_SOURCES[number];
 /** Every kind an item can carry (agents' `ATTENTION_KINDS` + `input`). */
 export const ATTENTION_ITEM_KINDS = [...ATTENTION_KINDS, ATTENTION_INPUT_KIND] as const;
@@ -148,7 +150,8 @@ export type AttentionOption = z.infer<typeof AttentionOptionSchema>;
 const options = z.array(AttentionOptionSchema).min(ATTENTION_LIMITS.options.min).max(ATTENTION_LIMITS.options.max)
     .refine(o => new Set(o.map(x => x.id)).size === o.length, 'option ids must be unique');
 
-export const ATTENTION_LINK_TYPES = ['task', 'pr', 'commit', 'url', 'panel', 'issue'] as const;
+/** `session` (B-974 r4): a plugin card's related session (`ref` = sessionId); plugin items keep `sessionId` null. */
+export const ATTENTION_LINK_TYPES = ['task', 'pr', 'commit', 'url', 'panel', 'issue', 'session'] as const;
 export const AttentionLinkSchema = z.object({
     type: z.enum(ATTENTION_LINK_TYPES),
     ref: z.string().trim().min(1).max(ATTENTION_LIMITS.linkRefChars),
@@ -381,7 +384,11 @@ export function parsePluginPayload(payload: unknown): PluginPayloadView | null {
 /** Plugin items (and any item without a session) are listed only to clients that ask with `?include=plugin` (old Web expects a string `sessionId`). */
 export const ATTENTION_INCLUDE_PLUGIN = 'plugin';
 export function isAttentionPluginItem(item: { source: string; sessionId?: string | null; pluginInstallId?: string | null }): boolean {
-    return item.source === 'plugin' || !!item.pluginInstallId || item.sessionId === null;
+    return item.source === 'plugin' || item.source === 'owner-system' || !!item.pluginInstallId || item.sessionId === null;
+}
+/** The session a plugin card relates to (r4: stored as a `session` link, not in `sessionId`). */
+export function attentionLinkedSessionId(item: { links?: { type: string; ref: string }[] | null }): string | null {
+    return item.links?.find(l => l.type === 'session')?.ref ?? null;
 }
 
 // ─── Item (response / update payload) ────────────────────────────────────────

@@ -14,13 +14,28 @@ import {
     attentionItemNeedsOwner,
     attentionPushKind,
     attentionQueryIncludesPlugin,
+    ATTENTION_LINK_TYPES,
+    attentionLinkedSessionId,
     isAttentionPluginItem,
     isSessionAttentionItem,
     parsePluginPayload,
 } from './attention';
 import {
     PLUGIN_ERROR_STATUS,
+    PLUGIN_OPS,
+    PLUGIN_OP_PAYLOAD_SCHEMAS,
     PLUGIN_OP_PERMISSION,
+    PLUGIN_OP_RESULT_SCHEMAS,
+    PluginAuditListResponseSchema,
+    PluginInstallDetailSchema,
+    PluginInstallSyncItemSchema,
+    PluginOpAckSchema,
+    PluginOpRequestSchema,
+    UpdatePluginWidgetBodySchema,
+    isPluginPanelPath,
+    pluginOpError,
+    pluginOpMissingPermission,
+    pluginPendingDiff,
     PluginBadgePutSchema,
     PluginBridgeRequestSchema,
     PluginDecisionPatchSchema,
@@ -420,7 +435,7 @@ describe('host-internal schemas', () => {
     it('install view tolerates new fields and states', () => {
         expect(PluginInstallViewSchema.safeParse({
             id: 'pi_1', machineId: 'm', pluginId: 'hello-board', name: 'Hello', icon: 'kanban', version: '0.1.0', state: 'future_state',
-            grants: [], panels: [{ id: 'main', title: 'Counter' }], origin: null, lastSeenAt: null, extra: true,
+            grants: [], panels: [{ id: 'main', title: 'Counter' }], muted: false, origin: null, lastSeenAt: null, extra: true,
         }).success).toBe(true);
     });
     it('plugin-http carries no target address and only one body form', () => {
@@ -496,5 +511,107 @@ describe('AttentionItem wire extension (B-974)', () => {
         expect(attentionQueryIncludesPlugin('foo, plugin')).toBe(true);
         expect(attentionQueryIncludesPlugin('plugins')).toBe(false);
         expect(attentionQueryIncludesPlugin(undefined)).toBe(false);
+    });
+});
+
+describe('r4 plugin-op contract', () => {
+    it('op names match §5.10', () => {
+        expect([...PLUGIN_OPS].sort()).toEqual([
+            'audit.sensitiveRead', 'badge.put', 'decision.delete', 'decision.list', 'decision.patch', 'decision.post',
+            'events.ack', 'events.pull', 'events.result', 'info', 'install.disable', 'install.remove', 'install.sync',
+            'widget.delete', 'widget.get', 'widget.put',
+        ]);
+        for (const op of PLUGIN_OPS) {
+            expect(PLUGIN_OP_PAYLOAD_SCHEMAS[op], op).toBeDefined();
+            expect(PLUGIN_OP_RESULT_SCHEMAS[op], op).toBeDefined();
+        }
+    });
+    it('installId is null exactly for install.sync', () => {
+        expect(PluginOpRequestSchema.safeParse({ installId: null, op: 'install.sync', payload: {}, requestId: 'r' }).success).toBe(true);
+        expect(PluginOpRequestSchema.safeParse({ installId: 'pi', op: 'install.sync', payload: {}, requestId: 'r' }).success).toBe(false);
+        expect(PluginOpRequestSchema.safeParse({ installId: null, op: 'badge.put', payload: {}, requestId: 'r' }).success).toBe(false);
+        expect(PluginOpRequestSchema.safeParse({ installId: 'pi', op: 'badge.put', payload: { count: 1 }, requestId: 'r' }).success).toBe(true);
+        expect(PluginOpRequestSchema.safeParse({ installId: 'pi', op: 'sessions.audit', payload: {}, requestId: 'r' }).success).toBe(false);
+    });
+    it('payloads carry route params', () => {
+        expect(PLUGIN_OP_PAYLOAD_SCHEMAS['decision.patch'].safeParse({ key: 'k', title: 'T' }).success).toBe(true);
+        expect(PLUGIN_OP_PAYLOAD_SCHEMAS['decision.patch'].safeParse({ title: 'T' }).success).toBe(false);
+        expect(PLUGIN_OP_PAYLOAD_SCHEMAS['widget.put'].safeParse({ sessionId: 's', status: { label: 'x', tone: 'info' } }).success).toBe(true);
+        expect(PLUGIN_OP_PAYLOAD_SCHEMAS['widget.put'].safeParse({ status: { label: 'x', tone: 'info' } }).success).toBe(false);
+        expect(PLUGIN_OP_PAYLOAD_SCHEMAS['events.result'].safeParse({ eventId: 'e', status: 'delivered', attempt: 1 }).success).toBe(true);
+        expect(PLUGIN_OP_PAYLOAD_SCHEMAS['events.result'].safeParse({ eventId: 'e', status: 'maybe', attempt: 1 }).success).toBe(false);
+        expect(PLUGIN_OP_PAYLOAD_SCHEMAS['audit.sensitiveRead'].safeParse({ permission: 'sessions.read', sessionIds: ['s'] }).success).toBe(true);
+        expect(PLUGIN_OP_PAYLOAD_SCHEMAS['audit.sensitiveRead'].safeParse({ permission: 'panel', sessionIds: [] }).success).toBe(false);
+    });
+    it('permissions per op with payload extras', () => {
+        const all = ['sidebar', 'panel', 'decisions', 'session.widget', 'sessions.list', 'sessions.read'];
+        for (const op of PLUGIN_OPS) expect(pluginOpMissingPermission(op, { permission: 'sessions.read' }, all), op).toBeNull();
+        expect(pluginOpMissingPermission('badge.put', {}, ['panel'])).toBe('sidebar');
+        expect(pluginOpMissingPermission('decision.post', { sessionId: 's' }, ['decisions'])).toBe('session.widget');
+        expect(pluginOpMissingPermission('decision.patch', { panelPath: '/x' }, ['decisions'])).toBe('panel');
+        expect(pluginOpMissingPermission('widget.put', { panelPath: '/x' }, ['session.widget'])).toBe('panel');
+        expect(pluginOpMissingPermission('widget.put', {}, ['session.widget'])).toBeNull();
+        expect(pluginOpMissingPermission('audit.sensitiveRead', { permission: 'sessions.read' }, ['sessions.list'])).toBe('sessions.read');
+        expect(pluginOpMissingPermission('audit.sensitiveRead', { permission: 'sessions.list' }, ['sessions.list'])).toBeNull();
+        expect(pluginOpMissingPermission('audit.sensitiveRead', { permission: 'panel' }, all)).toBe('sessions.read');
+        expect(pluginOpMissingPermission('events.pull', {}, [])).toBeNull();
+        expect(pluginOpMissingPermission('info', {}, [])).toBeNull();
+    });
+    it('ack shapes', () => {
+        expect(PluginOpAckSchema.safeParse({ ok: true, result: { badge: null } }).success).toBe(true);
+        const err = pluginOpError('permission_denied', 'no', { permission: 'sidebar' });
+        expect(err).toEqual({ ok: false, status: 403, error: 'permission_denied', message: 'no', permission: 'sidebar' });
+        expect(PluginOpAckSchema.safeParse(err).success).toBe(true);
+        expect(PluginOpAckSchema.safeParse({ ok: false, error: 'x' }).success).toBe(false);
+    });
+    it('install.sync item', () => {
+        expect(PluginInstallSyncItemSchema.safeParse({ id: 'pi', pluginId: 'p', state: 'enabled', grants: ['panel'], manifest: HELLO, manifestHash: HELLO_MANIFEST_HASH, pending: false }).success).toBe(true);
+        expect(PluginInstallSyncItemSchema.safeParse({ id: 'pi', pluginId: 'p', state: 'pending', grants: [], manifest: null, manifestHash: null, pending: true, disabledBy: 'operator' }).success).toBe(true);
+        expect(PluginInstallSyncItemSchema.safeParse({ id: 'pi', pluginId: 'p', state: 'enabled', grants: [], manifest: null, manifestHash: null }).success).toBe(false);
+    });
+});
+
+describe('r1 host views', () => {
+    it('pendingDiff lists every changed field and marks privileged ones', () => {
+        const next = parse(with_({ version: '0.2.0', panels: [{ id: 'main', title: 'Counter 2', upstream: 'http://127.0.0.1:4311' }], permissions: ['sidebar', 'panel', 'decisions', 'session.widget', 'sessions.list'] }));
+        const d = pluginPendingDiff(parse(HELLO), next);
+        expect(d.manifestHash).toBe(pluginManifestHash(next));
+        expect(d.version).toBe('0.2.0');
+        expect(d.changes).toEqual([
+            { field: 'panels.main.title', before: 'Counter', after: 'Counter 2', privileged: false },
+            { field: 'panels.main.upstream', before: 'http://127.0.0.1:4310', after: 'http://127.0.0.1:4311', privileged: true },
+            { field: 'version', before: '0.1.0', after: '0.2.0', privileged: false },
+        ]);
+        expect(d.addedPermissions).toEqual(['sessions.list']);
+        expect(d.removedPermissions).toEqual([]);
+        const first = pluginPendingDiff(null, parse(HELLO));
+        expect(first.addedPermissions).toEqual(['decisions', 'panel', 'session.widget', 'sidebar']);
+        expect(first.changes.find(c => c.field === 'callback.url')).toEqual({ field: 'callback.url', before: null, after: 'http://127.0.0.1:4310/vh/callback', privileged: true });
+        const fewer = pluginPendingDiff(parse(HELLO), parse(with_({ permissions: ['sidebar', 'panel', 'decisions'], sessionWidget: undefined })));
+        expect(fewer.removedPermissions).toEqual(['session.widget']);
+        expect(fewer.changes).toEqual([{ field: 'sessionWidget', before: true, after: false, privileged: true }]);
+    });
+    it('install detail, audit and widget socket payloads', () => {
+        const view = { id: 'pi', machineId: 'm', pluginId: 'p', name: 'P', icon: 'bot', version: '1.0.0', state: 'pending', grants: [], panels: [], muted: false, origin: null, lastSeenAt: null };
+        expect(PluginInstallDetailSchema.safeParse({ install: view, review: { manifest: HELLO, manifestHash: HELLO_MANIFEST_HASH, submittedAt: 1, machineId: 'm' } }).success).toBe(true);
+        expect(PluginInstallDetailSchema.safeParse({ install: { ...view, muted: undefined }, review: { manifest: HELLO, manifestHash: 'h', submittedAt: 1, machineId: 'm' } }).success).toBe(false);
+        expect(PluginAuditListResponseSchema.safeParse({ entries: [{ id: 'a', at: 1, actor: 'plugin', action: 'sessions.read', detail: '2 sessions' }], sensitiveReads24h: 2 }).success).toBe(true);
+        expect(UpdatePluginWidgetBodySchema.safeParse({ t: 'plugin-widget', installId: 'pi', sessionId: 's', removed: true }).success).toBe(true);
+        expect(UpdatePluginWidgetBodySchema.safeParse({ t: 'plugin-widget', installId: 'pi', sessionId: 's', status: { label: 'x', tone: 'info' }, actions: [], version: 1, updatedAt: 1 }).success).toBe(true);
+        expect(UpdatePluginWidgetBodySchema.safeParse({ t: 'plugin-widget', sessionId: 's', status: { label: 'x', tone: 'info' }, actions: [], version: 1, updatedAt: 1 }).success).toBe(false);
+    });
+    it('r3 panel paths allow ?query and #fragment', () => {
+        for (const ok of ['/', '/board?case=12', '/board#c-12', '/a?x=1#y/z']) expect(isPluginPanelPath(ok), ok).toBe(true);
+        for (const bad of ['#x', 'board', '//evil#x', '/a/../b#x', '/a#x y', '/a#x\\y', '/a#\u0000']) expect(isPluginPanelPath(bad), bad).toBe(false);
+        expect(PluginDecisionPostSchema.safeParse({ key: 'k', kind: 'notice', title: 'T', panelPath: '/board#c-12' }).success).toBe(true);
+    });
+    it('owner-system and session links', () => {
+        expect(ATTENTION_ITEM_SOURCES).toContain('owner-system');
+        expect(ATTENTION_SOURCES).not.toContain('owner-system');
+        expect(AttentionItemPostSchema.safeParse({ sessionId: 's', source: 'owner-system', kind: 'report', title: 'T' }).success).toBe(false);
+        expect(ATTENTION_LINK_TYPES).toContain('session');
+        expect(attentionLinkedSessionId({ links: [{ type: 'pr', ref: '1' }, { type: 'session', ref: 'sess_1' }] })).toBe('sess_1');
+        expect(attentionLinkedSessionId({ links: null })).toBeNull();
+        expect(isAttentionPluginItem({ source: 'owner-system', sessionId: null })).toBe(true);
     });
 });
