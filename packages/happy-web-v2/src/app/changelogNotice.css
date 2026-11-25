@@ -130,3 +130,62 @@
 }
 
 @media (pointer: coarse) { .wn-close { width:44px; height:44px; } .wn-done, .wn-prev, .wn-more, .wn-cli button { min-height:44px; } }
+
+/* B-976: 「有 N 条更新说明」 bar (ChangelogHintBar) — a row in the layout, rendered
+   into an empty slot (changelogHintSlots.ts): under the session title bar, or in
+   the sidebar in place of its 「更新说明」 row. Never floats over anything. */
+.wn-hint-slot:empty { display: none; }
+.wn-hint-slot { flex: none; }
+.wn-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 40px;
+  padding: 4px var(--sp-2) 4px var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+  color: var(--text);
+  font-size: var(--fs-13);
+}
+.wn-hint > svg { flex: none; color: var(--accent); }
+.wn-hint-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wn-hint-slot[data-kind="sidebar"] .wn-hint {
+  margin: 0 var(--sp-2) var(--sp-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.wn-hint-open,
+.wn-hint-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.wn-hint-open {
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line-2);
+  font-weight: 600;
+}
+.wn-hint-close {
+  min-width: 28px;
+  color: var(--text-faint);
+}
+@media (hover: hover) and (pointer: fine) {
+  .wn-hint-open:hover,
+  .wn-hint-close:hover { background: var(--bg-3); color: var(--text); }
+}
+.wn-hint-open:focus-visible,
+.wn-hint-close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+@media (pointer: coarse) {
+  .wn-hint { min-height: 52px; }
+  .wn-hint-open,
+  .wn-hint-close { min-height: 44px; min-width: 44px; }
+}

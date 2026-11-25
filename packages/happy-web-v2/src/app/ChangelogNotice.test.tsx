@@ -15,11 +15,11 @@ vi.mock('@/i18n/useTranslation', () => ({
   }),
 }));
 vi.mock('@/sync/storage', () => ({ useAllMachines: () => [] }));
-const toasts: { message: string; button?: { label: string; onClick: () => void }; durationMs?: number }[] = [];
+const toasts: string[] = [];
 const toastApi = {
   success: () => {},
   error: () => {},
-  show: (message: string, _tone?: string, opts?: { button?: { label: string; onClick: () => void }; durationMs?: number }) => { toasts.push({ message, ...opts }); },
+  show: (message: string) => { toasts.push(message); },
 };
 vi.mock('@/ui', () => ({ useToast: () => toastApi, useTheme: () => ({ resolved: 'light' }) }));
 vi.mock('@/screens/search/sessionSearchEvents', () => ({ openSessionSearch: () => {} }));
@@ -41,6 +41,10 @@ vi.mock('./changelogRelease', async (importOriginal) => {
 });
 
 let ChangelogNotice: typeof import('./ChangelogNotice').ChangelogNotice;
+let ChangelogHintSlot: typeof import('./ChangelogHintSlot').ChangelogHintSlot;
+let slotsMod: typeof import('./changelogHintSlots');
+/** Which slots are "on screen" (no layout here). */
+let onScreen: Set<string> = new Set(['session']);
 let MajorUpdateEntry: typeof import('./MajorUpdateEntry').MajorUpdateEntry;
 let store: typeof import('./changelogReadStore');
 let entry: typeof import('./entryKind');
@@ -50,6 +54,9 @@ let host: HTMLElement;
 beforeAll(async () => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   ({ ChangelogNotice } = await import('./ChangelogNotice'));
+  ({ ChangelogHintSlot } = await import('./ChangelogHintSlot'));
+  slotsMod = await import('./changelogHintSlots');
+  slotsMod.setChangelogHintSlotVisibilityForTest((el) => onScreen.has(el.dataset.kind ?? ''));
   ({ MajorUpdateEntry } = await import('./MajorUpdateEntry'));
   store = await import('./changelogReadStore');
   entry = await import('./entryKind');
@@ -61,7 +68,20 @@ beforeEach(() => {
   entry.setEnteredByDeepLinkForTest(false);
   store.resetChangelogReadStoreForTest();
   toasts.length = 0;
+  setHidden(false);
+  // Phone-like (sidebar off screen): the sidebar row stays visible beside the bar.
+  onScreen = new Set(['session']);
 });
+
+let hidden = false;
+Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+const setHidden = (value: boolean) => { hidden = value; };
+const showPage = (after = 0) => act(() => {
+  if (after) vi.setSystemTime(Date.now() + after);
+  hidden = false;
+  document.dispatchEvent(new Event('visibilitychange'));
+});
+const hidePage = () => act(() => { hidden = true; document.dispatchEvent(new Event('visibilitychange')); });
 
 afterEach(async () => {
   act(() => root?.unmount());
@@ -73,7 +93,11 @@ const mount = () => {
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
-  act(() => root.render(createElement(MemoryRouter, null, createElement(ChangelogNotice), createElement(MajorUpdateEntry))));
+  act(() => root.render(createElement(MemoryRouter, null,
+    createElement('header', { className: 'ch' }),
+    createElement(ChangelogHintSlot, { kind: 'session' }),
+    createElement(ChangelogNotice),
+    createElement('nav', { className: 'sidebar' }, createElement(ChangelogHintSlot, { kind: 'sidebar' }), createElement(MajorUpdateEntry)))));
 };
 const remount = () => {
   act(() => root.unmount());
@@ -216,52 +240,223 @@ describe('B-715 release-notes pager', () => {
 // B-842 (Owner 10-28 「刷新页面也没有收到通知」): a minor release held back by a
 // deep link (a session page refreshed with `?panel=…` open) or by early typing
 // was visible nowhere — the sidebar entry counted majors only.
-describe('B-842 every unread release has a way in', () => {
+describe('B-842 / B-976 every unread release has a way in: the bar', () => {
   const minorOnly = () => { localStorage.setItem('vh.changelog.seen', 'big-1'); localStorage.setItem('vh.changelog.read', JSON.stringify(['big-2'])); };
+  const bar = () => document.querySelector('[data-testid="changelog-hint"]');
+  // Phone-like by default (sidebar off screen) so the sidebar row stays visible beside the bar.
+  beforeEach(() => { onScreen = new Set(['session']); });
 
-  it('deep link + only a minor release unread: quiet sidebar entry and a toast, both open the notes', () => {
+  it('B-976 phone: a row right under the session title bar — in the layout, not over it', () => {
+    minorOnly();
+    entry.setEnteredByDeepLinkForTest(true);
+    mount();
+    const slot = bar()!.parentElement!;
+    expect(slot.dataset.kind).toBe('session');
+    expect(slot.previousElementSibling?.className).toBe('ch');
+    expect(bar()!.closest('.wn-card, [role="dialog"]')).toBeNull();
+  });
+
+  it('B-976 desktop: in the sidebar, taking the place of its 「更新说明」 row (one row, not two); ✕ gives the row back', () => {
+    onScreen = new Set(['sidebar', 'session']);
+    minorOnly();
+    entry.setEnteredByDeepLinkForTest(true);
+    mount();
+    expect(bar()!.parentElement!.dataset.kind).toBe('sidebar');
+    expect(document.querySelectorAll('[data-testid="changelog-hint"]')).toHaveLength(1);
+    expect(document.querySelector('.vh-major-entry')).toBeNull();
+    act(() => (document.querySelector('.wn-hint-close') as HTMLButtonElement).click());
+    expect(bar()).toBeNull();
+    expect(document.querySelector('.vh-major-entry')).not.toBeNull();
+  });
+
+  it('B-976: no slot on screen — the bar waits instead of floating, and shows once a slot is', () => {
+    onScreen = new Set();
+    minorOnly();
+    entry.setEnteredByDeepLinkForTest(true);
+    mount();
+    expect(bar()).toBeNull();
+    onScreen = new Set(['session']);
+    act(() => { window.dispatchEvent(new Event('resize')); });
+    expect(bar()).not.toBeNull();
+  });
+
+
+  it('deep link + only a minor release unread: quiet sidebar entry and the bar, both open the notes; no toast', () => {
     minorOnly();
     entry.setEnteredByDeepLinkForTest(true);
     mount();
     expect(card()).toBeNull();
     const quiet = document.querySelector('.vh-major-entry') as HTMLButtonElement;
     expect(quiet.dataset.kind).toBe('minor');
-    expect(quiet.textContent).toContain('changelog.notesEntryShort');
-    expect(toasts).toHaveLength(1);
-    expect(toasts[0].message).toBe('changelog.hint:{"count":1}');
-    expect(toasts[0].button?.label).toBe('changelog.hintOpen');
-    act(() => toasts[0].button!.onClick());
+    expect(bar()?.textContent).toContain('changelog.hint:{"count":1}');
+    expect(toasts).toEqual([]);
+    act(() => button('changelog.hintOpen')!.click());
     expect(title()).toBe('changelog.releases.small.title');
+    expect(bar()).toBeNull();
     act(() => button('changelog.done')!.click());
+    expect(bar()).toBeNull();
     expect(document.querySelector('.vh-major-entry')).toBeNull();
   });
 
-  it('typing before the notes mounted: no pager, but the toast and the entry are there', async () => {
+  it('typing before the notes mounted: no pager and nothing takes focus, but the bar and the entry are there', async () => {
     const first = await import('./afterFirstScreen');
     first.resetAfterFirstScreenForTest(undefined, { interacted: true });
+    const input = document.createElement('textarea');
+    document.body.append(input);
+    input.focus();
     try {
       minorOnly();
       mount();
       expect(card()).toBeNull();
-      expect(toasts.map((x) => x.message)).toEqual(['changelog.hint:{"count":1}']);
+      expect(bar()).not.toBeNull();
+      expect(document.activeElement).toBe(input);
       act(() => button('changelog.notesEntryShort')!.click());
       expect(title()).toBe('changelog.releases.small.title');
     } finally {
+      input.remove();
       first.resetAfterFirstScreenForTest();
     }
   });
 
-  it('B-950: list → session → list (the notice remounts under the other route gate) leaves one toast, not one per page', () => {
+  it('B-976: the bar stays — no timer — until the notes are read', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'setInterval'] });
+    try {
+      minorOnly();
+      entry.setEnteredByDeepLinkForTest(true);
+      mount();
+      act(() => { vi.advanceTimersByTime(10 * 60_000); });
+      expect(bar()).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('B-976: ✕ closes it for this visit only — unread, the entry stays; the next load shows it again', () => {
     minorOnly();
     entry.setEnteredByDeepLinkForTest(true);
     mount();
-    expect(toasts).toHaveLength(1);
+    act(() => (document.querySelector('.wn-hint-close') as HTMLButtonElement).click());
+    expect(bar()).toBeNull();
+    expect(document.querySelector('.vh-major-entry')).not.toBeNull();
+    act(() => root.unmount()); host.remove(); mount(); // route-gate remount, same visit
+    expect(bar()).toBeNull();
+    remount(); // a new page load
+    expect(bar()).not.toBeNull();
+  });
+
+  it('B-976: read on another tab — the bar goes away with the last unread release', () => {
+    minorOnly();
+    entry.setEnteredByDeepLinkForTest(true);
+    mount();
+    expect(bar()).not.toBeNull();
+    act(() => {
+      localStorage.setItem('vh.changelog.seen', 'big-2');
+      localStorage.removeItem('vh.changelog.read');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'vh.changelog.seen' }));
+    });
+    expect(bar()).toBeNull();
+  });
+
+  it('B-976: a newer shell waiting for a refresh owns the moment — the update prompt alone, the bar after', async () => {
+    const update = await import('./pendingUpdate');
+    minorOnly();
+    entry.setEnteredByDeepLinkForTest(true);
+    act(() => update.setPendingUpdate({ entry: 'index-new.js' }));
+    try {
+      mount();
+      expect(bar()).toBeNull();
+      act(() => update.setPendingUpdate(null));
+      expect(bar()).not.toBeNull();
+    } finally {
+      update.setPendingUpdate(null);
+    }
+  });
+
+  it('B-976: loaded in the background, nothing is decided until the page is shown — then the bar (deep link) or the pager', () => {
+    minorOnly();
+    entry.setEnteredByDeepLinkForTest(true);
+    setHidden(true);
+    mount();
+    expect(bar()).toBeNull();
+    expect(card()).toBeNull();
+    expect(store.changelogAutoShownThisVisit()).toBe(false);
+    showPage();
+    expect(bar()).not.toBeNull();
+
+    act(() => root.unmount()); host.remove();
+    store.resetChangelogReadStoreForTest();
+    entry.setEnteredByDeepLinkForTest(false);
+    setHidden(true);
+    mount();
+    expect(card()).toBeNull();
+    showPage();
+    expect(title()).toBe('changelog.releases.small.title');
+  });
+
+  it('B-976: a bar closed with ✕ comes back after a long time in the background (a PWA that never reloads), not after a short switch', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      minorOnly();
+      entry.setEnteredByDeepLinkForTest(true);
+      mount();
+      act(() => (document.querySelector('.wn-hint-close') as HTMLButtonElement).click());
+      hidePage();
+      showPage(60_000);
+      expect(bar()).toBeNull();
+      hidePage();
+      showPage(31 * 60_000);
+      expect(bar()).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('B-976: the pager closed unread (Esc on the last page); back after a long time without a reload — the bar, not after a short switch', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      minorOnly();
+      mount();
+      expect(title()).toBe('changelog.releases.small.title');
+      press('Escape');
+      expect(card()).toBeNull();
+      hidePage();
+      showPage(60_000);
+      expect(bar()).toBeNull();
+      hidePage();
+      showPage(31 * 60_000);
+      expect(bar()).not.toBeNull();
+      expect(card()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('B-976: returning to the page while the notes are open changes nothing — no bar behind the pager', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      minorOnly();
+      mount();
+      expect(card()).not.toBeNull();
+      hidePage();
+      showPage(31 * 60_000);
+      expect(card()).not.toBeNull();
+      expect(bar()).toBeNull();
+      act(() => store.markChangelogReleasesRead([])); // a read-state change while open must not raise it either
+      expect(bar()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('B-950: list → session → list (the notice remounts under the other route gate) keeps one bar', () => {
+    minorOnly();
+    entry.setEnteredByDeepLinkForTest(true);
+    mount();
     const navigate = () => { act(() => root.unmount()); host.remove(); mount(); };
     navigate();
     navigate();
-    expect(toasts).toHaveLength(1);
+    expect(document.querySelectorAll('[data-testid="changelog-hint"]')).toHaveLength(1);
     expect(card()).toBeNull();
-    // The sidebar entry still opens the notes after the remounts.
     act(() => button('changelog.notesEntryShort')!.click());
     expect(title()).toBe('changelog.releases.small.title');
   });
@@ -271,34 +466,37 @@ describe('B-842 every unread release has a way in', () => {
     expect(card()).not.toBeNull();
     act(() => root.unmount()); host.remove(); mount();
     expect(card()).toBeNull();
-    expect(toasts).toHaveLength(0);
+    expect(bar()).toBeNull();
   });
 
-  it('an ordinary load opens the pager and leaves no toast', () => {
+  it('an ordinary load opens the pager and shows no bar', () => {
     mount();
     expect(card()).not.toBeNull();
-    expect(toasts).toHaveLength(0);
+    expect(bar()).toBeNull();
   });
 
-  it('nothing unread: no toast and no entry, even on a deep link', () => {
+  it('nothing unread: no bar and no entry, even on a deep link', () => {
     localStorage.setItem('vh.changelog.seen', 'big-2');
     entry.setEnteredByDeepLinkForTest(true);
     mount();
     expect(card()).toBeNull();
-    expect(toasts).toHaveLength(0);
+    expect(bar()).toBeNull();
     expect(document.querySelector('.vh-major-entry')).toBeNull();
   });
 
-  it('the toast waits while a dialog above `notice` holds the turn (a `?task=` deep link), then shows once', async () => {
+  it('the bar steps aside while a dialog above `notice` holds the turn (a `?task=` deep link), and comes back', async () => {
     const queue = await import('./overlayQueue');
     const release = queue.requestOverlay('team-dialog', queue.OVERLAY_PRIORITY.interaction);
     minorOnly();
     entry.setEnteredByDeepLinkForTest(true);
     mount();
-    expect(toasts).toHaveLength(0);
+    expect(bar()).toBeNull();
     act(() => release());
-    expect(toasts).toHaveLength(1);
-    act(() => { queue.requestOverlay('again', queue.OVERLAY_PRIORITY.interaction)(); });
-    expect(toasts).toHaveLength(1);
+    expect(bar()).not.toBeNull();
+    let again = () => {};
+    act(() => { again = queue.requestOverlay('again', queue.OVERLAY_PRIORITY.interaction); });
+    expect(bar()).toBeNull();
+    act(() => again());
+    expect(bar()).not.toBeNull();
   });
 });

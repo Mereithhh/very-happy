@@ -4,18 +4,22 @@
  * in the collapsed rail; gone once every release is read. A deep-link load
  * never pops the notes on its own (B-697) — this is how they are reached there.
  * B-842: minor releases count too (a quiet 「更新说明」 row); only a major one
- * gets the filled 「大更新」 row.
+ * gets the filled 「大更新」 row. B-976: while the 「有 N 条更新说明」 bar sits in
+ * the sidebar it takes this row's place (one row, not two).
  */
 import { Sparkles } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { changelogEntry } from './changelogPager';
 import { requestChangelogOpen, usePendingChangelog } from './changelogReadStore';
+import { useChangelogHintShownIn } from './changelogHintSlots';
 import './majorBadge.css';
 
 export function MajorUpdateEntry({ compact = false }: { compact?: boolean }) {
   const { t } = useTranslation();
   const entry = changelogEntry(usePendingChangelog());
-  if (!entry) return null;
+  // B-976: the 「有 N 条更新说明」 bar stands in this row's place while it shows there.
+  const barHere = useChangelogHintShownIn() === 'sidebar' && !compact;
+  if (!entry || barHere) return null;
   const { count } = entry;
   const major = entry.kind === 'major';
   const label = major ? t('changelog.entryLabel', { count }) : t('changelog.notesEntryLabel', { count });

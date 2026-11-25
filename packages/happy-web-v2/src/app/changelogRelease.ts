@@ -158,6 +158,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-25-release-notes-hint-stays',
+    date: '2026-11-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov25j.title',
+    summaryKey: 'changelog.releases.nov25j.summary',
+    itemKeys: ['changelog.releases.nov25j.stays', 'changelog.releases.nov25j.typing'],
+  },
+  {
     id: '2026-11-25-codex-effort',
     date: '2026-11-25',
     buildVersion: __APP_VERSION__,

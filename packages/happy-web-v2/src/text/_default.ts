@@ -3669,6 +3669,12 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov25j: {
+                title: 'The 「new release notes」 prompt stays until you look',
+                summary: 'Opening the app from a notification or a link, or starting to type right away, shows a prompt instead of the release notes. It used to disappear after 10 seconds, often before anyone saw it. Now it stays until you open the notes or close it.',
+                stays: 'On a computer it takes the place of the 「Release notes」 row at the bottom of the sidebar; on a phone it is a row right under the session title bar. View opens the notes; ✕ hides it until the next time you open the app. It disappears once the notes are read, in every open tab.',
+                typing: 'It is part of the page, never on top of it: it does not take focus or cover the message box or the title bar buttons. A page that loaded in the background decides when you come back to it, and while a new version waits for a refresh, only the refresh prompt shows.',
+            },
             nov25i: {
                 title: 'A new Codex session keeps the effort you set',
                 summary: 'With a default Codex effort such as Max, a new session showed it, then switched to Medium and ran the first message at Medium. It now runs, and keeps showing, the level you set.',
