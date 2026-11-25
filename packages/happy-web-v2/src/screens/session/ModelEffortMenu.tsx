@@ -69,7 +69,7 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
     readOnly?: { value: string; hint: string };
     effort: { label: string; options: ModeOption[]; value: string | null; onChange: (key: string) => void };
     /** B-977: Codex 「上下文」 (standard / extended); absent = this model has one window. */
-    context?: { label: string; options: ModeOption[]; value: string | null; onChange: (key: string) => void };
+    context?: { label: string; options: ModeOption[]; value: string | null; onChange: (key: string) => void; hint?: string };
     longContextLabel?: string;
     longContextHint?: string;
     /** B-908: hint under a locked 1M switch (「这个模型默认 1M 上下文」). */
@@ -163,7 +163,7 @@ function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, 
     notice?: { text: string; action?: MenuAction; extra?: ReactNode };
     readOnly?: { value: string; hint: string };
     effort: { label: string; options: ModeOption[]; value: string | null; onChange: (key: string) => void };
-    context?: { label: string; options: ModeOption[]; value: string | null; onChange: (key: string) => void };
+    context?: { label: string; options: ModeOption[]; value: string | null; onChange: (key: string) => void; hint?: string };
     longContext: { on: boolean; locked?: boolean; label: string; hint?: string; onToggle: (on: boolean) => void } | null;
     more: { label: string; open: boolean; onToggle: () => void } | null;
     footer?: { note: string; action?: MenuAction };

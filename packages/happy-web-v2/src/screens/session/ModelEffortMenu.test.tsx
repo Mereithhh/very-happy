@@ -66,6 +66,10 @@ describe('ModelEffortMenu maximum indicator', () => {
         expect(stops[0].getAttribute('aria-checked')).toBe('true');
         act(() => stops[1].click());
         expect(onContext).toHaveBeenCalledExactlyOnceWith('extended');
+        // A new session says which window it defaults to.
+        act(() => root.render(<ModelEffortMenu label="Run setup" modelLabel="Model" options={models} layout={layout} value="model-a" onChange={vi.fn()}
+            effort={{ label: 'Thinking', options: levels, value: 'xhigh', onChange: vi.fn() }} context={{ ...context, value: 'extended', hint: '新会话默认：扩展 · 约 82.8 万。想用较小窗口选「标准」。' }} />));
+        expect(document.querySelector('.effort-seg--context .effort-seg-hint')?.textContent).toBe('新会话默认：扩展 · 约 82.8 万。想用较小窗口选「标准」。');
         // No context prop (Claude, or a Codex model with one window): no row.
         act(() => root.render(<ModelEffortMenu label="Run setup" modelLabel="Model" options={models} layout={layout} value="model-a" onChange={vi.fn()}
             effort={{ label: 'Thinking', options: levels, value: 'xhigh', onChange: vi.fn() }} />));

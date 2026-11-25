@@ -2045,7 +2045,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                         pickRow={apiModelOptions ? undefined : pickModelRow}
                         onLongContextToggle={apiModelOptions ? undefined : rememberLongContext}
                         effort={{ label: t('session.chat.effortLabel'), options: effortOptions, value: selectedEffortKey, onChange: setEffort }}
-                        context={contextOptions.length > 0 ? { label: t('session.chat.contextLabel'), options: contextOptions, value: contextKey, onChange: setContext } : undefined}
+                        context={contextOptions.length > 0 ? { label: t('session.chat.contextLabel'), options: contextOptions, value: contextKey, onChange: setContext, ...(!session ? { hint: t('session.chat.contextDefaultHint', { value: contextOptions.find((o) => o.key === contextKey)?.name ?? '' }) } : {}) } : undefined}
                         longContextLabel={t('session.chat.modelPicker.longContext')}
                         longContextLockedHint={t('session.chat.modelPicker.longContextLockedHint')}
                         longContextHint={longContextRefused ? t('session.chat.modelPicker.longContextRefusedHint') : t('session.chat.modelPicker.longContextHint')}

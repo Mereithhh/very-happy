@@ -1389,6 +1389,7 @@ function AgentDefaults() {
                     label={t('session.chat.contextLabel')}
                     options={namedContextOptions(codexContext.options, t)}
                     value={savedContext ?? CODEX_CONTEXT_DEFAULT_MODE}
+                    hint={t('session.chat.contextDefaultHint', { value: namedContextOptions(codexContext.options, t).find((o) => o.key === (savedContext ?? CODEX_CONTEXT_DEFAULT_MODE))?.name ?? '' })}
                     onChange={(v) => pick(agent, 'contextMode', v === CODEX_CONTEXT_DEFAULT_MODE ? null : v)}
                   />}
                 />

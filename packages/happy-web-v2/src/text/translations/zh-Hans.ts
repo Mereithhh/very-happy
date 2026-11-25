@@ -1288,6 +1288,7 @@ export const zhHans: TranslationStructure = {
             effortLabel: '思考强度',
             // B-977：Codex 上下文窗口（标准＝Codex 自带默认，扩展＝模型目录上限）。
             contextLabel: '上下文',
+            contextDefaultHint: ({ value }: { value: string }) => `新会话默认：${value}。想用较小窗口选「标准」。`,
             contextStandard: ({ window }: { window: string }) => `标准 · ${window}`,
             contextExtended: ({ window }: { window: string }) => `扩展 · 约 ${window}`,
             contextStandardDescription: 'Codex 对这个模型的默认窗口，想用较小窗口就选它，用到 90% 自动压缩',

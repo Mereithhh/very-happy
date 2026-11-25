@@ -1081,6 +1081,7 @@ export const en = {
             effortLabel: 'Thinking',
             // B-977: Codex context window (standard = Codex's own default, extended = the catalog maximum).
             contextLabel: 'Context',
+            contextDefaultHint: ({ value }: { value: string }) => `New sessions default: ${value}. Pick Standard for the smaller window.`,
             contextStandard: ({ window }: { window: string }) => `Standard · ${window}`,
             contextExtended: ({ window }: { window: string }) => `Extended · ~${window}`,
             contextStandardDescription: 'Codex\'s own default window for this model; pick it to go back to the smaller window; compacts at 90% of it',
