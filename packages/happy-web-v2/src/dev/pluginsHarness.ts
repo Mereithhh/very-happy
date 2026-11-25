@@ -100,6 +100,30 @@ export function installPluginsHarness(hash: string, machineId: string): () => vo
       updatedAt: now,
     },
   ];
+  const pp = { v: 1, type: 'plugin', pluginId: 'hello-board', pluginName: 'Hello Board', machineId };
+  // Complete wire AttentionItemAny rows (only the fields that matter here vary).
+  const full = (o: Json): Json => ({ teamId: null, projectId: null, key: o.id, bodyMd: null, options: null, links: null, anchor: null, firstReply: null, replyToId: null, inferred: false, ownerChoice: null, ownerNote: null, resolvedBy: null, resolveNote: null, repostCount: 0, resolvedAt: null, pushedAt: null, payload: null, ...o });
+  const decisions: Json[] = ([
+    { id: 'att_sys', source: 'owner-system', pluginInstallId: 'pi_inbox', sessionId: null, kind: 'decision', state: 'open', needsOwner: true, version: 1, createdAt: now - 5 * 60_000, updatedAt: now - 5 * 60_000, title: zh ? '插件安装待批准：Inbox Relay' : 'Plugin waiting for approval: Inbox Relay' },
+    {
+      id: 'att_p1', source: 'plugin', pluginInstallId: 'pi_hello', sessionId: null, kind: 'decision', state: 'open', needsOwner: true, version: 1, createdAt: now - 3 * 60_000, updatedAt: now - 3 * 60_000,
+      payload: { ...pp, decisionKind: 'choice', pluginState: 'open', optionStyles: { keep: 'primary', reset: 'danger' }, panelPath: '/#count' },
+      title: zh ? '计数到 10 了：继续还是清零？' : 'The counter reached 10: keep going or reset?',
+      bodyMd: zh ? '计数器已经到 **10**。清零后从 0 重新开始。\n\n规则见 [说明](https://example.com/hello-board/rules)。![chart](https://example.com/c.png)<b>raw</b>' : 'The counter is at **10**. Reset starts again from 0.\n\nSee [the rules](https://example.com/hello-board/rules). ![chart](https://example.com/c.png)<b>raw</b>',
+      options: [{ id: 'keep', label: zh ? '继续' : 'Keep going' }, { id: 'reset', label: zh ? '清零' : 'Reset', detail: zh ? '计数归零' : 'Back to 0' }],
+    },
+    {
+      id: 'att_p2', source: 'plugin', pluginInstallId: 'pi_hello', sessionId: null, kind: 'input', state: 'open', needsOwner: true, version: 1, createdAt: now - 60_000, updatedAt: now - 60_000,
+      links: [{ type: 'session', ref: 'dev-plain' }],
+      payload: { ...pp, decisionKind: 'input', pluginState: 'open', input: { placeholder: zh ? '写下你的决定，可以多行' : 'Write your decision (multiple lines ok)', maxLength: 2000, multiline: true } },
+      title: zh ? '升级：要不要放行这次回复？' : 'Escalation: release this reply?', bodyMd: null,
+    },
+    {
+      id: 'att_p3', source: 'plugin', pluginInstallId: 'pi_hello', sessionId: null, kind: 'decision', state: 'answered', needsOwner: false, version: 2, createdAt: now - 30 * 3600_000, updatedAt: now - 26 * 3600_000,
+      payload: { ...pp, decisionKind: 'choice', pluginState: 'responded', delivery: 'pending', response: { action: 'choose', choice: 'keep', at: now - 26 * 3600_000 } },
+      title: zh ? '计数到 5 了' : 'The counter reached 5', options: [{ id: 'keep', label: zh ? '继续' : 'Keep going' }, { id: 'reset', label: zh ? '清零' : 'Reset' }],
+    },
+  ] as Json[]).map(full);
   const calls: unknown[] = ((window as unknown as { __pluginCalls?: unknown[] }).__pluginCalls = []);
   const find = (id: string) => installs.find((i) => i.id === id);
   const push = (i: Json) => handlePluginUpdate({ t: 'plugin-install', install: i });
@@ -109,11 +133,21 @@ export function installPluginsHarness(hash: string, machineId: string): () => vo
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const parsed = new URL(url, location.href);
     const path = parsed.pathname;
-    if (!path.startsWith('/v1/plugins')) return real(input, init);
+    const isDecision = path.startsWith('/v1/attention-items') && (parsed.searchParams.get('include') === 'plugin' || decisions.some((d) => path.startsWith(`/v1/attention-items/${d.id}/`)));
+    if (!path.startsWith('/v1/plugins') && !isDecision) return real(input, init);
     const method = init?.method ?? 'GET';
     const body = (init?.body ? JSON.parse(String(init.body)) : {}) as Json;
     calls.push({ path, method, body });
     const json = (status: number, data: unknown) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
+    if (isDecision) {
+      if (mode === 'off') return json(404, { error: 'owner_board_disabled' });
+      if (method === 'GET') return json(200, { items: decisions });
+      const d = decisions.find((x) => path === `/v1/attention-items/${x.id}/owner-respond`);
+      if (!d) return json(404, { error: 'not_found' });
+      const at = Date.now();
+      Object.assign(d, { state: body.action === 'resolve' ? 'resolved' : 'answered', version: (d.version as number) + 1, updatedAt: at, payload: { ...(d.payload as Json), pluginState: 'responded', delivery: 'pending', response: { action: body.action === 'resolve' ? 'dismiss' : body.action, choice: body.choice, text: body.text, at } } });
+      return json(200, { item: d });
+    }
     if (mode === 'off') return json(404, { error: 'route_not_found' });
     if (path === '/v1/plugins/installs' && method === 'GET') return json(200, { installs });
     if (path === '/v1/plugins/widgets') return json(200, { widgets: widgets.filter((w) => w.sessionId === parsed.searchParams.get('sessionId')) });

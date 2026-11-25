@@ -5,13 +5,18 @@
  */
 import { useEffect, useRef } from 'react';
 import { useInbox } from './useInbox';
+import { usePluginInstallMap } from '@/sync/pluginStore';
+import { pluginAttentionTotal } from '@/plugins/pluginModel';
 import { createBadgeSyncer, installVisibleResync, type BadgeNavigatorLike } from './appBadge';
 
 const getNav = (): BadgeNavigatorLike | undefined =>
     typeof navigator !== 'undefined' ? (navigator as unknown as BadgeNavigatorLike) : undefined;
 
 export function AppBadgeSync() {
-    const { unreadCount } = useInbox();
+    const { unreadCount: inboxUnread } = useInbox();
+    // B-974d (DESIGN B-973 §11 Q5): `tone: attention` plugin badges count toward the app badge, unless muted.
+    const pluginInstalls = usePluginInstallMap();
+    const unreadCount = inboxUnread + pluginAttentionTotal(Object.values(pluginInstalls));
     const syncer = useRef(createBadgeSyncer(getNav)).current;
     const countRef = useRef(unreadCount);
     countRef.current = unreadCount;

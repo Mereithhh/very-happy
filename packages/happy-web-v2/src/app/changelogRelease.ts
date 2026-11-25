@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-25-web-plugins',
+    cliVersion: '0.2.230',
+    date: '2026-11-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov25g.title',
+    summaryKey: 'changelog.releases.nov25g.summary',
+    itemKeys: ['changelog.releases.nov25g.approve', 'changelog.releases.nov25g.sidebar', 'changelog.releases.nov25g.decisions', 'changelog.releases.nov25g.widget', 'changelog.releases.nov25g.stop'],
+  },
+  {
     id: '2026-11-25-team-tool-required',
     cliVersion: '0.2.229',
     date: '2026-11-25',
