@@ -70,16 +70,16 @@ import {
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
 import { LONG_CONTEXT_SUFFIX, layoutModelPicker, longContextLocked, longContextRowPick, withLongContextTwins } from './modelPickerLayout';
-import { autoEffortName, localizeModelDescriptions, localizeModelNames, namedEffortOptions } from './runSetupCopy';
+import { autoEffortName, effortLevelName, localizeModelDescriptions, localizeModelNames, namedEffortOptions } from './runSetupCopy';
 import { useNavigate } from 'react-router-dom';
 import { useLatestModelTable } from '@/sync/latestModels';
 import { claudeMachineConfigEntry, customModelsBesideFollow, followEntryModel, followLatestState, followLatestDescriptionKey, launcherReportsRunFacts, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
 import { CLAUDE_CONFIG_MODEL_CAPABILITY, LATEST_MODEL_MODE, isLatestModelMode } from '@slopus/happy-wire';
-import { EFFORT_PICK_AUTO, pushRunIntent, sessionRunIntents, setRunPickBase, settledRunPick, withRunPicks } from '@/sync/runPicks';
+import { CODEX_WRAPPER_START_EFFORT, EFFORT_PICK_AUTO, pushRunIntent, sessionRunIntents, setRunPickBase, settledRunPick, withRunPicks } from '@/sync/runPicks';
 import { apiSocket } from '@/sync/apiSocket';
 import { forkCatalogSource, type LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
-import { resolveMessageModeMeta } from '@/sync/messageMeta';
+import { codexEffortDowngrade, resolveMessageModeMeta } from '@/sync/messageMeta';
 import { deriveCodexRunningModel, deriveRunningModelSubtitle, runningModelForTrigger, selectDisplayedModelKey, withSelectedModelEntry } from './modelDisplay';
 import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
 import {
@@ -133,8 +133,6 @@ export const PROMPT_QUEUE_STALE_MS = 30_000;
 // (the CLI validates against low/medium/high/xhigh/max, so this can never
 // collide); picking it clears effortLevel and the wire carries effort:null.
 const EFFORT_DEFAULT_KEY = 'default';
-/** The level a new Codex wrapper starts every thread at (happy-cli DEFAULT_CODEX_EFFORT). */
-const CODEX_WRAPPER_START_EFFORT = 'medium';
 import { PresetsMenu } from './PresetsMenu';
 import {
     useAttachments,
@@ -537,7 +535,22 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     });
     const isGemini = normalizeAgentKey(flavor) === 'gemini';
     const permModes = getAvailablePermissionModes(flavor, metadata, t as any);
-    const efforts = getEffortLevelsForModel(flavor, modelKey ?? 'default', metadata);
+    const isCodex = normalizeAgentKey(flavor) === 'codex';
+    // B-975: a Codex draft judges levels by the machine's own catalog; one that
+    // cannot tell its model yet gives no verdict (the landing re-checks).
+    const draftCatalog = isCodex && !session && launcherCatalogs[0]?.models?.length
+        ? { models: launcherCatalogs[0].models, defaultModelCode: launcherContext?.configuredModel ?? undefined } as unknown as typeof metadata
+        : metadata;
+    const listedEfforts = getEffortLevelsForModel(flavor, modelKey ?? 'default', draftCatalog);
+    const accountEffort = getAgentDefaultOverride(agentDefaultOverrides, flavor).effortLevel;
+    const runSettings = { agentDefaultOverrides, claudeLongContextOptOut: longContextOptOut };
+    const codexSendEffort = isCodex && session ? resolveMessageModeMeta(session, runSettings, latestTable).effort : undefined;
+    const draftEffort = isCodex && pending ? pending.effortLevel ?? accountEffort : undefined;
+    const draftModelUnknown = isCodex && !session && (modelKey ?? 'default') === 'default' && !launcherContext?.configuredModel;
+    const unjudgedEffort = draftModelUnknown ? draftEffort : session && isCodex && !metadata?.models?.length ? codexSendEffort : undefined;
+    const efforts = unjudgedEffort && !listedEfforts.some((option) => option.key === unjudgedEffort)
+        ? [...listedEfforts, { key: unjudgedEffort, name: unjudgedEffort }]
+        : listedEfforts;
     const permKey = (pending ? pending.permissionMode : session?.permissionMode) ?? agentDefaults.permissionMode;
     const effortKey = (pending ? pending.effortLevel : runSession?.effortLevel) ?? agentDefaults.effortLevel;
     // claude-ish flavors (incl. no flavor) support the explicit「默认」effort
@@ -581,6 +594,8 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     const selectedEffortKey = isClaudeFlavor
         ? selectDisplayedEffortKey(effortOptions, [effortKey, metadata?.currentThoughtLevelCode, backendDefaultEffort, EFFORT_DEFAULT_KEY])
         : selectDisplayedEffortKey(effortOptions, [
+            // B-975: the picker shows exactly what the next message sends.
+            codexSendEffort,
             pending ? pending.effortLevel : runSession?.effortLevel,
             getAgentDefaultOverride(agentDefaultOverrides, flavor).effortLevel,
             metadata?.currentThoughtLevelCode,
@@ -590,7 +605,19 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
             // report its level shows none rather than that guess.
             normalizeAgentKey(flavor) === 'codex' ? undefined : backendDefaultEffort,
             codexDraftAuto ? EFFORT_DEFAULT_KEY : undefined,
+            isCodex && !session ? CODEX_WRAPPER_START_EFFORT : undefined,
         ]);
+    // B-975: a level this model cannot run is said before the send, with the levels it can.
+    const effortDowngrade = !isCodex || efforts.length === 0 ? null
+        : session ? codexEffortDowngrade(session, runSettings, latestTable)
+            : draftEffort && !efforts.some((option) => option.key === draftEffort) ? { requested: draftEffort, actual: selectedEffortKey === EFFORT_DEFAULT_KEY ? CODEX_WRAPPER_START_EFFORT : selectedEffortKey } : null;
+    const effortModelId = modelKey && modelKey !== 'default' ? modelKey : metadata?.currentModelCode ?? metadata?.defaultModelCode ?? launcherContext?.configuredModel;
+    const effortNotice = effortDowngrade ? t('session.chat.effortUnsupported', {
+        model: effortModelId ? nameOfModel(effortModelId) : t('session.chat.effortThisModel'),
+        level: effortLevelName(effortDowngrade.requested, effortDowngrade.requested, t),
+        actual: effortDowngrade.actual ? effortLevelName(effortDowngrade.actual, effortDowngrade.actual, t) : t('session.chat.effortAutoPlain'),
+        options: namedEffortOptions(efforts, t).map((option) => option.name).join(' / '),
+    }) : null;
     // B-362: intent → running model (ACP runners publish it) → first option; never show
     // a model the session is not on just because the default key is not in the list.
     const displayedModelKey = selectDisplayedModelKey({
@@ -950,6 +977,23 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
      * composer. Edited drafts still ride along (B-642). `onResult` reports
      * whether the message was accepted (sent or queued); not called = refused.
      */
+    // B-975: never sent at another level than the one chosen without a yes; a yes
+    // is the choice, so it is asked once per session. Cancel keeps the draft.
+    const effortConfirmRef = useRef(false);
+    const confirmEffort = async (): Promise<boolean> => {
+        if (!effortDowngrade || !effortNotice) return true;
+        if (effortConfirmRef.current) return false;
+        effortConfirmRef.current = true;
+        try {
+            const actual = effortDowngrade.actual;
+            const ok = await Modal.confirm(t('session.chat.effortConfirmTitle'), effortNotice, { confirmText: t('session.chat.effortConfirmSend', { level: actual ? effortLevelName(actual, actual, t) : t('session.chat.effortAutoPlain') }) });
+            if (ok) setMode('updateSessionEffortLevel', 'effortLevel', actual ?? (pending ? null : EFFORT_PICK_AUTO));
+            return ok;
+        } finally {
+            effortConfirmRef.current = false;
+        }
+    };
+
     const doSend = async (delivery: 'queue' | 'steer' = 'queue', request?: { text: string; onResult: (accepted: boolean) => void }) => {
         const draft = request ? request.text : draftRef.current;
         const value = draft.trim();
@@ -974,6 +1018,8 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                 toast.show(t('pendingSession.attachmentsLater'), 'info');
                 return;
             }
+            // No await without a question: the send stays in the click stack (B-722).
+            if (effortDowngrade && (!(await confirmEffort()) || draftRef.current !== draft)) return;
             const files = sendFiles ? take() : [];
             if (!pending.onSend(value, files)) {
                 if (files.length > 0) restore(files);
@@ -1022,6 +1068,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
             toast.show(t('session.chat.goalUnsupported'), 'info');
             return;
         }
+        if (effortDowngrade && compactCommand === null && (!(await confirmEffort()) || (!request && draftRef.current !== draft))) { request?.onResult(false); return; }
         // Captured BEFORE the async send: did the textarea own focus (⇒ the
         // soft keyboard was up) when the user hit send? On iOS, tapping a
         // button does NOT move focus off the textarea, so this stays true for
@@ -1070,7 +1117,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                 id: randomUUID(),
                 text: sendValue,
                 createdAt,
-                modeMeta: resolveMessageModeMeta(session, storage.getState().settings),
+                modeMeta: resolveMessageModeMeta(storage.getState().sessions?.[sessionId] ?? session, storage.getState().settings),
                 attachments: takenAttachments,
             });
             let serverSubmit: Promise<'queued' | 'unsupported'> | null = null;
@@ -1881,6 +1928,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                 </div>
             )}
 
+            {effortNotice && <div className="ci-effort-notice" role="status" data-testid="effort-unsupported">{effortNotice}</div>}
             {/* composer */}
             <div
                 className={`ci-composer${dragOver ? ' ci-composer--drag' : ''}`}

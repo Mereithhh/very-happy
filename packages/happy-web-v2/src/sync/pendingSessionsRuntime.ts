@@ -16,6 +16,8 @@ import { loadNewChatDraft, loadPendingSessions, loadQueuedMessages, loadSessionD
 import { useBoardTasks } from './boardTasks';
 import { normalizeAgentKey } from './agentDefaults';
 import { MACHINE_CONFIG_AGENTS } from '@slopus/happy-wire';
+import { codexEffortDowngrade } from './messageMeta';
+import { effortLevelName } from '@/screens/session/runSetupCopy';
 import {
     createPendingSessionStore,
     findAdoptableSession,
@@ -210,6 +212,14 @@ export const pendingSessions = createPendingSessionStore({
     notifyModelFactsTimeout(record) {
         const meta = storage.getState().machines[record.machineId]?.metadata;
         toast.show(t('pendingSession.modelsTimeout', { machine: meta?.displayName || meta?.host || record.machineId.slice(0, 8) }), 'info');
+    },
+    holdForEffort(id) {
+        const { sessions, settings } = storage.getState();
+        const session = sessions[id];
+        const downgrade = session ? codexEffortDowngrade(session, settings) : null;
+        if (!downgrade) return false;
+        toast.show(t('pendingSession.effortHeld', { level: effortLevelName(downgrade.requested, downgrade.requested, t as any) }), 'error');
+        return true;
     },
 });
 

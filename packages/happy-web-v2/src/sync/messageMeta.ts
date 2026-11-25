@@ -6,7 +6,8 @@ import { isLatestModelMode, type LatestModelTable } from '@slopus/happy-wire';
 import { normalizeClaudeOutboundMode } from './permissionModeOutbound';
 import { getEffortLevelsForModel } from '@/components/modelModeOptions';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
-import { EFFORT_PICK_AUTO, withRunPicks } from './runPicks';
+import { EFFORT_PICK_AUTO, recordsRunIntent, sessionRunIntents, withRunPicks } from './runPicks';
+import { readEffortIntent } from '@slopus/happy-wire';
 
 export type MessageModeMeta = {
     permissionMode?: PermissionModeKey;
@@ -96,12 +97,16 @@ export function resolveMessageModeMeta(
     }
 
     // B-849b: an explicit 「自动」 pick is stored as `default` = no effort sent.
-    const effort = session.effortLevel === EFFORT_PICK_AUTO ? null : (session.effortLevel ?? agentOverrides.effortLevel);
+    // B-975: a recorded Codex level the (changed) model refuses is settled here and said,
+    // rather than omitted and settled silently by the wrapper.
+    const effort = session.effortLevel === EFFORT_PICK_AUTO ? null : (session.effortLevel ?? agentOverrides.effortLevel ?? refusedIntent(session.metadata));
     if (effort !== undefined) {
         const flavor = session.metadata?.flavor ?? 'claude';
         const modelKey = modelMode ?? session.metadata?.currentModelCode ?? 'default';
         const levels = getEffortLevelsForModel(flavor, modelKey, session.metadata);
-        if (effort === null || levels.some((level) => level.key === effort)) {
+        // B-975: a recording Codex wrapper that published no catalog gives no verdict — Codex validates the level and says so.
+        const unjudged = normalizeAgentKey(flavor) === 'codex' && recordsRunIntent(session.metadata) && !session.metadata?.models?.length;
+        if (effort === null || unjudged || levels.some((level) => level.key === effort)) {
             meta.effort = effort;
         } else {
             const resolvedModel = modelKey === 'default' ? session.metadata?.defaultModelCode : modelKey;
@@ -119,4 +124,39 @@ export function resolveMessageModeMeta(
     if (meta.effort !== undefined) meta.effortIntent = meta.effort ?? EFFORT_PICK_AUTO;
 
     return meta;
+}
+
+/** The recorded Codex level its model cannot run (read as "no choice" elsewhere), if any. */
+function refusedIntent(metadata: Session['metadata']): string | undefined {
+    if (normalizeAgentKey(metadata?.flavor) !== 'codex' || !recordsRunIntent(metadata)) return undefined;
+    const raw = readEffortIntent(metadata?.effortIntent);
+    return typeof raw === 'string' && raw !== EFFORT_PICK_AUTO && sessionRunIntents(metadata).effort === null ? raw : undefined;
+}
+
+export type EffortDowngrade = {
+    requested: string;
+    /** What the next message runs instead; null = Codex's own default. */
+    actual: string | null;
+};
+
+/**
+ * B-975: the level this Codex session is set to, when its model cannot run it
+ * and the next message goes out at another one. Said before sending.
+ */
+export function codexEffortDowngrade(
+    session: Parameters<typeof resolveMessageModeMeta>[0],
+    settings?: Parameters<typeof resolveMessageModeMeta>[1],
+    latestTable: LatestModelTable | null = getLatestModelTable(),
+): EffortDowngrade | null {
+    if (normalizeAgentKey(session.metadata?.flavor) !== 'codex') return null;
+    const requested = withRunPicks(session).effortLevel
+        ?? refusedIntent(session.metadata)
+        ?? getAgentDefaultOverride(settings?.agentDefaultOverrides, session.metadata?.flavor).effortLevel;
+    if (!requested || requested === EFFORT_PICK_AUTO) return null;
+    const meta = resolveMessageModeMeta(session, settings, latestTable);
+    const actual = meta.effort;
+    // A model listed with no levels at all (an API account's own models) has no effort to choose.
+    const modelKey = meta.model ?? session.metadata?.currentModelCode ?? 'default';
+    if (getEffortLevelsForModel('codex', modelKey, session.metadata).length === 0) return null;
+    return actual === requested ? null : { requested, actual: actual ?? null };
 }

@@ -146,6 +146,29 @@ describe('pending session store (B-516)', () => {
         expect(late.store.get(slow.pendingId)?.waitingForModels).toBeUndefined();
     });
 
+    it('B-975: a level the real session cannot run hands the text back instead of sending it lower', async () => {
+        const run = async (held: boolean) => {
+            const h = harness();
+            const asked: string[] = [];
+            h.deps.holdForEffort = (id) => { asked.push(id); h.events.push('hold?'); return held; };
+            const record = h.store.create({ ...input, agent: 'codex', firstMessage: 'hello' });
+            h.store.setMode(record.pendingId, 'effortLevel', 'max');
+            h.spawns[0].result.resolve({ type: 'success', sessionId: 'real1' });
+            h.addSession('real1');
+            await flush();
+            expect(asked).toEqual(['real1']);
+            // Judged after the draft's own choice reached the session.
+            expect(h.events.indexOf('effort:real1:max')).toBeGreaterThanOrEqual(0);
+            expect(h.events.indexOf('effort:real1:max')).toBeLessThan(h.events.indexOf('hold?'));
+            return { h, record };
+        };
+        const held = await run(true);
+        expect(held.h.events).not.toContain('send:real1:hello');
+        expect(held.h.deps.restoreText).toHaveBeenCalledWith('real1', 'hello', held.record.pendingId);
+        const ok = await run(false);
+        expect(ok.h.events).toContain('send:real1:hello');
+    });
+
     it('QA26 P2-2: facts already there — no waiting state, no toast', async () => {
         const h = harness();
         const timeouts: string[] = [];

@@ -53,6 +53,8 @@
    （别的设备的选择后到）→ 本地值作废并清掉；wrapper 回显了本地值 → 本地值清掉。
 4. **没有意图的旧会话**：本设备有本地值用本地值（旧 CLI 维持现状）；否则按会话实际在跑的
    （Claude `currentModelCode`；Codex 上报的 effort，模型仍按 B-844c「跟随本机配置时清掉 sticky」），不用账号默认；会话从没跑过才用新会话默认。
+   B-975：Codex wrapper 出生就上报 `medium`，还没有 thread 也没有实跑模型（`codexThreadId`、`currentModelCode` 都缺省）时不算「实际在跑」，取账号默认；
+   选择的档位模型不支持时，发送前在输入框上方说明、用户确认才发，草稿落地后才发现的先退回输入框（`messageMeta.ts codexEffortDowngrade`）。
    新 Web 发出的第一条消息会把选择写成意图。
 5. **resume / abort**：新 wrapper 从 metadata 恢复意图（Claude model + effort；Codex effort，旧 metadata 无意图时取上一 wrapper
    报的 `currentThoughtLevelCode`）；abort 不再重置 model / effort。

@@ -183,6 +183,8 @@ export interface PendingSessionDeps {
     modelFactsWaitMs?: number;
     /** QA26 P2-2: the wait ran out — the first message went with the machine's own default model. */
     notifyModelFactsTimeout?(record: PendingSessionRecord): void;
+    /** B-975: the real session cannot run the level the draft showed — says so; true = hand the text back instead of sending it lower. */
+    holdForEffort?(realId: string): boolean;
 }
 
 export const PENDING_ID_PREFIX = 'pending-';
@@ -569,6 +571,10 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                 deps.writePermissionMode(realId, ready.permissionMode);
                 if (ready.modelMode !== undefined) deps.writeModelMode(realId, ready.modelMode);
                 if (ready.effortLevel !== undefined) deps.writeEffortLevel(realId, ready.effortLevel);
+            }
+            if (ready.outbox.length > 0 && deps.holdForEffort?.(realId)) {
+                landAsDraft(pendingId);
+                return;
             }
             for (;;) {
                 const current = records.get(pendingId);

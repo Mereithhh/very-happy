@@ -47,6 +47,7 @@ type IntentMetadata = {
     currentModelCode?: string | null;
     stickyModel?: string | null;
     currentThoughtLevelCode?: string | null;
+    codexThreadId?: string | null;
     models?: readonly { code: string; resolvedModel?: string | null; reasoningEfforts?: readonly string[] | null }[] | null;
 } | null | undefined;
 type PickSession = { id?: string; modelMode?: string | null; effortLevel?: string | null; metadata?: IntentMetadata };
@@ -111,6 +112,20 @@ export function resetRunPickBasesForTests(next: RunPickBases | null = null): voi
 
 // --- resolution ---
 
+/** The level a new Codex wrapper starts every thread at (happy-cli DEFAULT_CODEX_EFFORT). */
+export const CODEX_WRAPPER_START_EFFORT = 'medium';
+
+/**
+ * B-975: a Codex wrapper reports its start level at birth, before any turn. No
+ * thread and no running model (reported from the first thread on, kept through
+ * `/clear`, which drops the thread id) means nothing ran and nobody chose it, so it must not stand in for
+ * the account default (it was sent as an explicit pick and recorded as the
+ * session's intent). Any other level was set by someone and stays.
+ */
+function isCodexBirthLevel(metadata: IntentMetadata): boolean {
+    return !metadata?.codexThreadId && !metadata?.currentModelCode && metadata?.currentThoughtLevelCode === CODEX_WRAPPER_START_EFFORT;
+}
+
 function fallbackPick(field: RunPickField, metadata: IntentMetadata): string | undefined {
     const agent = normalizeAgentKey(metadata?.flavor);
     if (field === 'model') {
@@ -119,7 +134,7 @@ function fallbackPick(field: RunPickField, metadata: IntentMetadata): string | u
         if (agent === 'claude' && metadata?.currentModelCode) return metadata.currentModelCode;
         return undefined;
     }
-    if (agent === 'codex' && metadata?.currentThoughtLevelCode && effortRunnable(metadata, metadata.currentThoughtLevelCode)) return metadata.currentThoughtLevelCode;
+    if (agent === 'codex' && metadata?.currentThoughtLevelCode && !isCodexBirthLevel(metadata) && effortRunnable(metadata, metadata.currentThoughtLevelCode)) return metadata.currentThoughtLevelCode;
     return undefined;
 }
 
