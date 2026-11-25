@@ -18,6 +18,14 @@ describe('Settings → Agents renders pi as its own row', () => {
     });
 });
 
+describe('B-975b: Settings → Codex effort', () => {
+    it('lists settingsCodexEffort levels from the machine catalogs and selects the saved one', () => {
+        expect(settings).toContain("settingsCodexEffort({ modelMode: resolved.modelMode, catalogs, table: latestTable, saved: savedEffort })");
+        expect(settings).toContain('namedEffortOptions(codexEffort?.levels ?? getEffortLevelsForModel(agent, effectiveModel), t)');
+        expect(settings).toContain("value={savedEffort ?? '__code_default__'}");
+    });
+});
+
 describe('session selectors write through the session flavor', () => {
     // B-848 (B-849a): a composer pick no longer writes the account default; only the
     // explicit 「设为新会话默认」 does, still through the session flavor (acp → pi slot).

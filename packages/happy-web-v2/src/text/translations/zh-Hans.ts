@@ -3829,7 +3829,7 @@ export const zhHans: TranslationStructure = {
             nov25i: {
                 title: '新建 Codex 会话会保持你设的推理强度',
                 summary: '把 Codex 默认推理强度设成「极限」后，新会话先显示「极限」，第一条消息发出后却变成「中」，也按「中」执行。现在会按你设的档位执行，选择器也保持不变。',
-                fresh: '新会话立即生效，不用升级 CLI。已经跑过的会话保持原来的档位；之前被改成「中」的，在那个会话里重新选一次即可。',
+                fresh: '新会话立即生效，不用升级 CLI。已经跑过的会话保持原来的档位；之前被改成「中」的，在那个会话里重新选一次即可。设置页的 Codex 思考强度现在也会列出机器上报的「极限」等档位，可以直接查看和修改默认值。',
                 unsupported: '模型不支持所选档位时，发送前会在输入框上方说明会按哪一档执行、有哪些档位可选，你确认后才发出。',
             },
             nov25h: {
@@ -7118,6 +7118,7 @@ export const zhHans: TranslationStructure = {
 
     // Per-agent defaults settings screen.
     settingsAgents: {
+        effortUnsupported: ({ level }: { level: string }) => `当前模型不支持「${level}」，新会话发送前会请你确认。`,
         title: '智能体默认设置',
         subtitle: '为新会话设置每个智能体的默认权限、模型和思考强度。',
         intro: '这些默认值仅作用于新会话，你仍可在单个会话内单独调整。',

@@ -73,8 +73,9 @@ import {
   setAgentDefaultOverride,
 } from '@/sync/agentDefaults';
 import { layoutModelPicker } from '@/screens/session/modelPickerLayout';
-import { autoEffortName, localizeModelDescriptions, localizeModelNames, namedEffortOptions } from '@/screens/session/runSetupCopy';
+import { autoEffortName, effortLevelName, localizeModelDescriptions, localizeModelNames, namedEffortOptions } from '@/screens/session/runSetupCopy';
 import { collectPiModelOptions } from '@/sync/piModelOptions';
+import { settingsCodexEffort } from '@/sync/settingsEffort';
 import { collectRecentCatalogs, runnableFromCatalogs } from '@/sync/launcherModels';
 import { machineLabel } from '@/utils/machineUtils';
 import { useLatestModelTable } from '@/sync/latestModels';
@@ -1309,7 +1310,10 @@ function AgentDefaults() {
           const effectiveModel = isLatestModelMode(resolved.modelMode)
             ? (followSummary.kind === 'latest' ? followSummary.model : 'default')
             : resolved.modelMode;
-          const effortOptions = namedEffortOptions(getEffortLevelsForModel(agent, effectiveModel), t);
+          const savedEffort = getAgentDefaultOverrideValue(overrides, agent, 'effortLevel');
+          // B-975b: Codex levels come from the machines' reported catalogs, as in the composer.
+          const codexEffort = agent === 'codex' ? settingsCodexEffort({ modelMode: resolved.modelMode, catalogs, table: latestTable, saved: savedEffort }) : null;
+          const effortOptions = namedEffortOptions(codexEffort?.levels ?? getEffortLevelsForModel(agent, effectiveModel), t);
           // B-849a: the newest per family stays on top, older versions/aliases fold away.
           const overrideModel = getAgentDefaultOverrideValue(overrides, agent, 'modelMode');
           // QA26 P2-7: Settings has no 1M switch — everything off the top list (1M twins too) folds under 更多模型.
@@ -1360,7 +1364,8 @@ function AgentDefaults() {
                     className="set-effort"
                     label={t('settingsAgents.effort')}
                     options={[{ key: '__code_default__', name: autoEffort }, ...effortOptions]}
-                    value={getAgentDefaultOverrideValue(overrides, agent, 'effortLevel') ?? '__code_default__'}
+                    value={savedEffort ?? '__code_default__'}
+                    hint={codexEffort?.unsupported && savedEffort ? t('settingsAgents.effortUnsupported', { level: effortLevelName(savedEffort, savedEffort, t) }) : undefined}
                     onChange={(v) => pick(agent, 'effortLevel', v === '__code_default__' ? null : v)}
                   />}
                 />
