@@ -25,7 +25,7 @@
  * stdio framing). logger.debug is file-only; errors go to stderr.
  */
 
-import { registerTeamsTools } from '@/teams/tools';
+import { registerTeamsTools, withRequiredSchema } from '@/teams/tools';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -157,7 +157,7 @@ export async function handleMcpCommand(terminalToolsOnly = false): Promise<void>
     if (terminalToolsOnly && !terminalId) throw new Error('Very Happy terminal context is required');
     registerMcpTools(server, surface, terminalId);
     if (terminalId) registerTerminalTitleSuggest(server);
-    if (!terminalToolsOnly && process.env.HAPPY_MANAGED !== '1' && !process.env.HAPPY_MCP_URL) registerTeamsTools(server, process.env.HAPPY_SESSION_ID);
+    if (!terminalToolsOnly && process.env.HAPPY_MANAGED !== '1' && !process.env.HAPPY_MCP_URL) registerTeamsTools(withRequiredSchema(server), process.env.HAPPY_SESSION_ID);
 
     const transport = new StdioServerTransport();
     await server.connect(transport);

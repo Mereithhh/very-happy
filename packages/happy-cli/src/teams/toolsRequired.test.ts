@@ -2,14 +2,14 @@ import { describe, it, expect, vi } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { registerTeamsTools, normalizeTeamToolArgs, TEAM_MESSAGE_BODY_MISSING, TEAM_SUBMIT_RESULT_MISSING, TEAM_REPEAT_STOP_AFTER } from './tools';
+import { registerTeamsTools, withRequiredSchema, normalizeTeamToolArgs, TEAM_MESSAGE_BODY_MISSING, TEAM_SUBMIT_RESULT_MISSING, TEAM_REPEAT_STOP_AFTER } from './tools';
 
 /** B-972: a real MCP server and client over the in-memory transport, so the schema is what a model actually receives. */
 async function connect() {
     const team = { id: 't', name: 'T', machineId: 'm', version: 1, createdAt: 1, bots: [], messages: [], operations: [], tasks: [] };
     const teamClient = { initialize: vi.fn(), inspect: vi.fn(), action: vi.fn().mockResolvedValue({ team }) };
     const server = new McpServer({ name: 'test', version: '0.0.0' });
-    registerTeamsTools(server as any, 'normal-session', teamClient as any);
+    registerTeamsTools(withRequiredSchema(server as any), 'normal-session', teamClient as any);
     const [a, b] = InMemoryTransport.createLinkedPair();
     const client = new Client({ name: 'c', version: '0.0.0' });
     await Promise.all([server.connect(a), client.connect(b)]);

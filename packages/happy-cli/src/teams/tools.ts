@@ -42,6 +42,8 @@ const TEAM_CALL_EXAMPLES = {
     message: '{"requestId":"B-123-msg-1","taskId":"<task id from team_inspect>","body":"<your message text>"}',
     submit: '{"requestId":"B-123-submit-1","taskId":"<task id>","attemptId":"<currentAttemptId>","goalVersion":1,"result":"<what you did, PR / head SHA, verification>"}',
 } as const;
+/** B-972: a non-string body / result is refused by SDK validation before the tool runs; that text carries the example too. */
+const aliasText = (field: string, tool: 'message' | 'submit') => z.string({ error: () => `${field} must be a string (the text itself, in quotes). Copy this call and fill in the values: team_${tool} ${TEAM_CALL_EXAMPLES[tool]}` }).max(32000).optional();
 function missingFieldError(tool: 'message' | 'submit', raw: Record<string, unknown>): Error {
     const received = Object.keys(raw).join(', ') || 'none besides requestId';
     return new Error(`${tool === 'message' ? TEAM_MESSAGE_BODY_MISSING : TEAM_SUBMIT_RESULT_MISSING} Fields received: ${received}. Copy this call and fill in the values: team_${tool} ${TEAM_CALL_EXAMPLES[tool]}`);
@@ -62,9 +64,26 @@ export function normalizeTeamToolArgs(tool: string, args: Record<string, unknown
     }
     return args;
 }
+/**
+ * B-972: the registrars wrapped around the server (dispatch gate adds `risk`, output caps add `cursor`) spread `inputSchema`
+ * as a field table, so a tool hands over its fields plus `requiredFields` and this wrapper, applied to the raw McpServer only,
+ * turns them into one object schema. Its JSON schema lists every non-optional field (including the ones the wrappers added)
+ * plus `requiredFields`; validation is unchanged, so the aliases still reach the handler.
+ */
+export function withRequiredSchema(inner: AssistantToolRegistrar): AssistantToolRegistrar {
+    return {
+        registerTool: ((name: string, config: any, handler: (...a: any[]) => any) => {
+            if (!config?.requiredFields) return (inner.registerTool as any)(name, config, handler);
+            const { requiredFields, ...rest } = config;
+            const shape = rest.inputSchema as Record<string, z.ZodTypeAny>;
+            const required = Object.entries(shape).filter(([key, field]) => requiredFields.includes(key) || !field.safeParse(undefined).success).map(([key]) => key);
+            return (inner.registerTool as any)(name, { ...rest, inputSchema: z.object(shape).meta({ required }) }, handler);
+        }) as AssistantToolRegistrar['registerTool'],
+    };
+}
 export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: string, client = createTeamsClient(sessionId)): void {
     const register = (name: string, description: string, inputSchema: Record<string, z.ZodTypeAny>, execute: (args: any) => Promise<unknown>, required?: string[]) => {
-        server.registerTool(name, { description, inputSchema: (required ? z.object(inputSchema).meta({ required }) : inputSchema) as any, annotations: { readOnlyHint: name === 'team_inspect', idempotentHint: true, openWorldHint: false, destructiveHint: ['team_cancel', 'team_handoff', 'team_return', 'team_schedule_cancel'].includes(name) } }, async (args: any) => {
+        server.registerTool(name, { description, inputSchema, ...(required ? { requiredFields: required } : {}), annotations: { readOnlyHint: name === 'team_inspect', idempotentHint: true, openWorldHint: false, destructiveHint: ['team_cancel', 'team_handoff', 'team_return', 'team_schedule_cancel'].includes(name) } }, async (args: any) => {
             try { return { content: [{ type: 'text' as const, text: JSON.stringify(await execute(args)) }], isError: false }; }
             catch (error) { return { content: [{ type: 'text' as const, text: error instanceof Error ? error.message : 'Teams operation failed' }], isError: true }; }
         });
@@ -105,11 +124,11 @@ export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: s
     const taskId = fixedId('taskId');
     // B-912/B-972: `body` / `result` are optional zod fields so their aliases reach normalizeTeamToolArgs (which requires one of them), but the exported JSON schema lists them as required.
     action('message', 'Send a persistent task-related message. Delivery does not mean the model has read or acted on it. Members reach other members through their lead: send to the task owner (your lead), who forwards it.', {
-        taskId, body: z.string().max(32000).optional().describe('Required: the message text'), recipientBotId: id.optional().describe('Omit to message the task assignee; members send to their lead (the task owner)'),
-        message: z.string().max(32000).optional().describe('Alias of body'), to: id.optional().describe('Alias of recipientBotId'),
+        taskId, body: aliasText('body', 'message').describe('Required: the message text'), recipientBotId: id.optional().describe('Omit to message the task assignee; members send to their lead (the task owner)'),
+        message: aliasText('message', 'message').describe('Alias of body'), to: id.optional().describe('Alias of recipientBotId'),
     }, ['requestId', 'taskId', 'body']);
     action('submit', 'Submit evidence for your current attempt and goal version. The owner still has to accept it.', {
-        taskId, attemptId: fixedId('attemptId'), goalVersion, result: z.string().max(32000).optional().describe('Required: your evidence (what you did, PR / head SHA, verification)'), summary: z.string().max(32000).optional().describe('Alias of result'),
+        taskId, attemptId: fixedId('attemptId'), goalVersion, result: aliasText('result', 'submit').describe('Required: your evidence (what you did, PR / head SHA, verification)'), summary: aliasText('summary', 'submit').describe('Alias of result'),
     }, ['requestId', 'taskId', 'attemptId', 'goalVersion', 'result']);
     const current = { attemptId: fixedId('attemptId'), goalVersion };
     action('accept', 'Accept a task you own after checking its evidence. Resource cleanup is tracked separately.', { taskId, ...current });

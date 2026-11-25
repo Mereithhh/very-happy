@@ -1,4 +1,4 @@
-import { registerTeamsTools } from '@/teams/tools';
+import { registerTeamsTools, withRequiredSchema } from '@/teams/tools';
 import { registerAutomationTools } from '@/automations/tools';
 import { registerSessionPeerTools } from '@/sessions/peerTools';
 import { registerIdleRestartTool, IDLE_RESTART_TOOL_NAME } from '@/sessions/idleRestartTool';
@@ -169,7 +169,7 @@ async function main() {
     if (response.isError) throw new Error(text || 'Teams operation failed');
     return JSON.parse(text);
   };
-  registerTeamsTools(server, undefined, {
+  registerTeamsTools(withRequiredSchema(server), undefined, {
     initialize: (input) => forwardTeam(input.teamId ? 'team_join' : 'team_create', input),
     // B-822: the raw view; the bridge's own team_inspect applies taskId / full / the compact view.
     inspect: () => forwardTeam('team_inspect', { full: true }),
