@@ -97,6 +97,7 @@ import type { TeamBot, TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
 import { SidebarOrderHint } from './SidebarOrderHint';
 import { DeferredMajorUpdateEntry } from '@/app/DeferredMajorUpdateEntry';
+import { ChangelogHintSlot } from '@/app/ChangelogHintSlot';
 import { sidebarNavEntries, orderCreateMenu, sidebarTopModel, NEW_TEAM_PATH, type SidebarNavKey } from './sidebarNavEntries';
 import { NEW_PROJECT_EVENT } from './sidebarEvents';
 import { SidebarActionRows, SidebarChipRow, SidebarFooter } from './SidebarTop';
@@ -2016,6 +2017,8 @@ export function Sidebar() {
       {/* B-555: tightest subscription window (renders nothing until reported) */}
       <SidebarRateLimit />
       {/* B-715: unread big updates — persistent entry above the footer (B-713 owns the footer row). */}
+      {/* B-976: the 「有 N 条更新说明」 bar takes this row's place while it shows */}
+      <ChangelogHintSlot kind="sidebar" />
       <DeferredMajorUpdateEntry />
       <SidebarFooter onSettings={() => navigate('/settings')} onHelp={() => navigate('/help')} onToggleNotes={toggleNotesPanel} />
 

@@ -11,18 +11,21 @@ import {
   changelogCliTarget,
 } from './changelogRelease';
 import { changelogAutoAction, changelogPages, pageReleaseIds, pendingChangelogCliTarget, type ChangelogPage } from './changelogPager';
-import { changelogAutoShownThisVisit, changelogReadState, currentPendingChangelog, markChangelogReleasesRead, noteChangelogAutoShown, noteChangelogClosed, noteChangelogOpened, onChangelogOpenRequest, usePendingChangelog } from './changelogReadStore';
+import { changelogAutoShownThisVisit, changelogReadState, currentPendingChangelog, markChangelogReleasesRead, noteChangelogAutoShown, noteChangelogClosed, noteChangelogOpened, onChangelogOpenRequest, reviveChangelogHint, showChangelogHint, usePendingChangelog } from './changelogReadStore';
 import { enteredByDeepLink } from './entryKind';
 import { userHasInteracted } from './afterFirstScreen';
 import './changelogNotice.css';
 import { BRAND } from './brand';
 import { ChangelogHighlights, ChangelogShotImage } from './ChangelogHighlights';
 import { MajorBadge } from './MajorBadge';
+import { ChangelogHintBar } from './ChangelogHintBar';
 import { OVERLAY_PRIORITY, useOverlayHeldAbove, useOverlayTurn } from './overlayQueue';
 
 const NO_PAGES: readonly ChangelogPage[] = [];
-/** B-842: long enough to notice and reach — the sidebar entry stays after it. */
-export const CHANGELOG_HINT_MS = 10_000;
+/** B-976: away this long (PWA in the background, no reload) and coming back counts as a new visit. */
+export const CHANGELOG_HINT_NEW_VISIT_MS = 30 * 60_000;
+let hiddenSince: number | null = typeof document !== 'undefined' && document.hidden ? Date.now() : null;
+const pageHidden = () => typeof document !== 'undefined' && document.hidden;
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 /**
@@ -34,7 +37,11 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
  * first unread one. Deep-link loads never open it on their own (B-697); the
  * sidebar entry (MajorUpdateEntry) opens it on request. B-842: held back (deep
  * link, or the person already typing), it leaves a non-blocking toast
- * 「有 N 条更新说明 · 查看」 for this visit instead of nothing.
+ * 「有 N 条更新说明 · 查看」 for this visit instead of nothing. B-976: that is now a
+ * bar that stays until the notes are read (ChangelogHintBar) — the 10-second
+ * toast ran out unseen on a page loaded in the background and left a phone's
+ * session screen, which has no sidebar entry, with no sign of the notes. Nothing
+ * is decided while the page is hidden; coming back to it decides again.
  */
 export function ChangelogNotice() {
   const { t, lang } = useTranslation();
@@ -58,36 +65,43 @@ export function ChangelogNotice() {
     setOpen(true);
   }, []);
   // B-823: mounted after the first screen now — if the person is already
-  // typing or tapping, the notes do not grab focus mid-sentence. B-842: they
-  // leave a toast instead (once, after any dialog above `notice` is gone), so
-  // this visit still shows that something is unread; the sidebar entry stays.
+  // typing or tapping, the notes do not grab focus mid-sentence. B-842 / B-976:
+  // they leave the 「有 N 条更新说明」 bar instead, which stays until they are read.
   const decideAuto = () => changelogAutoShownThisVisit() ? 'none' : changelogAutoAction({
     pending: currentPendingChangelog().length,
     deepLink: enteredByDeepLink(),
     interacted: userHasInteracted(),
   });
-  const [auto, setAuto] = useState(decideAuto);
-  // B-974g: `/v1/features` answers after mount; an entry it brings in surfaces like any other.
+  // B-976: a page loaded in the background decides once someone looks at it.
+  const [auto, setAuto] = useState(() => (pageHidden() ? 'none' : decideAuto()));
   const pendingCount = usePendingChangelog().length;
+  const latest = useRef({ auto, open });
+  latest.current = { auto, open };
+  const redecide = useCallback(() => {
+    if (pageHidden() || latest.current.auto !== 'none' || latest.current.open) return;
+    const next = decideAuto();
+    if (next !== 'none') setAuto(next);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // B-974g: `/v1/features` answers after mount; an entry it brings in surfaces like any other.
+  useEffect(() => { if (pendingCount > 0) redecide(); }, [pendingCount, redecide]);
+  // B-976: back in front (tab switch, PWA resume without a reload) — decide now; after a
+  // long time away it is a new visit, so a bar closed with ✕ may come back.
   useEffect(() => {
-    if (pendingCount > 0 && auto === 'none' && !open) setAuto(decideAuto());
-  }, [pendingCount]);
+    const onVisibility = () => {
+      if (pageHidden()) { hiddenSince ??= Date.now(); return; }
+      if (hiddenSince !== null && Date.now() - hiddenSince >= CHANGELOG_HINT_NEW_VISIT_MS) reviveChangelogHint();
+      hiddenSince = null;
+      redecide();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pageshow', onVisibility);
+    return () => { document.removeEventListener('visibilitychange', onVisibility); window.removeEventListener('pageshow', onVisibility); };
+  }, [redecide]);
   const heldAbove = useOverlayHeldAbove(OVERLAY_PRIORITY.notice);
-  const hinted = useRef(false);
   useEffect(() => {
     if (auto === 'open') { noteChangelogAutoShown(); start(); }
+    if (auto === 'hint') { noteChangelogAutoShown(); showChangelogHint(); }
   }, [auto, start]);
-  useEffect(() => {
-    if (auto !== 'hint' || hinted.current || heldAbove || open) return;
-    const count = currentPendingChangelog().length;
-    if (count === 0) return;
-    hinted.current = true;
-    noteChangelogAutoShown();
-    toast.show(t('changelog.hint', { count }), 'info', {
-      button: { label: t('changelog.hintOpen'), onClick: start },
-      durationMs: CHANGELOG_HINT_MS,
-    });
-  }, [auto, heldAbove, open, start, t, toast]);
   useEffect(() => onChangelogOpenRequest(start), [start]);
   // B-857: open → closed (by any way out) lets the feedback card queue after
   // the notes; B-857b: opened again (sidebar entry), it waits for that close too.
@@ -153,6 +167,8 @@ export function ChangelogNotice() {
   const progress = total > 1 ? t('changelog.pageProgressLabel', { current: index + 1, total }) : null;
 
   return (
+    <>
+    <ChangelogHintBar count={pendingCount} suppressed={open || heldAbove} onOpen={start} />
     <Dialog.Root open={open && turn} onOpenChange={(nextOpen) => nextOpen ? setOpen(true) : closeWithoutReading()}>
       <Dialog.Portal>
         <Dialog.Overlay className="wn-backdrop" />
@@ -229,6 +245,7 @@ export function ChangelogNotice() {
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+    </>
   );
 }
 

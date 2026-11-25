@@ -14,6 +14,7 @@ import { useMediaQuery } from '@/app/useMediaQuery';
 import { boardFoldAction } from './board/boardFold';
 import { useFilesPanelWidth } from '@/screens/files/useFilesPanelWidth';
 import { useTranslation } from '@/i18n/useTranslation';
+import { ChangelogHintSlot } from '@/app/ChangelogHintSlot';
 import { EmptyState, Button, OrbitLoader, toast } from '@/ui';
 import { LeadViewStripToggle, SessionTeamContext } from './SessionTeamContext';
 import { ChatHeader } from './ChatHeader';
@@ -426,6 +427,8 @@ export function SessionDetailScreen() {
                     boardAction={boardAllowed ? <BoardHeaderButton sessionId={id} active={boardPhone ? boardSheet : boardOpen}
                         onClick={() => boardPhone ? setBoardSheet((v) => !v) : boardOpen ? setPanel(null, true) : setPanel('board', panelOpen)} /> : undefined}
                 />}
+                {/* B-976: 「有 N 条更新说明」 under the title bar (phones; desktop with the sidebar folded) */}
+                <ChangelogHintSlot key="changelog-hint-slot" kind="session" />
                 {session?.metadata?.parentSessionId && <ForkOrigin parentSessionId={session.metadata.parentSessionId} />}
                 {/* B-766: phones get the 汇报板 as a summary strip + top sheet under the header. */}
                 {boardAllowed && boardPhone && <BoardMobile key={`board:${id}`} sessionId={id} open={boardSheet} onOpenChange={setBoardSheet} trailing={<LeadViewStripToggle sessionId={id} />} />}
