@@ -20,9 +20,10 @@ const idParams = z.object({ id: z.string().min(1).max(64) });
 /**
  * B-974 Web ↔ server plugin routes (design §5.8 + r1). Errors are `{ error, ...details }`. With plugins off
  * for the account every route answers 404 `plugins_disabled` (the Web hides the feature, as on an older
- * server). Owner acts (approve / reject / enable / revoke / mute / frame-ticket / widget action) need a
- * signed-in person (`requireHumanOwner`); a machine token may only submit, disable or remove — and only an
- * install on the machine it names.
+ * server) — from `onRequest`, before the body is parsed or validated, so a malformed body cannot tell an
+ * existing route from a missing one. Owner acts (approve / reject / revoke / mute / frame-ticket / widget
+ * action) need a signed-in person (`requireHumanOwner`); a machine token may only submit, disable, remove,
+ * or enable an install it disabled itself — and only an install on the machine it names.
  */
 export function pluginRoutes(app: Fastify) {
     const handle = async (reply: any, work: () => Promise<unknown>) => {
@@ -33,11 +34,19 @@ export function pluginRoutes(app: Fastify) {
             throw error;
         }
     };
-    const auth = { preHandler: app.authenticate };
+    const pluginsOn = async (request: any, reply: any) => {
+        if (!pluginsEnabledFor(request.userId)) return reply.code(404).send({ error: 'plugins_disabled' });
+    };
+    // Auth and the switch run in `onRequest` (headers only): with plugins off nothing reaches body parsing or the schema.
+    const auth = { onRequest: [app.authenticate, pluginsOn] };
     const human = (request: any, reply: any) => requireHumanOwner(request, reply);
+    const machineOf = (request: any, fromBody?: string) => {
+        const header = request.headers['x-vh-machine-id'];
+        return fromBody ?? (typeof header === 'string' ? header : undefined);
+    };
 
     // §7: what this server offers this account. `plugins-v1` only while plugins are on for it (off = an older server).
-    app.get('/v1/features', auth, async (request) => ({ features: pluginsEnabledFor(request.userId) ? [PLUGIN_SERVER_FEATURE] : [] }));
+    app.get('/v1/features', { preHandler: app.authenticate }, async (request) => ({ features: pluginsEnabledFor(request.userId) ? [PLUGIN_SERVER_FEATURE] : [] }));
 
     app.get('/v1/plugins/installs', auth, async (request, reply) => handle(reply, () => listInstalls(request.userId)));
 
@@ -81,10 +90,13 @@ export function pluginRoutes(app: Fastify) {
         return disableInstall(request.userId, request.params.id, { reason: request.body?.reason }, isHuman ? 'owner' : 'machine', isHuman ? undefined : machineId);
     }));
 
-    app.post('/v1/plugins/installs/:id/enable', { ...auth, schema: { params: idParams } }, async (request, reply) => {
-        if (!human(request, reply)) return reply;
-        return handle(reply, () => enableInstall(request.userId, request.params.id));
-    });
+    // A machine token re-enables only what it disabled itself, on the machine it names (CLI `plugin enable`).
+    app.post('/v1/plugins/installs/:id/enable', { ...auth, schema: { params: idParams, body: z.object({ machineId: z.string().max(128).optional() }).nullish() } }, async (request, reply) => handle(reply, () => {
+        if (requestTokenKind(request) === 'human') return enableInstall(request.userId, request.params.id);
+        const machineId = machineOf(request, request.body?.machineId);
+        if (!machineId) throw new PluginError('machine_id_required', 400);
+        return enableInstall(request.userId, request.params.id, machineId);
+    }));
 
     app.delete('/v1/plugins/installs/:id', { ...auth, schema: { params: idParams, querystring: z.object({ machineId: z.string().max(128).optional(), keepItems: z.enum(['1', 'true', '0', 'false']).optional() }) } }, async (request, reply) => handle(reply, () => {
         const isHuman = requestTokenKind(request) === 'human';
@@ -117,4 +129,7 @@ export function pluginRoutes(app: Fastify) {
         if (!human(request, reply)) return reply;
         return handle(reply, () => widgetAction(request.userId, request.params.installId, request.params.sessionId, request.body.actionId));
     });
+
+    // Any other `/v1/plugins/*` path: the same `plugins_disabled` while off, so a probe cannot tell real routes from missing ones.
+    app.all('/v1/plugins/*', auth, async (_request, reply) => reply.code(404).send({ error: 'not_found' }));
 }

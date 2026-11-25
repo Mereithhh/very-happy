@@ -52,6 +52,9 @@ describe('owner-system cards', () => {
     expect(parseOwnerSystemCard(attentionItem({ id: 'o1', source: 'owner-system', pluginInstallId: 'pi_2', title: '插件安装待批准' }))).toMatchObject({ installId: 'pi_2', open: true });
     expect(parseOwnerSystemCard(attentionItem({ id: 'o1', source: 'owner-system', state: 'resolved' }))).toMatchObject({ open: false });
     expect(parseOwnerSystemCard(attentionItem({ source: 'plugin' }))).toBeNull();
+    // B-974f: the review payload names the plugin; a card without one (older server) keeps just its title.
+    expect(parseOwnerSystemCard(attentionItem({ id: 'o2', source: 'owner-system', pluginInstallId: 'pi_2', title: '插件更新待批准 · X', payload: { v: 1, type: 'plugin-review', pluginName: 'X', update: true } }))).toMatchObject({ pluginName: 'X', update: true });
+    expect(parseOwnerSystemCard(attentionItem({ id: 'o3', source: 'owner-system', pluginInstallId: 'pi_2', title: 'T', payload: { v: 1, type: 'other' } }))?.pluginName).toBeUndefined();
   });
 });
 

@@ -32,10 +32,11 @@ export type ServerOpResult =
     | { kind: 'offline' };
 export type ServerOp = (installId: string | null, op: string, payload: Record<string, unknown>, requestId: string) => Promise<ServerOpResult>;
 
-export type LocalSessionInfo = { id: string; title: string | null; cwd: string | null; agent: string | null; status: 'running' | 'idle' | 'archived'; updatedAt: number };
+/** P3-10: `title` / `updatedAt` are left out when unknown (never null / 0). */
+export type LocalSessionInfo = { id: string; title?: string; cwd: string | null; agent: string | null; status: 'running' | 'idle' | 'archived'; updatedAt?: number };
 export type LocalSessionMessage = { id: string; role: 'user' | 'agent'; text: string; createdAt: number };
 export type LocalSessions = {
-    list(): LocalSessionInfo[];
+    list(): LocalSessionInfo[] | Promise<LocalSessionInfo[]>;
     isLocal(sessionId: string): boolean;
     /** Text-only messages, newest `limit` before `before` (a seq cursor), read and decrypted on this machine. */
     readMessages(sessionId: string, limit: number, before?: string): Promise<{ messages: LocalSessionMessage[]; cursor: string | null }>;
@@ -275,7 +276,7 @@ export class PluginApi {
         if (!q.success) return invalid(q.error);
         if (q.data.cursor !== undefined && !/^\d{1,6}$/.test(q.data.cursor)) return err(400, 'invalid_request', 'bad cursor');
         const limit = q.data.limit ?? 50;
-        const all = this.deps.sessions.list().sort((a, b) => b.updatedAt - a.updatedAt || (a.id < b.id ? -1 : 1));
+        const all = (await this.deps.sessions.list()).sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0) || (a.id < b.id ? -1 : 1));
         const start = q.data.cursor ? Number(q.data.cursor) : 0;
         const page = all.slice(start, start + limit);
         const refused = await this.audit(ctx, 'sessions.list', page.map((s) => s.id));

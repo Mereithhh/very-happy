@@ -76,14 +76,14 @@ describe('gated entry: read state', () => {
 
 describe('the shipped entries', () => {
   const gated = CHANGELOG_RELEASES.filter((r) => r.requiresFeature);
-  it('only nov25g is gated, on plugins-v1; every other entry stays', () => {
-    expect(gated.map((r) => [r.titleKey, r.requiresFeature])).toEqual([['changelog.releases.nov25g.title', PLUGIN_SERVER_FEATURE]]);
-    expect(visibleChangelogReleases([])).toEqual(CHANGELOG_RELEASES.filter((r) => r !== gated[0]));
+  it('only the plugin entries (nov25h, nov25g) are gated, on plugins-v1; every other entry stays', () => {
+    expect(gated.map((r) => [r.titleKey, r.requiresFeature])).toEqual([['changelog.releases.nov25h.title', PLUGIN_SERVER_FEATURE], ['changelog.releases.nov25g.title', PLUGIN_SERVER_FEATURE]]);
+    expect(visibleChangelogReleases([])).toEqual(CHANGELOG_RELEASES.filter((r) => !gated.includes(r)));
     expect(visibleChangelogReleases([PLUGIN_SERVER_FEATURE])).toEqual(CHANGELOG_RELEASES);
   });
 
-  it('CLI 0.2.230 is recommended all the same', () => {
-    const g = gated[0];
+  it('the gated entries\u2019 CLI (0.2.231, 0.2.230) is recommended all the same', () => {
+    const g = gated[1];
     expect(g.cliVersion).toBe('0.2.230');
     expect(isCliVersionBelow('0.2.229', '0.2.230')).toBe(true);
     expect(isCliVersionBelow('0.2.230', '0.2.230')).toBe(false);
@@ -92,6 +92,7 @@ describe('the shipped entries', () => {
     const m = (v: string) => ({ id: v, active: true, metadata: { happyCliVersion: v } });
     expect(changelogCliNotices([m('0.2.229'), m('0.2.230')], g).map((n) => [n.machineId, n.targetVersion])).toEqual([['0.2.229', '0.2.230']]);
     expect(changelogCliNotices([m('0.2.229')])[0].targetVersion).toBe(target);
+    expect(gated[0].cliVersion).toBe('0.2.231');
     expect(pendingChangelogCliTarget({ seen: 'a', read: [] }, NOW)?.cliVersion).toBe('0.2.230');
   });
 
@@ -107,8 +108,11 @@ describe('in the app', () => {
   let root: Root;
   let host: HTMLElement;
   const gatedAt = CHANGELOG_RELEASES.findIndex((r) => r.requiresFeature === PLUGIN_SERVER_FEATURE);
-  const below = CHANGELOG_RELEASES[gatedAt + 1];
-  // Whatever ships above nov25g later is read already; only nov25g is in question.
+  const gatedCount = CHANGELOG_RELEASES.filter((r) => r.requiresFeature === PLUGIN_SERVER_FEATURE).length;
+  const lastGated = gatedAt + gatedCount - 1;
+  const below = CHANGELOG_RELEASES[lastGated + 1];
+  const PLUGIN_NOTES = /nov25[gh]/;
+  // Whatever ships above the plugin entries later is read already; only they are in question.
   beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     localStorage.clear();
@@ -145,7 +149,7 @@ describe('in the app', () => {
     await mount(ServerFeaturesSync, ChangelogNotice, MajorUpdateEntry, ChangelogScreen);
     expect(entry()).toBeNull();
     expect(card()).toBeNull();
-    expect(host.textContent).not.toContain('nov25g');
+    expect(host.textContent).not.toMatch(PLUGIN_NOTES);
     expect(host.textContent).toContain(below.titleKey);
     expect(localStorage.getItem('vh.changelog.seen')).toBe(below.id);
   });
@@ -165,25 +169,26 @@ describe('in the app', () => {
     const fetchMock = reply(200, { features: ['plugins-v1'] });
     await mount(ServerFeaturesSync, ChangelogNotice, MajorUpdateEntry, ChangelogScreen);
     expect(fetchMock.mock.calls[0][0]).toBe('https://srv.test/v1/features');
-    expect(entry()?.getAttribute('aria-label')).toBe('changelog.notesEntryLabel:{"count":1}');
-    expect(card()?.textContent).toContain('changelog.releases.nov25g.title');
+    expect(entry()?.getAttribute('aria-label')).toBe(`changelog.notesEntryLabel:{"count":${gatedCount}}`);
+    expect(card()?.textContent).toMatch(PLUGIN_NOTES);
     expect(host.textContent).toContain('changelog.releases.nov25g.title');
+    expect(host.textContent).toContain('changelog.releases.nov25h.title');
     act(() => (document.querySelector('.wn-done') as HTMLButtonElement).click());
     expect(entry()).toBeNull();
     expect(localStorage.getItem('vh.changelog.seen')).toBe(CHANGELOG_RELEASES[0].id);
   });
 
   it('the notes open for other entries while off still recommend the hidden entry’s CLI, and an entry arriving meanwhile stays unread', async () => {
-    localStorage.setItem('vh.changelog.seen', CHANGELOG_RELEASES[gatedAt + 2].id);
+    localStorage.setItem('vh.changelog.seen', CHANGELOG_RELEASES[lastGated + 2].id);
     resetChangelogReadStoreForTest();
     machines.push({ id: 'm', active: true, metadata: { happyCliVersion: '0.2.229' } });
     await mount(ChangelogNotice, MajorUpdateEntry);
     expect(card()?.textContent).toContain(below.titleKey);
-    expect(card()?.textContent).not.toContain('nov25g');
-    expect(card()?.querySelector('.wn-cli code')?.textContent).toContain('0.2.230');
+    expect(card()?.textContent).not.toMatch(PLUGIN_NOTES);
+    expect(card()?.querySelector('.wn-cli code')?.textContent).toContain('0.2.231');
     act(() => setServerFeatures(['plugins-v1']));
     act(() => (document.querySelector('.wn-done') as HTMLButtonElement).click());
-    expect(entry()?.getAttribute('aria-label')).toBe('changelog.notesEntryLabel:{"count":1}');
+    expect(entry()?.getAttribute('aria-label')).toBe(`changelog.notesEntryLabel:{"count":${gatedCount}}`);
     expect(localStorage.getItem('vh.changelog.seen')).toBe(below.id);
   });
 

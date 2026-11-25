@@ -575,6 +575,43 @@ export async function readSessionState(sessionId: string, persisted?: PersistedS
     return state
 }
 
+/**
+ * B-974h P3-10: the session's current title (decrypted `metadata.summary.text`, else `metadata.name`) and its last
+ * update (`updatedAt`, else `activeAt`) from `GET /v1/sessions/:id`. Fields are left out when unknown; a 404 → null.
+ */
+export async function readSessionSummary(sessionId: string, persisted: PersistedSession): Promise<{ title?: string; updatedAt?: number } | null> {
+    const token = await bearerToken()
+    const response = await axios.get(`${configuration.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}`, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'X-Happy-Client': `${SESSION_OPS_CLIENT}/${configuration.currentCliVersion}`,
+        },
+        timeout: 15_000,
+        validateStatus: (status) => (status >= 200 && status < 300) || status === 404,
+    })
+    if (response.status === 404) return null
+    return sessionSummaryFromRow(response.data?.session, persisted)
+}
+
+/** Pure part of `readSessionSummary` (tests). */
+export function sessionSummaryFromRow(row: unknown, persisted: Pick<PersistedSession, 'encryptionKey' | 'encryptionVariant'>): { title?: string; updatedAt?: number } | null {
+    if (!row || typeof row !== 'object') return null
+    const r = row as Partial<AccountSessionRow>
+    const out: { title?: string; updatedAt?: number } = {}
+    const at = typeof r.updatedAt === 'number' && r.updatedAt > 0 ? r.updatedAt : typeof r.activeAt === 'number' && r.activeAt > 0 ? r.activeAt : undefined
+    if (at !== undefined) out.updatedAt = at
+    if (typeof r.metadata === 'string' && r.metadata.length > 0) {
+        try {
+            const metadata = decrypt(decodeBase64(persisted.encryptionKey), persisted.encryptionVariant, decodeBase64(r.metadata)) as Metadata | null
+            const title = [metadata?.summary?.text, metadata?.name].find((t): t is string => typeof t === 'string' && t.trim().length > 0)
+            if (title) out.title = title.trim()
+        } catch {
+            // Undecryptable metadata: no title.
+        }
+    }
+    return out
+}
+
 export class TurnWaitTimeoutError extends Error {
     constructor(readonly sessionId: string, readonly timeoutMs: number, readonly turn: TurnState) {
         super(`Session ${sessionId}: the latest turn did not end within ${Math.round(timeoutMs / 1000)}s`)

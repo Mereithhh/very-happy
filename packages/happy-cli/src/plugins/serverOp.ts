@@ -33,7 +33,7 @@ export class PluginServerClient {
     /** `machineId`: the server needs it on every machine-token call (`X-VH-Machine-Id`, and in the body of POST /installs). */
     constructor(private readonly serverUrl: string, private readonly token: string, private readonly clientVersion: string, private readonly machineId: string) {}
 
-    private async call<T>(method: 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
+    private async call<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
         let res;
         try {
             res = await axios.request({
@@ -48,12 +48,8 @@ export class PluginServerClient {
             throw new PluginServerError('server_unreachable', `cannot reach ${this.serverUrl}: ${(error as Error).message}`);
         }
         const data = res.data && typeof res.data === 'object' ? res.data as Record<string, unknown> : {};
-        if (res.status === 404 && (data.error === undefined || data.error === 'Not Found' || res.data === '' || typeof res.data === 'string')) {
-            throw new PluginServerError('server_too_old', 'this server does not support plugins yet (no /v1/plugins); update the server first', 404);
-        }
-        if (res.status === 404 && data.error === PLUGINS_DISABLED) {
-            throw new PluginServerError('server_too_old', 'plugins are switched off on this server for this account', 404);
-        }
+        const tooOld = serverTooOldFrom404(res.status, res.data);
+        if (tooOld) throw new PluginServerError('server_too_old', tooOld, 404);
         if (res.status >= 400) {
             const code = typeof data.error === 'string' ? data.error : `http_${res.status}`;
             throw new PluginServerError(code, typeof data.message === 'string' ? data.message : `server refused (${code})`, res.status);
@@ -69,9 +65,54 @@ export class PluginServerClient {
         return this.call('POST', `/v1/plugins/installs/${encodeURIComponent(installId)}/disable`, reason ? { reason } : {});
     }
 
+    /**
+     * B-974h: lift a machine-set disable. The server lifts only `disabledBy === 'machine'` on this machine's
+     * install; anything else answers `403 enable_requires_owner` (turn it back on in the web app).
+     */
+    enable(installId: string): Promise<unknown> {
+        return this.call('POST', `/v1/plugins/installs/${encodeURIComponent(installId)}/enable`, { machineId: this.machineId });
+    }
+
+    /** `GET /v1/plugins/installs` (any token of the account): each install's per-install origin, keyed by installId. */
+    async origins(): Promise<Map<string, string>> {
+        const data = await this.call<{ installs?: unknown }>('GET', '/v1/plugins/installs');
+        return originHostsFromInstalls(data);
+    }
+
     remove(installId: string, keepItems: boolean): Promise<unknown> {
         return this.call('DELETE', `/v1/plugins/installs/${encodeURIComponent(installId)}${keepItems ? '?keepItems=1' : ''}`);
     }
+}
+
+/**
+ * §7 / docs compatibility table: a 404 from `/v1/plugins/*` means "no plugin support here" unless it carries one of
+ * the plugin API's own snake_case codes (`not_found` for an unknown install, …). An older server answers its generic
+ * `{ error: 'Not found', path, method }` (or a plain-text / HTML page); a plugins-v1 server with the switch off answers
+ * `plugins_disabled`. Returns the message for `server_too_old`, or null when the 404 is an ordinary refusal.
+ */
+export function serverTooOldFrom404(status: number, body: unknown): string | null {
+    if (status !== 404) return null;
+    const error = body && typeof body === 'object' ? (body as Record<string, unknown>).error : undefined;
+    if (error === PLUGINS_DISABLED) return 'plugins are switched off on this server for this account';
+    if (typeof error === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(error)) return null;
+    return 'this server does not support plugins yet (no /v1/plugins); update the server first';
+}
+
+/** `{ installs: [{ id, origin }] }` → installId → origin host (`<label>.<pluginHost>`); entries without an http(s) origin are skipped (http: a dev server's `VH_PLUGIN_HOST_SCHEME`). */
+export function originHostsFromInstalls(data: unknown): Map<string, string> {
+    const out = new Map<string, string>();
+    const installs = data && typeof data === 'object' ? (data as { installs?: unknown }).installs : undefined;
+    if (!Array.isArray(installs)) return out;
+    for (const item of installs) {
+        if (!item || typeof item !== 'object') continue;
+        const { id, origin } = item as { id?: unknown; origin?: unknown };
+        if (typeof id !== 'string' || typeof origin !== 'string') continue;
+        let url: URL;
+        try { url = new URL(origin); } catch { continue; }
+        if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.username || url.password || (url.pathname !== '/' && url.pathname !== '')) continue;
+        out.set(id, url.host.toLowerCase());
+    }
+    return out;
 }
 
 /**

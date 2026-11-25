@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { Duplex } from 'node:stream';
 import type { Server } from 'socket.io';
 import { db } from '@/storage/db';
 import { log } from '@/utils/log';
@@ -93,6 +94,22 @@ function sendError(res: ServerResponse, status: number, code: string, frameAnces
 function redirect(res: ServerResponse, location: string, headers: Record<string, string>) {
     res.writeHead(302, { ...headers, location, 'cache-control': 'no-store', 'content-length': 0 });
     res.end();
+}
+
+/**
+ * WebSocket `Upgrade` on a plugin origin (§4.6: not forwarded). Node never runs the request hooks for these, so
+ * without this the socket is just dropped (curl: empty reply). Answers `501 unsupported_upgrade` and closes.
+ * The URL is moved off every real path first, so no later `upgrade` listener (Socket.IO) can take the socket.
+ * Returns true when the request was for a plugin origin.
+ */
+export function handlePluginHostUpgrade(req: IncomingMessage, socket: Duplex, config: PluginHostConfig | null = pluginHostConfig()): boolean {
+    if (!pluginLabelOfHost(req.headers.host, config)) return false;
+    req.url = '/__vh/unsupported-upgrade';
+    const body = JSON.stringify({ error: 'unsupported_upgrade' });
+    const headers: Record<string, string | number> = { ...hostResponseHeaders([]), 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'content-length': Buffer.byteLength(body), connection: 'close' };
+    socket.on('error', () => undefined);
+    socket.end(`HTTP/1.1 501 Not Implemented\r\n${Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join('\r\n')}\r\n\r\n${body}`);
+    return true;
 }
 
 /** True when the request was a plugin-origin request (and has been answered). */

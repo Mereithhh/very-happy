@@ -70,8 +70,8 @@ import { startWebPanelsSync } from '@/webPanels/webPanelsSync';
 import { readSettings, updateSettings, readCredentials, rewriteCredentialsForRelay } from '@/persistence';
 import { applyServerMigration } from './serverMigration';
 import { PluginRuntime, pluginRpcHandlers, trackedPluginSessions } from '@/plugins/runtime';
-import { fetchServerPluginSupport } from '@/plugins/serverOp';
-import { readSessionLog } from '@/sessions/sessionOps';
+import { PluginServerClient, fetchServerPluginSupport } from '@/plugins/serverOp';
+import { readSessionLog, readSessionSummary } from '@/sessions/sessionOps';
 import { describeMachineIdentityConflict, detectMachineIdentityConflict } from './machineIdentityConflict';
 import { decideHandover, type HandoverPreflight } from './handoverPreflight';
 import { serialTask } from '@/update/serialTask';
@@ -2168,8 +2168,15 @@ export async function startDaemon(): Promise<void> {
           if (!persisted) throw new Error('no local key for this session');
           return readSessionLog(sessionId, persisted, limit, beforeSeq);
         },
+        // B-974h P3-10: the spawn-time snapshot has no title / update time; read the live ones.
+        liveInfo: async (sessionId) => {
+          const persisted = readPersistedSessions()[sessionId];
+          return persisted ? readSessionSummary(sessionId, persisted) : null;
+        },
       }),
       probeServerSupport: () => fetchServerPluginSupport(configuration.serverUrl, credentials.token, configuration.currentCliVersion),
+      // B-974h P3-9: per-install origin hosts for X-Forwarded-Host.
+      fetchOriginHosts: () => new PluginServerClient(configuration.serverUrl, credentials.token, configuration.currentCliVersion, machineId).origins(),
     });
     const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
       controlToken,

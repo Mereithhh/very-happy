@@ -16,6 +16,8 @@ export class PluginCliError extends Error {
 export type PluginServerApi = {
     submitManifest(manifest: unknown): Promise<ServerInstallReply>;
     disable(installId: string, reason?: string): Promise<unknown>;
+    /** B-974h: lifts a disable this machine set (`disabledBy === 'machine'`); otherwise `403 enable_requires_owner`. */
+    enable(installId: string): Promise<unknown>;
     remove(installId: string, keepItems: boolean): Promise<unknown>;
 };
 
@@ -130,13 +132,55 @@ export async function disablePlugin(store: PluginStore, server: PluginServerApi,
     }
 }
 
-export function enablePlugin(store: PluginStore, id: string): InstallRecord {
+/** What `plugin enable` found on the server. */
+export type EnableServerOutcome =
+    | { kind: 'enabled' }            // the machine-set disable was lifted
+    | { kind: 'operator' }           // 409 disabled_by_operator: only the operator can lift it
+    | { kind: 'requires_owner' }     // 403: disabled in the account, or not this machine's install: the web app only
+    | { kind: 'not_sent'; error: string }; // unreachable / server_too_old / not signed in — only the local state changed
+
+/**
+ * `plugin enable` (B-974h): lift the local disable first (works offline), then ask the server — with this
+ * machine's token — to lift a disable this machine set (`POST /v1/plugins/installs/:id/enable`). The server
+ * lifts only `disabledBy === 'machine'` on this machine's install and answers `403 enable_requires_owner`
+ * otherwise; the CLI then points at the web app. The local record keeps the server's last known state until
+ * the daemon syncs, except that a successful lift is reflected at once.
+ */
+export async function enablePlugin(store: PluginStore, server: PluginServerApi, id: string): Promise<{ record: InstallRecord; server: EnableServerOutcome }> {
     const current = store.readInstall(id);
     if (!current) throw new PluginCliError('not_found', `plugin "${id}" is not installed`);
     const { localDisabled: _d, localDisabledReason: _r, ...rest } = current;
-    const next = { ...rest, updatedAt: Date.now() };
+    let next: InstallRecord = { ...rest, updatedAt: Date.now() };
     store.writeInstall(id, next);
-    return next;
+    // The local record may not have caught up with a disable this machine just sent (no daemon sync yet), so ask
+    // the server for every install that can be disabled there; `409 not_disabled` simply means nothing to lift.
+    if (current.state !== 'disabled' && current.state !== 'enabled' && current.state !== 'update_pending') return { record: next, server: { kind: 'not_sent', error: `install is ${current.state}` } };
+    try {
+        await server.enable(current.installId);
+    } catch (error) {
+        const code = error instanceof PluginServerError ? error.code : null;
+        if (code === 'enable_requires_owner') return { record: next, server: { kind: 'requires_owner' } };
+        if (code === 'disabled_by_operator') return { record: next, server: { kind: 'operator' } };
+        // 409 not_disabled: nothing left to lift, i.e. done. The real state (maybe rejected / removed) comes with the
+        // next install.sync; never promote the local record here.
+        if (code === 'not_disabled') return { record: next, server: { kind: 'enabled' } };
+        return { record: next, server: { kind: 'not_sent', error: (error as Error).message } };
+    }
+    // Lifted on the server: show it as enabled now; the daemon's next install.sync is authoritative.
+    if (next.state === 'disabled') next = { ...next, state: 'enabled', updatedAt: Date.now() };
+    store.writeInstall(id, next);
+    return { record: next, server: { kind: 'enabled' } };
+}
+
+/**
+ * P3-4: the server answers a path (`/settings/plugins/<id>/review`); print it on the web app's origin
+ * (`HAPPY_WEBAPP_URL`, the `webappUrl` setting, or the default). Absolute http(s) URLs pass through.
+ */
+export function absoluteReviewUrl(reviewUrl: string | null | undefined, webappUrl: string): string | null {
+    if (!reviewUrl) return null;
+    if (/^https?:\/\//i.test(reviewUrl)) return reviewUrl;
+    if (!reviewUrl.startsWith('/') || reviewUrl.startsWith('//')) return reviewUrl;
+    return `${webappUrl.replace(/\/+$/, '')}${reviewUrl}`;
 }
 
 export async function removePlugin(store: PluginStore, server: PluginServerApi, id: string, keepItems: boolean): Promise<{ serverNotified: boolean; serverError?: string }> {

@@ -99,6 +99,12 @@ export function buildUpstreamHeaders(inbound: Record<string, string | string[] |
     pluginId: string;
     installId: string;
     signature: Record<string, string>;
+    /**
+     * P3-9: this install's origin host as the server reports it (`GET /v1/plugins/installs` → `origin`). The server
+     * drops `Host` before the RPC and the panel sends no Referer (`no-referrer`), so a GET carries nothing that names
+     * the subdomain; without this, `X-Forwarded-Host` would only be set on same-origin writes.
+     */
+    originHost?: string | null;
 }): Record<string, string | string[]> {
     const lower: Record<string, string | string[]> = {};
     for (const [k, v] of Object.entries(inbound)) if (v !== undefined) lower[k.toLowerCase()] = v;
@@ -106,7 +112,8 @@ export function buildUpstreamHeaders(inbound: Record<string, string | string[] |
     // The server drops Host before the RPC; Origin / Referer (already checked by the server for writes) name it.
     const label = pluginOriginLabel(ctx.pluginId, ctx.installId);
     const hostMatch = installHost(label, lower['host']);
-    const pluginOrigin = hostMatch ? `https://${hostMatch}` : installOriginOf(label, lower['origin']) ?? installOriginOf(label, lower['referer']);
+    const known = ctx.originHost ? installHost(label, ctx.originHost) : null;
+    const pluginOrigin = known ? `https://${known}` : hostMatch ? `https://${hostMatch}` : installOriginOf(label, lower['origin']) ?? installOriginOf(label, lower['referer']);
     const subdomain = pluginOrigin ? pluginOrigin.slice('https://'.length) : null;
     const authority = authorityOf(ctx.target);
     const out: Record<string, string | string[]> = {};
@@ -206,7 +213,7 @@ export class PluginHttpForwarder {
     private streams = new Map<string, ResponseStream>();
     private inFlight = new Map<string, number>();
 
-    constructor(private readonly registry: PluginRegistry, private readonly opts: { timeoutMs?: number; now?: () => number } = {}) {}
+    constructor(private readonly registry: PluginRegistry, private readonly opts: { timeoutMs?: number; now?: () => number; originHost?: (installId: string) => string | null } = {}) {}
 
     /** `plugin-http-body { streamId, seq, chunkB64, end }`: body chunks arrive before `plugin-http`. */
     acceptBodyChunk(params: { installId?: string; streamId?: string; seq?: number; chunkB64?: string; end?: boolean }): { ok: true } | { error: string } {
@@ -279,7 +286,7 @@ export class PluginHttpForwarder {
             'x-vh-viewer': 'owner',
         };
         if (entry.secretKey) signature['x-vh-signature'] = signPluginRequest(entry.secretKey, ts, reqId, method, normalized.pathWithQuery, new Uint8Array(body));
-        const headers = buildUpstreamHeaders(inbound, { target, pluginId: entry.id, installId, signature });
+        const headers = buildUpstreamHeaders(inbound, { target, pluginId: entry.id, installId, signature, originHost: this.opts.originHost?.(installId) ?? null });
         if (body.length > 0) headers['content-length'] = String(body.length);
         try {
             const res = await loopbackRequest(target, { method, path: normalized.pathWithQuery, headers, body, timeoutMs: this.opts.timeoutMs ?? UPSTREAM_TIMEOUT_MS });

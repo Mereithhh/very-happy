@@ -7,16 +7,17 @@ import { readFile, stat } from 'node:fs/promises';
 import { configuration } from '@/configuration';
 import { readCredentialsForConfiguredRelay, readSettings } from '@/persistence';
 import { PluginStore, effectiveState } from '@/plugins/store';
-import { PluginServerClient } from '@/plugins/serverOp';
+import { PluginServerClient, fetchServerPluginSupport } from '@/plugins/serverOp';
 import { parseLoopbackUrl, SENSITIVE_PLUGIN_PERMISSIONS } from '@/plugins/manifest';
 import { loopbackRequest } from '@/plugins/loopbackHttp';
 import { readPluginSecretKey } from '@/plugins/signing';
 import { signPluginEvent, verifyPluginEvent } from '@slopus/happy-wire';
 import { pingDaemonPlugin, reloadDaemonPlugins } from '@/daemon/controlClient';
 import {
-    PluginCliError, addPlugin, disablePlugin, enablePlugin, pluginEnv, readManifestSource, removePlugin, rotatePlugin, shellQuote, updatePlugin,
-    type PluginServerApi,
+    PluginCliError, absoluteReviewUrl, addPlugin, disablePlugin, enablePlugin, pluginEnv, readManifestSource, removePlugin, rotatePlugin, shellQuote, updatePlugin,
+    type EnableServerOutcome, type PluginServerApi,
 } from '@/plugins/cli';
+import type { InstallRecord } from '@/plugins/store';
 
 const HELP = `${chalk.bold('very-happy plugin')} — Web plugins installed on this machine
 
@@ -31,13 +32,13 @@ const HELP = `${chalk.bold('very-happy plugin')} — Web plugins installed on th
   very-happy plugin doctor <id>
   very-happy plugin rotate <id>
   very-happy plugin badge <id> <count|clear> [--tone attention] [--label <text>]
-  very-happy plugin decision <id> post --key K --title T [--option id=label]... [--input] [--notice] [--body-file F]
+  very-happy plugin decision <id> post --key K --title T [--option id=label]... [--input [--multiline]] [--notice] [--body-file F]
   very-happy plugin decision <id> close --key K [--outcome done|dropped|superseded]
 
 Each install and every permission is approved by the account owner on the web.`;
 
 type Flags = { positional: string[]; flags: Map<string, string[]>; bools: Set<string> };
-const BOOL_FLAGS = new Set(['--json', '--shell', '--keep-items', '--input', '--notice']);
+const BOOL_FLAGS = new Set(['--json', '--shell', '--keep-items', '--input', '--multiline', '--notice']);
 
 export function parsePluginArgs(args: string[]): Flags {
     const positional: string[] = [];
@@ -129,7 +130,8 @@ export async function handlePluginCommand(args: string[]): Promise<void> {
                 const src = f.positional[1];
                 if (!src) throw new PluginCliError('invalid_request', 'usage: very-happy plugin add <path|http://127.0.0.1:PORT/...>');
                 const source = await readManifestSource(src);
-                const result = await addPlugin(store(), await serverApi(), source);
+                const added = await addPlugin(store(), await serverApi(), source);
+                const result = { ...added, reviewUrl: absoluteReviewUrl(added.reviewUrl, configuration.webappUrl) };
                 await reloadDaemon();
                 out(json, result, () => {
                     for (const w of result.warnings) console.log(chalk.yellow(`warning: ${w}`));
@@ -147,10 +149,9 @@ export async function handlePluginCommand(args: string[]): Promise<void> {
                     const d = live?.find((x) => x.id === id);
                     return { id, installId: r?.installId ?? null, state: r ? effectiveState(r) : 'broken', grants: r?.grants ?? [], pendingChange: s.readPending(id) !== null && r?.approvedManifestHash != null, queued: d?.queued ?? null, pendingEvents: d?.pendingEvents ?? null };
                 });
-                out(json, { plugins: rows, daemon: live !== null }, () => {
-                    if (rows.length === 0) { console.log('No plugins installed. Add one with "very-happy plugin add <manifest>".'); return; }
-                    for (const r of rows) console.log(`${chalk.bold(r.id.padEnd(20))} ${r.state.padEnd(20)} ${r.grants.join(',') || '-'}${r.pendingChange ? chalk.yellow('  (change waiting for approval)') : ''}${r.queued ? chalk.yellow(`  ${r.queued} queued`) : ''}`);
-                    if (live === null) console.log(chalk.gray('daemon not running — showing local state only'));
+                const serverSupport = await serverPluginSupport();
+                out(json, { plugins: rows, daemon: live !== null, serverSupport }, () => {
+                    for (const line of listLines(rows, live !== null, serverSupport)) console.log(line);
                 });
                 return;
             }
@@ -161,7 +162,8 @@ export async function handlePluginCommand(args: string[]): Promise<void> {
                 if (!r) throw new PluginCliError('not_found', `plugin "${id}" is not installed`);
                 const approved = s.readApprovedManifest(id);
                 const pending = s.readPending(id);
-                const value = { ...r, state: effectiveState(r), manifest: approved, pending: pending ? { manifestHash: pending.manifestHash, manifest: pending.manifest } : null, dir: s.dir(id) };
+                const reviewUrl = absoluteReviewUrl(r.reviewUrl, configuration.webappUrl);
+                const value = { ...r, ...(reviewUrl ? { reviewUrl } : {}), state: effectiveState(r), manifest: approved, pending: pending ? { manifestHash: pending.manifestHash, manifest: pending.manifest } : null, dir: s.dir(id) };
                 out(json, value, () => {
                     console.log(`${chalk.bold(approved?.name ?? pending?.manifest.name ?? id)} (${id})  ${effectiveState(r)}`);
                     console.log(`install    ${r.installId}`);
@@ -176,7 +178,7 @@ export async function handlePluginCommand(args: string[]): Promise<void> {
                         const sensitive = pending.manifest.permissions.filter((p) => SENSITIVE_PLUGIN_PERMISSIONS.includes(p));
                         if (sensitive.length) console.log(chalk.red(`sensitive  ${sensitive.join(', ')}`));
                     }
-                    if (r.reviewUrl && (pending || r.state === 'pending')) console.log(`review     ${r.reviewUrl}`);
+                    if (reviewUrl && (pending || r.state === 'pending')) console.log(`review     ${reviewUrl}`);
                     console.log(`dir        ${s.dir(id)}`);
                 });
                 return;
@@ -188,7 +190,8 @@ export async function handlePluginCommand(args: string[]): Promise<void> {
                 if (!r) throw new PluginCliError('not_found', `plugin "${id}" is not installed`);
                 const src = one(f, '--manifest') ?? r.source;
                 if (!src) throw new PluginCliError('invalid_request', 'no manifest source recorded; pass --manifest <path|url>');
-                const result = await updatePlugin(s, await serverApi(), id, await readManifestSource(src));
+                const updated = await updatePlugin(s, await serverApi(), id, await readManifestSource(src));
+                const result = { ...updated, reviewUrl: absoluteReviewUrl(updated.reviewUrl, configuration.webappUrl) };
                 await reloadDaemon();
                 out(json, result, () => {
                     for (const w of result.warnings) console.log(chalk.yellow(`warning: ${w}`));
@@ -201,10 +204,9 @@ export async function handlePluginCommand(args: string[]): Promise<void> {
             }
             case 'enable': {
                 const id = requireId(f, 'enable <id>');
-                const r = enablePlugin(store(), id);
+                const { record, server } = await enablePlugin(store(), await serverApi().catch(() => offlineServer()), id);
                 await reloadDaemon();
-                console.log(`${id}: enabled on this machine (${effectiveState(r)}).`);
-                if (r.state === 'disabled') console.log(chalk.yellow('It is still disabled in the account — turn it back on in Settings → Plugins on the web.'));
+                for (const line of enableMessages(id, record, server, configuration.webappUrl)) (line.warn ? console.log(chalk.yellow(line.text)) : console.log(line.text));
                 return;
             }
             case 'disable': {
@@ -262,19 +264,8 @@ export async function handlePluginCommand(args: string[]): Promise<void> {
                 if (verb !== 'post') throw new PluginCliError('invalid_request', 'usage: very-happy plugin decision <id> post|close …');
                 const title = one(f, '--title');
                 if (!title) throw new PluginCliError('invalid_request', '--title is required');
-                const options = (f.flags.get('--option') ?? []).map((o) => {
-                    const eq = o.indexOf('=');
-                    if (eq <= 0) throw new PluginCliError('invalid_request', `--option must be id=label (got "${o}")`);
-                    return { id: o.slice(0, eq), label: o.slice(eq + 1) };
-                });
                 const bodyFile = one(f, '--body-file');
-                const kind = f.bools.has('--input') ? 'input' : f.bools.has('--notice') || options.length === 0 ? 'notice' : 'choice';
-                const body = {
-                    key, kind, title,
-                    ...(bodyFile ? { bodyMd: await readFile(bodyFile, 'utf8') } : {}),
-                    ...(kind === 'choice' ? { options } : {}),
-                    ...(kind === 'input' ? { input: {} } : {}),
-                };
+                const body = decisionPostBody(f, key, title, bodyFile ? await readFile(bodyFile, 'utf8') : undefined);
                 printApiResult(await callPluginApi(store(), id, 'POST', '/decisions', body), json);
                 return;
             }
@@ -296,9 +287,72 @@ export async function handlePluginCommand(args: string[]): Promise<void> {
     }
 }
 
+/**
+ * `plugin decision <id> post`: `--input` → input card (`--multiline` → `input.multiline: true`, a textarea; it
+ * implies `--input`); `--notice` or no `--option` → notice; otherwise choice.
+ */
+export function decisionPostBody(f: Flags, key: string, title: string, bodyMd?: string): Record<string, unknown> {
+    const options = (f.flags.get('--option') ?? []).map((o) => {
+        const eq = o.indexOf('=');
+        if (eq <= 0) throw new PluginCliError('invalid_request', `--option must be id=label (got "${o}")`);
+        return { id: o.slice(0, eq), label: o.slice(eq + 1) };
+    });
+    const multiline = f.bools.has('--multiline');
+    const kind = f.bools.has('--input') || multiline ? 'input' : f.bools.has('--notice') || options.length === 0 ? 'notice' : 'choice';
+    return {
+        key, kind, title,
+        ...(bodyMd !== undefined ? { bodyMd } : {}),
+        ...(kind === 'choice' ? { options } : {}),
+        ...(kind === 'input' ? { input: multiline ? { multiline: true } : {} } : {}),
+    };
+}
+
+type ListRow = { id: string; state: string; grants: string[]; pendingChange: boolean; queued: number | null };
+
+/** `plugin list` human output; P3-2: says so when the server has no plugin support. */
+export function listLines(rows: ListRow[], daemonRunning: boolean, serverSupport: 'yes' | 'no' | 'unknown'): string[] {
+    const lines: string[] = [];
+    if (serverSupport === 'no') lines.push(chalk.yellow(SERVER_NO_PLUGINS));
+    if (rows.length === 0) {
+        lines.push(serverSupport === 'no' ? 'No plugins installed.' : 'No plugins installed. Add one with "very-happy plugin add <manifest>".');
+        return lines;
+    }
+    for (const r of rows) lines.push(`${chalk.bold(r.id.padEnd(20))} ${r.state.padEnd(20)} ${r.grants.join(',') || '-'}${r.pendingChange ? chalk.yellow('  (change waiting for approval)') : ''}${r.queued ? chalk.yellow(`  ${r.queued} queued`) : ''}`);
+    if (!daemonRunning) lines.push(chalk.gray('daemon not running — showing local state only'));
+    return lines;
+}
+
+export const SERVER_NO_PLUGINS = 'This server does not support plugins (it is too old, or plugins are switched off for this account). Nothing here is served until that changes.';
+
+/** P3-2: `plugin list` says when the server has no plugin support; null credentials / no answer → 'unknown'. */
+async function serverPluginSupport(): Promise<'yes' | 'no' | 'unknown'> {
+    const credentials = await readCredentialsForConfiguredRelay().catch(() => null);
+    if (!credentials) return 'unknown';
+    return fetchServerPluginSupport(configuration.serverUrl, credentials.token, configuration.currentCliVersion);
+}
+
+/** What `plugin enable` prints (B-974h). */
+export function enableMessages(id: string, record: InstallRecord, server: EnableServerOutcome, webappUrl: string): Array<{ text: string; warn?: boolean }> {
+    const settings = `${webappUrl.replace(/\/+$/, '')}/settings/plugins`;
+    const lines: Array<{ text: string; warn?: boolean }> = [];
+    if (server.kind === 'enabled') {
+        lines.push({ text: effectiveState(record) === 'disabled' ? `${id}: no longer disabled; its state refreshes when the daemon syncs.` : `${id}: enabled (${effectiveState(record)}).` });
+        return lines;
+    }
+    lines.push({ text: `${id}: enabled on this machine.` });
+    if (server.kind === 'requires_owner') {
+        lines.push({ text: `It was disabled in your account (or from another computer), which this computer cannot undo. Turn it back on in Settings → Plugins: ${settings}`, warn: true });
+    } else if (server.kind === 'operator' || record.state === 'disabled_by_operator') {
+        lines.push({ text: 'It is disabled by the server operator; only the operator can lift that.', warn: true });
+    } else {
+        lines.push({ text: `The server was not told (${server.error}). If it stays disabled, turn it back on in Settings → Plugins: ${settings}`, warn: true });
+    }
+    return lines;
+}
+
 function offlineServer(): PluginServerApi {
     const fail = async () => { throw new Error('not authenticated on this machine'); };
-    return { submitManifest: fail, disable: fail, remove: fail };
+    return { submitManifest: fail, disable: fail, enable: fail, remove: fail };
 }
 
 async function doctor(id: string): Promise<void> {
