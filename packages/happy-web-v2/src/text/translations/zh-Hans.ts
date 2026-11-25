@@ -3822,6 +3822,15 @@ export const zhHans: TranslationStructure = {
                 shared: '别人分享给你的终端会写明是谁的哪台机器（比如「Alex 的 mac-studio」）：连接时显示正在连接，机器没连上时显示没连上，看的过程中掉线也一样。',
                 recover: '机器重新连上后，终端会自动恢复，不用刷新，也不用点重试。你自己的终端也一样。',
             },
+            nov25h: {
+                title: '插件命令：enable 能撤销 disable，报错更清楚',
+                summary: '根据测试修了 very-happy plugin 的几处问题（CLI 0.2.231）。',
+                enable: '在同一台电脑上用 very-happy plugin disable 停用的插件，现在用 very-happy plugin enable 就能恢复。如果是在账号里或从别的电脑停用的，会说明原因并给出「设置 → 插件」的链接。',
+                server: '服务端不支持插件时，plugin list 会直接说明；plugin add 报「服务端版本过旧」，不再报「Not found」。',
+                links: 'plugin add、update、show 打印的审批链接是完整网址，可以直接打开。',
+                multiline: 'plugin decision … post --input --multiline 可以发带多行输入框的卡片。',
+                sessions: '有「列出会话」权限的插件现在能拿到每个会话的真实标题和最后更新时间；插件面板的每个请求都带 X-Forwarded-Host。',
+            },
             nov25g: {
                 title: '插件：本机工具可以加侧栏入口、面板、决策卡和会话芯片',
                 summary: '机器上的程序现在可以用 very-happy plugin add 注册成插件。在「设置 → 插件」里逐项批准之前，它什么都做不了。',

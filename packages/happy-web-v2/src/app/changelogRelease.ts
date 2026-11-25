@@ -158,6 +158,16 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-25-plugin-cli-fixes',
+    cliVersion: '0.2.231',
+    requiresFeature: 'plugins-v1',
+    date: '2026-11-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov25h.title',
+    summaryKey: 'changelog.releases.nov25h.summary',
+    itemKeys: ['changelog.releases.nov25h.enable', 'changelog.releases.nov25h.server', 'changelog.releases.nov25h.links', 'changelog.releases.nov25h.multiline', 'changelog.releases.nov25h.sessions'],
+  },
+  {
     id: '2026-11-25-web-plugins',
     cliVersion: '0.2.230',
     requiresFeature: 'plugins-v1',

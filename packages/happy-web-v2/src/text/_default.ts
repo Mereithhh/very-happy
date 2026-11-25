@@ -3665,6 +3665,15 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov25h: {
+                title: 'Plugin commands: enable undoes disable, clearer errors',
+                summary: 'Fixes to very-happy plugin from testing (CLI 0.2.231).',
+                enable: 'very-happy plugin enable now turns back on a plugin that very-happy plugin disable turned off on the same computer. If it was turned off in your account or from another computer, it says so and links to Settings → Plugins.',
+                server: 'On a server without plugin support, plugin list says so, and plugin add reports "server too old" instead of "Not found".',
+                links: 'Approval links printed by plugin add, update and show are full web addresses you can open directly.',
+                multiline: 'plugin decision … post --input --multiline posts a card with a multi-line text box.',
+                sessions: 'Plugins allowed to list sessions now get each session\'s real title and last update time; plugin panels receive X-Forwarded-Host on every request.',
+            },
             nov25g: {
                 title: 'Plugins: local tools get a sidebar entry, a panel, decision cards and session chips',
                 summary: 'A program on one of your machines can now register as a plugin with very-happy plugin add. Nothing runs until you approve it in Settings → Plugins, permission by permission.',
