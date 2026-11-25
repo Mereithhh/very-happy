@@ -92,15 +92,17 @@ plugins silently.
    the manifest hash you were shown: if the manifest changed in between, it is
    refused with `manifest_changed`.
 4. After approval the daemon writes the plugin's credentials to
-   `~/.happy/plugins/<id>/` (mode 0700): `token` and `secret` (0600),
-   `manifest.json` and `runtime.json`. Point your plugin at them:
+   `~/.happy/plugins/<id>/` (directory 0700, every file 0600; `HAPPY_HOME_DIR`
+   moves `~/.happy`): `token`, `secret`, `manifest.json` and `runtime.json`.
+   Point your plugin at them:
    ```bash
    eval "$(very-happy plugin env <id> --shell)"   # VH_PLUGIN_API, VH_PLUGIN_TOKEN_FILE, VH_PLUGIN_SECRET_FILE
    ```
 
 ### Updating a plugin
 
-`very-happy plugin update <id>` re-reads the manifest.
+`very-happy plugin update <id> [--manifest <file|loopback URL>]` re-reads the
+manifest (from where `add` read it, unless you pass `--manifest`).
 
 | Change | Needs approval again? |
 |---|---|
@@ -119,18 +121,23 @@ manifest and grants stay in force, so the plugin keeps working.
 very-happy plugin list [--json]         # id, installId, state, grants, pending changes
 very-happy plugin show <id> [--json]    # includes the review link
 very-happy plugin doctor <id>           # upstream/callback reachable, HMAC self-test, permission state
-very-happy plugin rotate <id>           # new token and secret; the old ones stop working at once
-very-happy plugin badge <id> <count|clear> [--tone attention]
-very-happy plugin decision <id> post --key K --title T [--option id=label]... [--input] [--body-file F]
+very-happy plugin rotate <id>           # new token and secret; the old ones stop working once the daemon reloads (it does so right away)
+very-happy plugin env <id> [--shell]    # VH_PLUGIN_API, VH_PLUGIN_TOKEN_FILE, VH_PLUGIN_SECRET_FILE (--shell: as export lines)
+very-happy plugin badge <id> <count|clear> [--tone attention] [--label L]
+very-happy plugin decision <id> post --key K --title T [--option id=label]... [--input | --notice] [--body-file F]
+very-happy plugin decision <id> close --key K [--outcome done|dropped|superseded]
 ```
 
-`badge` and `decision` are thin wrappers for script-style plugins.
+`badge` and `decision` are thin wrappers for script-style plugins. `post` makes
+an `input` card with `--input`, a `notice` with `--notice` or without any
+`--option`, and a `choice` card otherwise. Commands that print data accept
+`--json`; `plugins` works as an alias of `plugin`.
 
 ## Turning a plugin off
 
 | Where | How | Effect |
 |---|---|---|
-| The computer | `very-happy plugin disable <id> [--reason …]` / `plugin remove <id> [--keep-items]` | The daemon refuses the plugin's API calls (`plugin_disabled`) and stops proxying at once; the server is told. `remove` also deletes the credentials and retires the install. Works while the daemon is stopped (applied on next start). |
+| The computer | `very-happy plugin disable <id> [--reason …]` / `plugin remove <id> [--keep-items]` | The daemon refuses the plugin's API calls (`plugin_disabled`) and stops proxying at once; the server is told. `remove` also deletes the credentials and the install (`--keep-items` keeps its cards). Works while the daemon is stopped (applied on next start). `plugin enable <id>` lifts a local disable only; one set in your account is lifted in the web app. |
 | Your account | **Settings → Plugins**: Disable, Remove, or revoke one permission | Immediate on the server: open panels are signed out, machine calls are refused, cards and widgets are hidden (kept, and restored if you re-enable). Revoking a permission needs nothing from the plugin. |
 | The server operator | `VH_PLUGINS_DISABLED=1` (everything) or `VH_PLUGIN_DENYLIST=<plugin id or manifest sha256, …>` | Matching installs show as `disabled_by_operator`; only the operator can lift it. |
 
@@ -144,8 +151,9 @@ badge stops counting toward the app badge. Only badges with
 
 | | Official service | Self-hosted |
 |---|---|---|
-| Plugin host | Configured by the operator | Set `VH_PLUGIN_HOST` (e.g. `p.example.com`) with wildcard DNS and TLS for `*.p.example.com`. Put it under the same registrable domain as the web app so panel cookies stay same-site. Without it, panels are unavailable; badge, cards and widgets still work. |
-| Feature switch | On, may be rolled out per account (`VH_PLUGINS_ENABLED_ACCOUNTS`) | `VH_PLUGINS_ENABLED=1` |
+| Plugin host | Configured by the operator | Set `VH_PLUGIN_HOST` (e.g. `p.example.com`, a port is allowed) with wildcard DNS and TLS for `*.p.example.com`. Put it under the same registrable domain as the web app so panel cookies stay same-site. Without it, panels are unavailable; badge, cards and widgets still work. `VH_PLUGIN_WEB_ORIGINS` (comma-separated) sets which web app origins may frame panels; it defaults to the origin of `PUBLIC_URL`. For local development only, `VH_PLUGIN_HOST_SCHEME=http` serves panels without TLS (e.g. `VH_PLUGIN_HOST=lvh.me:3005`). |
+| Feature switch | On, may be rolled out per account (`VH_PLUGINS_ENABLED_ACCOUNTS`, comma-separated account ids) | `VH_PLUGINS_ENABLED=1`. While off, `/v1/features` does not list `plugins-v1` and `/v1/plugins/*` answers `404 plugins_disabled`. |
+| Decision cards | Shown in **Needs you** | Also need the owner board: `VH_OWNER_BOARD_ENABLED=true`. Without it, cards are stored but nowhere to answer them. |
 | Kill switch | `VH_PLUGINS_DISABLED`, `VH_PLUGIN_DENYLIST` | Yours |
 | Who can see panel content | The operator | Only you |
 
@@ -154,7 +162,7 @@ badge stops counting toward the app badge. Only badges with
 | Combination | Behaviour |
 |---|---|
 | New server, old CLI | No `plugin` command; the machine's plugin area says "CLI too old". |
-| New CLI, old server | `plugin add` reports `server_too_old` and writes nothing locally. |
+| New CLI, old server (or plugins switched off for the account) | `plugin add` reports `server_too_old` and writes nothing locally; `/plugin/v1` calls get `503 server_too_old`. |
 | New server, old web app | No plugin UI. Plugin cards without a session are only sent to clients that ask for them (`?include=plugin`). |
 | New web app, old server | `/v1/plugins/*` returns 404; the plugin UI is hidden. |
 | Manifest `minApi` above the daemon's `pluginApi` | `plugin add` reports `api_too_old`. |

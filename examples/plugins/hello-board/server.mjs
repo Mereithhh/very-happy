@@ -15,9 +15,9 @@ const DIR = join(process.env.HAPPY_HOME_DIR ?? join(homedir(), '.happy'), 'plugi
 
 // Credentials appear only after the owner approves the install; re-read on every call (rotate-safe).
 const readText = (file) => { try { return readFileSync(file, 'utf8').trim(); } catch { return null; } };
-const apiBase = () => process.env.VH_PLUGIN_API ?? (() => { try { return JSON.parse(readFileSync(join(DIR, 'runtime.json'), 'utf8')).api; } catch { return null; } })();
-const token = () => readText(process.env.VH_PLUGIN_TOKEN_FILE ?? join(DIR, 'token'));
-const signingKey = () => { const t = readText(process.env.VH_PLUGIN_SECRET_FILE ?? join(DIR, 'secret')); try { return t ? decodeSecret(t) : null; } catch { return null; } };
+const apiBase = () => process.env.VH_PLUGIN_API || (() => { try { return JSON.parse(readFileSync(join(DIR, 'runtime.json'), 'utf8')).api; } catch { return null; } })();
+const token = () => readText(process.env.VH_PLUGIN_TOKEN_FILE || join(DIR, 'token'));
+const signingKey = () => { const t = readText(process.env.VH_PLUGIN_SECRET_FILE || join(DIR, 'secret')); try { return t ? decodeSecret(t) : null; } catch { return null; } };
 
 let count = 0;
 let label = 'Hello';

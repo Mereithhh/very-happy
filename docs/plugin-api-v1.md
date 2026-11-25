@@ -76,18 +76,23 @@ Canonical privileged view behind that hash:
 
 ## 2. Credentials and discovery
 
-After approval the daemon writes `~/.happy/plugins/<id>/` (directory 0700):
+The daemon keeps each install in `~/.happy/plugins/<id>/` (`$HAPPY_HOME_DIR/plugins/<id>/`
+when that is set; directory 0700, every file 0600). The files a plugin reads:
 
 | File | Content |
 |---|---|
-| `token` (0600) | Plugin token, `vhp_` + 32 random bytes base64url. Trim whitespace and send it as is in `Bearer`. |
-| `secret` (0600) | 32 random bytes as unpadded base64url: exactly 43 characters, maybe followed by a newline, no prefix. Trim surrounding whitespace and base64url-decode it; **the 32 decoded bytes are the HMAC key**. Never use the text itself as the key. |
+| `token` | Written on approval. Plugin token, `vhp_` + 32 random bytes base64url. Trim whitespace and send it as is in `Bearer`. |
+| `secret` | Written on approval. | 32 random bytes as unpadded base64url: exactly 43 characters, maybe followed by a newline, no prefix. Trim surrounding whitespace and base64url-decode it; **the 32 decoded bytes are the HMAC key**. Never use the text itself as the key. |
 | `manifest.json` | The approved manifest. |
-| `runtime.json` | `{ "api": "http://127.0.0.1:<daemonPort>/plugin/v1", "installId", "state" }`, refreshed on every daemon start. |
+| `runtime.json` | `{ "api": "http://127.0.0.1:<daemonPort>/plugin/v1", "installId", "state" }`, rewritten whenever the daemon (re)loads its plugins, from `add` on (so it also exists while the install is pending). `state` is the effective state, e.g. `disabled` after a local `plugin disable`. |
+
+Other files in the directory (`install.json`, `pending.json`, `queue.json`)
+belong to the daemon; do not read or edit them.
 
 `very-happy plugin env <id> --shell` prints `VH_PLUGIN_API`,
-`VH_PLUGIN_TOKEN_FILE` and `VH_PLUGIN_SECRET_FILE`. Re-read the files rather
-than caching them: `plugin rotate` replaces both at once.
+`VH_PLUGIN_TOKEN_FILE` and `VH_PLUGIN_SECRET_FILE` (empty `VH_PLUGIN_API` until
+`runtime.json` exists). Re-read the files rather than caching them:
+`plugin rotate` replaces both at once.
 
 ## 3. Permissions
 
@@ -112,18 +117,24 @@ decision with `sessionId` also needs `session.widget` or `sessions.list`; a
   install from the token only; identity claims in bodies are ignored.
 - **Bodies**: `application/json`, at most 64 KB (`413` above).
 - **Idempotency**: writes accept `Idempotency-Key` (≤ 128); the same key and
-  body within 10 minutes return the same result.
+  body within 10 minutes return the same result, the same key with a different
+  body is `422 invalid_request`. Keys are remembered in memory by the daemon
+  (lost on restart); 5xx answers are not remembered.
+- **Responses** carry `Cache-Control: no-store`; `401` carries
+  `WWW-Authenticate`, `429` carries `Retry-After`.
 - **Errors**: `{ "error": "<code>", "message": "...", ...details }`.
 
 | HTTP | `error` | Details / meaning |
 |---|---|---|
 | 400 | `invalid_request` | `issues[]` |
 | 400 | `invalid_path` | Panel proxy: rejected request path |
+| 400 | `invalid_request` | Also: body not `application/json` |
 | 401 | `unauthorized` | Missing or invalid token |
 | 403 | `permission_denied` | `permission` |
-| 403 | `plugin_pending` / `plugin_rejected` / `plugin_disabled` / `disabled_by_operator` | Install state does not allow calls |
+| 403 | `plugin_pending` / `plugin_rejected` / `plugin_disabled` / `disabled_by_operator` | Install state does not allow calls (a removed install answers `plugin_disabled`). `GET /info` answers in every state. |
 | 403 | `session_not_on_machine` | Session is not on this computer |
-| 404 | `not_found` | Card, session or widget |
+| 404 | `not_found` | Card, session, widget, or no such endpoint |
+| 405 | `invalid_request` | Method not allowed on this path |
 | 409 | `version_conflict` | `currentVersion` |
 | 409 | `manifest_changed` | Approval hash mismatch |
 | 413 | `payload_too_large` | |
@@ -131,15 +142,18 @@ decision with `sessionId` also needs `session.widget` or `sessions.list`; a
 | 429 | `rate_limited` | `retryAfterMs` |
 | 501 | `unsupported_upgrade` | Panel proxy: WebSocket / SSE not supported in v1 |
 | 502 | `upstream_unreachable` | Panel proxy |
-| 503 | `server_unreachable` | Daemon is offline from the server; writes were queued (`queued: true`) |
+| 503 | `server_unreachable` | Daemon is offline from the server; writes were queued (`queued: true`), or not (`queued: false`, with `limit` when the queue is full) |
+| 503 | `server_too_old` | The server has no plugin support, or it is switched off for this account |
 | 504 | `upstream_timeout` | Panel proxy |
 
 - **Offline**: while the daemon cannot reach the server, badge, widget and
   card writes are queued locally (200 per install, latest value per key) and
   replayed in order on reconnect; the call returns `503 server_unreachable`
-  with `queued: true`. Reads return 503.
-- **CLI-only codes**: `server_too_old`, `api_too_old`, `unsupported_schema`,
-  `invalid_manifest`.
+  with `queued: true`. A full queue answers `queued: false`. While a write
+  for the same key is still queued, later writes for it queue behind it
+  (also `503`, `queued: true`) to keep the order. Reads return 503.
+- **CLI-only codes**: `api_too_old`, `unsupported_schema`, `invalid_manifest`
+  (and `server_too_old`, which the daemon also returns).
 
 ## 5. Endpoints
 
@@ -184,7 +198,7 @@ POST /plugin/v1/decisions
 
 PATCH  /plugin/v1/decisions/:key  { title?, bodyMd?, options?, input?, panelPath?, reopen?: true, expectedVersion? } → 200 { item }
 DELETE /plugin/v1/decisions/:key  { outcome?: "done"|"dropped"|"superseded", note?: ≤ 500 }                         → 200 { item }
-GET    /plugin/v1/decisions?state=open|all&limit=1..200                                                             → 200 { items }
+GET    /plugin/v1/decisions?state=open|all&limit=1..200   (default open, 50)                                        → 200 { items }
 ```
 
 `item` (`PluginDecision`):
@@ -217,16 +231,17 @@ GET    /plugin/v1/sessions/:sessionId/widget → 200 { widget } | 404
 
 The session must run on this computer (`403 session_not_on_machine`). One
 widget per plugin per session; at most three plugin widgets are shown per
-session; archived sessions hide them. With `confirm`, the owner confirms before
-the callback fires. 30 writes per session per minute.
+session (`422 limit_exceeded` beyond); archived sessions hide them. With
+`confirm`, the owner confirms before the callback fires. 30 writes per session
+per minute, shared by all plugins writing to that session.
 
 ### 5.5 Sensitive reads
 
 ```
-GET /plugin/v1/sessions?limit=1..100&cursor=…                       [sessions.list]
+GET /plugin/v1/sessions?limit=1..100&cursor=…   (default 50)        [sessions.list]
 → { sessions: [{ id, title, cwd, agent, status: "running"|"idle"|"archived", updatedAt }], cursor }
 
-GET /plugin/v1/sessions/:id/messages?limit=1..50&before=…           [sessions.read]
+GET /plugin/v1/sessions/:id/messages?limit=1..50&before=…   (default 20) [sessions.read]
 → { messages: [{ id, role: "user"|"agent", text, createdAt }], cursor }
 ```
 
@@ -247,8 +262,8 @@ last 24 hours".
 |---|---|
 | `decision.responded` | `{ itemId, key, action: "choose"\|"submit"\|"dismiss", choice?, text?, note?, respondedAt, actor: "owner" }` |
 | `widget.action` | `{ sessionId, actionId, at, actor: "owner" }` |
-| `install.changed` | `{ state, grants, manifestHash }`: approval, disable, permission revoked |
-| `ping` | `{}`: on enable and from `plugin doctor` |
+| `install.changed` | `{ state, grants, manifestHash }`: approval, enable, disable, permission revoked |
+| `ping` | `{}`: sent by `plugin doctor` |
 
 Ignore types you do not know.
 
@@ -264,8 +279,8 @@ X-VH-Signature: v1=<hex HMAC-SHA256>
 ```
 
 Any 2xx within 10 seconds is a delivery. Otherwise it retries after 10 s,
-1 min, 5 min, 30 min, 2 h, then every 6 h, and gives up 24 h after the first
-attempt (`delivery: "failed"`, visible on the card and in settings). Delivery
+1 min, 5 min, 30 min, 2 h, then every 6 h, and gives up 24 h after the event
+was created (`delivery: "failed"`, visible on the card and in settings). Delivery
 is **at least once**: dedupe on `X-VH-Event-Id`.
 
 ### 6.3 Verifying (do all three)
@@ -284,7 +299,10 @@ POST /plugin/v1/events/ack { upTo: <cursor> }       → 200 { acked }
 ```
 
 `rawBody` is the exact JSON text of `event`; `signature` and `timestamp` are
-what a push would have sent, so the same verifier works.
+what a push would have sent, so the same verifier works. At most 100 events per
+call; `cursor` is a number (or `null` when there is nothing yet) and `upTo`
+must be one returned by `events`. With a `callback.url`, events are pushed as
+well; dedupe covers both paths.
 
 ## 7. Signatures
 
@@ -347,7 +365,8 @@ signature  = v1=44002e33ed4e7748d5813ea71d5e87e0bc28a38d6ea67022b3ae179d89891433
 ```
 
 These values are locked by the wire tests (`pluginCrypto.test.ts`) and the
-example's `verify.test.mjs`.
+example's `verify.test.mjs`, which also checks that this page, the wire tests
+and `vh-plugin.json` agree on every vector.
 
 ### 7.2 Reference verifier (Node)
 
@@ -394,8 +413,13 @@ Then dedupe on `id`. The full version, including panel requests, is
   `Permissions-Policy: camera=(), microphone=(), geolocation=(), clipboard-read=(), usb=(), payment=()`.
   `X-Frame-Options` is removed. `Set-Cookie` is made host-only (no `Domain`).
 - Service workers cannot be registered on plugin origins.
-- Limits: request body 8 MB, response 32 MB, 30 s per request, 16 concurrent
-  requests per install (429 beyond). No WebSocket / SSE in v1.
+- Limits: request body 8 MB, response 32 MB (`413 payload_too_large`), 30 s
+  per request (the daemon gives the upstream 25 s), 16 concurrent requests per
+  install (`429 rate_limited`). No WebSocket / SSE in v1 (`501
+  unsupported_upgrade`).
+- Non-GET requests without a same-origin `Origin` (or `Sec-Fetch-Site:
+  same-origin`) get `403 origin_mismatch`. Paths under `/__vh/` other than the
+  reserved ones answer 404.
 
 ### 8.1 Bridge (`postMessage`)
 
