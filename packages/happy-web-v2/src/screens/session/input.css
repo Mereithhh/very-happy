@@ -271,6 +271,9 @@
 .ci-slash-empty { padding: var(--sp-1) var(--sp-2) var(--sp-2); color: var(--text-dim); font: 400 var(--chat-fs-secondary)/1.4 var(--font-sans); }
 .ci-mention-hit { background: none; color: inherit; font-weight: 600; }
 
+/* B-975: said before the send — the model cannot run the chosen effort level. */
+.ci-effort-notice { margin: 0 0 var(--sp-1); padding: 0 var(--sp-2); color: var(--warn); font: 400 var(--chat-fs-secondary)/1.4 var(--font-sans); overflow-wrap: anywhere; }
+
 .ci-composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

@@ -158,6 +158,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-25-codex-effort',
+    date: '2026-11-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov25i.title',
+    summaryKey: 'changelog.releases.nov25i.summary',
+    itemKeys: ['changelog.releases.nov25i.fresh', 'changelog.releases.nov25i.unsupported'],
+  },
+  {
     id: '2026-11-25-plugin-cli-fixes',
     cliVersion: '0.2.231',
     requiresFeature: 'plugins-v1',

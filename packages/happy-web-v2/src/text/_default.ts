@@ -1161,6 +1161,8 @@ export const en = {
             effortAuto: ({ level }: { level: string }) => `Auto (${level})`,
             effortAutoPlain: 'Auto',
             effortAutoHint: 'Send no level: Claude Code picks it per model and per this machine\'s settings',
+            effortThisModel: 'This model',
+            effortUnsupported: ({ model, level, actual, options }: { model: string; level: string; actual: string; options: string }) => `${model} does not support “${level}”. This message will run at “${actual}”. Available: ${options}`,
             effortAutoHintCodex: 'Send no level: a new Codex session starts at medium',
             effortLevels: {
                 low: 'Low',
@@ -3664,6 +3666,12 @@ export const en = {
                 summary: 'When an agent tries to preview a file that does not exist (or a folder), it is told so instead of being told the preview went out, so it stops saying "preview opened" for nothing.',
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
+            },
+            nov25i: {
+                title: 'A new Codex session keeps the effort you set',
+                summary: 'With a default Codex effort such as Max, a new session showed it, then switched to Medium and ran the first message at Medium. It now runs, and keeps showing, the level you set.',
+                fresh: 'Applies to new sessions on every CLI version; no update needed. Sessions that already ran keep the level they run. To raise one that was set to Medium this way, pick the level again in that session.',
+                unsupported: 'If the model cannot run that level, the composer says so before you send: which level the message will run at, and which levels are available.',
             },
             nov25h: {
                 title: 'Plugin commands: enable undoes disable, clearer errors',
@@ -7361,6 +7369,7 @@ export const en = {
     pendingSession: {
         starting: 'Starting…',
         waitingForModels: ({ machine }: { machine: string }) => `Waiting for ${machine} to report its models…`,
+        effortHeld: ({ level }: { level: string }) => `This session's model does not support “${level}”. The message was not sent and is back in the composer`,
         modelsTimeout: ({ machine }: { machine: string }) => `${machine} has not reported its models yet — the first message uses the machine's default model`,
         connecting: 'Connecting…',
         outboxTitle: 'Waiting to send',
