@@ -139,6 +139,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-25-team-tool-required',
+    cliVersion: '0.2.229',
+    date: '2026-11-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov25f.title',
+    summaryKey: 'changelog.releases.nov25f.summary',
+    itemKeys: ['changelog.releases.nov25f.schema', 'changelog.releases.nov25f.error', 'changelog.releases.nov25f.stop'],
+  },
+  {
     id: '2026-11-25-dsh-batch-2',
     cliVersion: '0.2.228',
     date: '2026-11-25',

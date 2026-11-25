@@ -3514,6 +3514,13 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov25f: {
+                title: 'Team messages no longer loop on "Missing body"',
+                summary: 'Agents on models such as Kimi or DeepSeek could call team_message without the message text and get refused over and over. The text field is now marked required for every model, and a refusal says what to send.',
+                schema: 'team_message lists `body` and team_submit lists `result` as required in the tool definition the model sees. The older names `message` and `summary` still work.',
+                error: 'A refusal now names the fields that arrived and includes a call the agent can copy.',
+                stop: 'After the same refusal three times in a row, the agent is told to stop retrying and explain what is failing. Needs the session restarted on CLI 0.2.229.',
+            },
             nov25e: {
                 title: 'DeepSeek Harness: messages sent while stopped, images, automations and projects',
                 summary: 'A message sent to a stopped DeepSeek Harness (dsh), pi or Gemini session now reaches the agent once the session is back. dsh sessions take images when the model does, and dsh can be picked in automations and set up in projects.',

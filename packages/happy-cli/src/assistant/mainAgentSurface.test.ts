@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDispatchGate } from '@/assistant/gates/dispatchGate';
@@ -288,6 +288,39 @@ describe('main agent tool surface (B-916b)', { timeout: 30_000 }, () => {
         await mcp.connect(new StreamableHTTPClientTransport(new URL(happy.url)));
         return (await mcp.listTools()).tools;
     }
+
+    it('B-972: over the full registration chain (caps, provenance, turn guards, owner-only, gate, proactive) team_message / team_submit list body / result as required, keep risk and the aliases', async () => {
+        const tools = await connect({ assistant: true, mainAgent: testMainAgent() });
+        const schema = (name: string) => tools.find(t => t.name === name)!.inputSchema as any;
+        expect(schema('team_message').required).toEqual(['requestId', 'taskId', 'body', 'risk']);
+        expect(Object.keys(schema('team_message').properties)).toEqual(['requestId', 'taskId', 'body', 'recipientBotId', 'message', 'to', 'risk']);
+        expect(schema('team_submit').required).toEqual(['requestId', 'taskId', 'attemptId', 'goalVersion', 'result']);
+        expect(Object.keys(schema('team_submit').properties)).toEqual(['requestId', 'taskId', 'attemptId', 'goalVersion', 'result', 'summary']);
+        turn('u-owner-b972', 'web');
+        expect((await mcp!.callTool({ name: 'team_message', arguments: { ...ARGS.team_message, risk: 'none' } })).isError).toBe(false);
+        expect((await mcp!.callTool({ name: 'team_message', arguments: { requestId: 'r2', taskId: 'task-1', message: 'alias', risk: 'none' } })).isError).toBe(false);
+        expect((await mcp!.callTool({ name: 'team_submit', arguments: { requestId: 'r3', taskId: 'task-1', attemptId: 'att-1', goalVersion: 1, summary: 'alias' } })).isError).toBe(false);
+        const missing = await mcp!.callTool({ name: 'team_message', arguments: { requestId: 'r4', taskId: 'task-1', risk: 'none' } });
+        expect(missing.isError).toBe(true);
+        expect(textOf(missing)).toContain('team_message {"requestId"');
+        await mcp!.close(); happy!.stop(); mcp = undefined; happy = undefined;
+
+        const normal = await connect({}, 'normal-session');
+        expect((normal.find(t => t.name === 'team_message')!.inputSchema as any).required).toEqual(['requestId', 'taskId', 'body']);
+        expect((normal.find(t => t.name === 'team_submit')!.inputSchema as any).required).toEqual(['requestId', 'taskId', 'attemptId', 'goalVersion', 'result']);
+    });
+
+    it('B-972: every other tool keeps the exact schema it had before (snapshot taken on main before the change)', async () => {
+        const before = JSON.parse(readFileSync(join(__dirname, '__fixtures__', 'b972-tool-schemas.json'), 'utf8'));
+        const now = async (opts: any, id: string) => {
+            const tools = await connect(opts, id);
+            const out = Object.fromEntries(tools.filter(t => t.name !== 'team_message' && t.name !== 'team_submit').map(t => [t.name, t.inputSchema]).sort(([a], [b]) => (a < b ? -1 : 1)));
+            await mcp!.close(); happy!.stop(); mcp = undefined; happy = undefined;
+            return JSON.parse(JSON.stringify(out));
+        };
+        expect(await now({ assistant: true, mainAgent: testMainAgent() }, 'main-agent')).toEqual(before.main);
+        expect(await now({}, 'normal-session')).toEqual(before.normal);
+    });
 
     it('registers the main agent tools and owner_board_* only on the main agent', async () => {
         const tools = await connect({ assistant: true, mainAgent: testMainAgent() });

@@ -25,7 +25,7 @@ describe('B-925 wiring', () => {
         // One turn origin for the wrapper: B-924's shared tracker (owner or not), plus the wake level.
         expect(server).toContain('turn: () => ({ origin: turnOrigin.current(), wake: wakeLevel }),')
         expect(server).toContain('if (wakeUsage && mainAgentLifecycle) installDispatchLedger(proactiveDispatchLedger(followupsPath(assistantHome())));')
-        expect(server).toContain('const mcp = mainAgent ? withOwnerOnlyTools(options?.mainAgentProactive ? withTurnGuards(capped, options.mainAgentProactive) : capped) : server;')
+        expect(server).toContain('const mcp = mainAgent ? withOwnerOnlyTools(options?.mainAgentProactive ? withTurnGuards(capped, options.mainAgentProactive) : capped) : inner;')
         expect(server).toContain('options!.mainAgent!.gate.wrap(mcp)')
         for (const family of ['registerProjectTools', 'registerIssueTools']) expect(server).toContain(`${family}(mcp,`)
         // B-924f: owner_only tools pass through the gate (taint check in the owner's turn); the turn guards still sit under it.
