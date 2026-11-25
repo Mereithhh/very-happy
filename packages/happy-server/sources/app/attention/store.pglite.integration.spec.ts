@@ -19,6 +19,7 @@ vi.mock('@/app/push/pushDispatch', () => ({
 
 const MIGRATION = 'prisma/migrations/20261022120000_attention_items/migration.sql';
 const PAYLOAD_MIGRATION = 'prisma/migrations/20261111120000_attention_payload/migration.sql';
+const PLUGINS_MIGRATION = 'prisma/migrations/20261125150000_web_plugins/migration.sql';
 const statements = (file: string) => readFileSync(join(process.cwd(), file), 'utf8').split(/;\s*$/m).map(s => s.replace(/^\s*--.*$/gm, '').trim()).filter(Boolean);
 const options = [{ id: 'A', label: 'Ship now', recommended: true }, { id: 'B', label: 'Wait a day' }];
 const settle = () => new Promise(resolve => setTimeout(resolve, 50));
@@ -251,8 +252,9 @@ describe('attention items store (pglite)', () => {
         // Everything else keeps working without the table (the previous image's view of the schema).
         expect(await db.session.count({ where: { id: sessionId } })).toBe(1);
         for (const statement of sql.split(/;\s*$/m).map(s => s.replace(/^\s*--.*$/gm, '').trim()).filter(Boolean)) await db.$executeRawUnsafe(statement);
-        // Later expand-only migrations on the same table (B-915 payload) come back with it.
+        // Later expand-only migrations on the same table (B-915 payload, B-974 plugin columns) come back with it.
         for (const statement of statements(PAYLOAD_MIGRATION)) await db.$executeRawUnsafe(statement);
+        for (const statement of statements(PLUGINS_MIGRATION).filter(st => /^(ALTER TABLE|CREATE UNIQUE INDEX "AttentionItem_)/.test(st) && st.includes('"AttentionItem"'))) await db.$executeRawUnsafe(statement);
         const again = await store.postItem(accountId, { sessionId, source: 'agent', kind: 'blocked', title: 'after re-apply', requestId: 'm1' });
         expect(again.created).toBe(true);
     });
@@ -329,6 +331,34 @@ describe('attention items store (pglite)', () => {
         const repost = await store.postItem(accountId, { sessionId, source: 'agent', kind: 'decision', title: 'Wrap up?', options: opts, payload: items([false, true, true]), key: 'main-agent-wrapup:t1' });
         expect(repost.item.id).toBe(first.item.id);
         expect((repost.item.payload as any).items.map((i: any) => [i.id, i.checked])).toEqual([['s1', true], ['s2', false], ['s3', false]]);
+    });
+
+    // B-974: plugin columns. Expand only on AttentionItem (nullable sessionId + two nullable columns + an index +
+    // a CHECK); a session card is untouched; a row needs a session or a plugin install; the image-rollback prep
+    // script deletes nothing and leaves no NULL sessionId behind (what the previous image's client requires).
+    it('B-974 migration: expand-only on AttentionItem; CHECK keeps session-or-plugin; rollback prep keeps every row', async () => {
+        const sql = readFileSync(join(process.cwd(), PLUGINS_MIGRATION), 'utf8');
+        expect(sql).not.toMatch(/^\s*(UPDATE|INSERT|DELETE)\b/m);
+        expect(sql).not.toMatch(/DROP (TABLE|COLUMN)/);
+        const attention = statements(PLUGINS_MIGRATION).filter(st => st.includes('"AttentionItem"'));
+        expect(attention.join('\n')).toMatch(/ALTER COLUMN "sessionId" DROP NOT NULL/);
+        const sessionCard = await store.postItem(accountId, { sessionId, source: 'agent', kind: 'blocked', title: 'still a session card', requestId: 'b974-1' });
+        expect(sessionCard.item.sessionId).toBe(sessionId);
+        await expect(db.$executeRawUnsafe(`INSERT INTO "AttentionItem" ("id","accountId","source","kind","title","needsOwner","state") VALUES ('orphan','${accountId}','plugin','report','x',true,'open')`)).rejects.toThrow();
+        for (const [id, install, key] of [['plug1', 'pi_x', 'k'], ['plug2', 'pi_x', 'vh:install-review'], ['plug3', 'pi_y', 'k']]) {
+            await db.$executeRawUnsafe(`INSERT INTO "AttentionItem" ("id","accountId","pluginInstallId","source","kind","key","title","needsOwner","state") VALUES ('${id}','${accountId}','${install}','plugin','report','${key}','x',true,'open')`);
+        }
+        const before = await db.attentionItem.count();
+        const prep = readFileSync(join(process.cwd(), 'scripts/plugins-rollback-prep.sql'), 'utf8').split(/\n-- After rolling forward/)[0];
+        const run = async () => { for (const st of prep.split(/;\s*$/m).map(x => x.replace(/^\s*--.*$/gm, '').trim()).filter(Boolean)) await db.$executeRawUnsafe(st); };
+        await run();
+        await run(); // idempotent
+        expect(await db.attentionItem.count()).toBe(before);
+        expect(await db.attentionItem.count({ where: { sessionId: null } })).toBe(0);
+        const moved = await db.attentionItem.findMany({ where: { id: { in: ['plug1', 'plug2', 'plug3'] } }, orderBy: { id: 'asc' } });
+        expect(moved.map(r => r.sessionId)).toEqual(['vh-plugin-rollback-pi_x', 'vh-plugin-rollback-pi_x', 'vh-plugin-rollback-pi_y']);
+        expect(await db.session.findUniqueOrThrow({ where: { id: 'vh-plugin-rollback-pi_x' } })).toMatchObject({ accountId, active: false, archivedAt: expect.any(Date) });
+        expect(await db.attentionItem.count({ where: { id: sessionCard.item.id, sessionId } })).toBe(1);
     });
 
 });

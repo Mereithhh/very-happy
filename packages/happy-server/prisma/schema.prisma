@@ -78,6 +78,7 @@ model Account {
     Issues                Issue[]
     IssueSequences        IssueSequence[]
     IssueWorkers          IssueWorker[]
+    PluginInstalls        PluginInstall[]
 }
 
 model AccountCredential {
@@ -285,6 +286,7 @@ model Session {
     shareLinks        SessionShareLink[]
     projectMember     ProjectMember?
     attentionItems    AttentionItem[]
+    pluginWidgets     PluginWidget[]
 
     @@unique([accountId, tag])
     @@index([accountId, updatedAt(sort: Desc)])
@@ -1099,8 +1101,11 @@ model AttentionItem {
     id            String    @id
     accountId     String
     account       Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-    sessionId     String
-    session       Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+    /// Null for a plugin item (B-974): those carry `pluginInstallId` instead (a CHECK keeps at least one set).
+    sessionId     String?
+    session       Session?  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+    /// B-974 plugin decision: the PluginInstall that posted it (no FK — `plugin remove --keep-items` keeps the row).
+    pluginInstallId String?
     teamId        String?
     projectId     String?
     source        String
@@ -1138,7 +1143,10 @@ model AttentionItem {
     /// B-915 structured body of a `wrapup` card (summary / files / commits / pending checks / handoff).
     /// [AttentionWrapupPayload]
     payload       Json?
+    /// B-974 plugin-only state: { kind, input?, delivery, respondedText?, ackedAt? } (see app/plugins/pluginDecisions.ts).
+    pluginState   Json?
     @@unique([sessionId, key])
+    @@unique([pluginInstallId, key])
     @@index([accountId, state, needsOwner])
     @@index([accountId, updatedAt])
 }
@@ -1311,4 +1319,113 @@ model IssueWorker {
     lastSeenAt    DateTime @default(now())
 
     @@id([accountId, machineId])
+}
+
+//
+// Web plugins v1 (B-974, design B-973). Plaintext, server-trusted like AttentionItem.
+//
+
+/// One plugin installed on one machine. `manifest` is the approved version (what forwarding and
+/// permission checks read); `pendingManifest` waits for the owner's approval. Hard-deleted by
+/// `remove`; audit rows outlive it (no FK).
+model PluginInstall {
+    id                  String         @id
+    accountId           String
+    account             Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    machineId           String
+    pluginId            String
+    /// pending | enabled | update_pending | disabled | rejected
+    state               String
+    /// Approved manifest (null until the first approval)
+    manifest            Json?
+    manifestHash        String?
+    privilegedHash      String?
+    /// Manifest version waiting for approval (first install or a privileged update)
+    pendingManifest     Json?
+    pendingManifestHash String?
+    pendingSubmittedAt  DateTime?
+    /// Granted permission names
+    grants              String[]       @default([])
+    /// Badge: { count, tone, label, updatedAt }
+    badge               Json?
+    muted               Boolean        @default(false)
+    disabledBy          String?
+    disabledReason      String?
+    /// Bumped by disable / panel revoke / remove: every frame session minted before is void.
+    frameEpoch          Int            @default(0)
+    /// Subdomain label `<pluginId>-<h8>` (h8 = base32(sha256(id))[0..8]).
+    originLabel         String         @unique
+    lastSeenAt          DateTime?
+    approvedAt          DateTime?
+    version             Int            @default(1)
+    createdAt           DateTime       @default(now())
+    updatedAt           DateTime       @default(now())
+    events              PluginEvent[]
+    widgets             PluginWidget[]
+
+    @@unique([machineId, pluginId])
+    @@index([accountId])
+}
+
+/// VH → plugin event (decision.responded, widget.action, install.changed, ping). Queued here so an
+/// offline machine gets it later; the daemon pulls, delivers (signed) and reports the outcome.
+model PluginEvent {
+    id            String        @id
+    installId     String
+    install       PluginInstall @relation(fields: [installId], references: [id], onDelete: Cascade)
+    accountId     String
+    /// Monotonic per install: the pull cursor.
+    seq           Int
+    type          String
+    data          Json
+    /// pending | delivered | failed
+    delivery      String        @default("pending")
+    attempts      Int           @default(0)
+    nextAttemptAt DateTime      @default(now())
+    deliveredAt   DateTime?
+    lastError     String?
+    /// Pull-API acknowledgement (`POST /plugin/v1/events/ack`).
+    ackedAt       DateTime?
+    createdAt     DateTime      @default(now())
+
+    @@unique([installId, seq])
+    @@index([installId, delivery, nextAttemptAt])
+}
+
+/// A plugin's chip on one session's header (≤ 1 per plugin per session).
+model PluginWidget {
+    id        String        @id
+    installId String
+    install   PluginInstall @relation(fields: [installId], references: [id], onDelete: Cascade)
+    accountId String
+    sessionId String
+    session   Session       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+    /// { label, tone }
+    status    Json
+    text      String?
+    /// Actions: [{ id, label, style?, confirm? }]
+    actions   Json?
+    panelPath String?
+    version   Int           @default(1)
+    createdAt DateTime      @default(now())
+    updatedAt DateTime      @default(now())
+
+    @@unique([installId, sessionId])
+    @@index([sessionId])
+}
+
+/// Who did what to / through a plugin. Kept after the install is removed.
+model PluginAudit {
+    id        String   @id
+    accountId String
+    installId String
+    /// owner | machine | plugin | operator
+    actor     String
+    action    String
+    detail    Json?
+    requestId String?
+    createdAt DateTime @default(now())
+
+    @@index([installId, createdAt])
+    @@index([accountId, createdAt])
 }

@@ -2,6 +2,10 @@ import { onShutdown } from "@/utils/shutdown";
 import { Fastify } from "./types";
 import { buildMachineActivityEphemeral, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { operatorHandler, retryPendingOperatorKills, startOperatorBroker, stopOperatorBroker } from "@/app/session/operatorBroker";
+import { pluginOpHandler } from "@/app/plugins/pluginOps";
+import { joinPluginClientsRoom, notePluginMachineConnected, setPluginIo } from "@/app/plugins/pluginSocket";
+import { setPluginGatewayIo } from "@/app/plugins/pluginGateway";
+import { startPluginEventSweeper, stopPluginEventSweeper } from "@/app/plugins/pluginStore";
 import { noteTerminalShareMachinePresence, startTerminalShareBroker, stopTerminalShareBroker, terminalShareHandler } from "@/app/share/terminalShareBroker";
 import { installSessionShareFanout } from '@/app/session/sessionShares';
 import { Server } from "socket.io";
@@ -225,6 +229,10 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
     // Initialize event router with Socket.IO server instance
     eventRouter.init(io);
     startOperatorBroker(io);
+    // B-974 plugins: socket fan-out, panel forwarding RPC and the event-retry sweep.
+    setPluginIo(io);
+    setPluginGatewayIo(io);
+    startPluginEventSweeper();
     startTerminalShareBroker(io);
     installSessionShareFanout();
     // B-718: push a promote to connected daemons instead of waiting for their hourly check.
@@ -448,6 +456,7 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
             void socket.join(machinePresenceRoom(userId, machineId!));
             // B-867: kills of operator terminals that could not be delivered while this daemon was away.
             void retryPendingOperatorKills(userId, machineId!).catch(() => undefined);
+            void notePluginMachineConnected(userId, machineId!);
             // B-627: a retiring relay sends targeted daemons to their new home.
             void emitServerMigrateIfTargeted(socket, userId, machineId!);
             // Broadcast daemon online
@@ -556,6 +565,8 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
         filePreviewHandler(userId, socket, io, connection, terminalRateLimiter);
         // B-867: operator tier broker (grantee user sockets; central server only, never the relay).
         operatorHandler(userId, socket, connection, { rpc: rpcRateLimiter, terminal: terminalRateLimiter });
+        pluginOpHandler(userId, socket, connection);
+        joinPluginClientsRoom(socket, userId, connection.connectionType);
         // B-878: terminal share broker (grantee user sockets; central server only).
         terminalShareHandler(userId, socket, connection, { rpc: rpcRateLimiter, terminal: terminalRateLimiter });
 
@@ -564,6 +575,9 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
     onShutdown('api', async () => {
         if (streamLagTimer) clearInterval(streamLagTimer);
         stopOperatorBroker();
+        stopPluginEventSweeper();
+        setPluginIo(null);
+        setPluginGatewayIo(null);
         stopTerminalShareBroker();
         clearInterval(orphanSweep);
         await io.close();

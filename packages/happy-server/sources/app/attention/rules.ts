@@ -1,4 +1,5 @@
 import {
+    parsePluginPayload,
     agentProfileUnavailableReason, ATTENTION_LIMITS, attentionKindNeedsOwner, attentionPushKind, isAttentionActive,
     type AttentionItem, type AttentionItemPost, type TeamOperation, type TeamState, type TeamTask,
 } from '@slopus/happy-wire';
@@ -18,7 +19,7 @@ export function attentionEnabled(): boolean {
 }
 
 export interface AttentionRow {
-    id: string; accountId: string; sessionId: string; teamId: string | null; projectId: string | null;
+    id: string; accountId: string; sessionId: string | null; teamId: string | null; projectId: string | null;
     source: string; kind: string; key: string | null; lastRequestId: string | null;
     title: string; bodyMd: string | null; options: unknown; links: unknown; anchor: unknown; firstReply: unknown;
     replyToId: string | null; inferred: boolean; needsOwner: boolean; state: string; ownerChoice: string | null; ownerNote: string | null;
@@ -26,6 +27,10 @@ export interface AttentionRow {
     createdAt: Date; updatedAt: Date; resolvedAt: Date | null; pushedAt: Date | null; version: number;
     /** B-915 wrap-up card body (`kind: 'wrapup'` only). */
     payload: unknown;
+    /** B-974: set (and sessionId null) on a plugin decision. */
+    pluginInstallId?: string | null;
+    /** B-974 plugin-only state (app/plugins/pluginDecisions.ts `PluginItemState`). */
+    pluginState?: unknown;
 }
 
 const ms = (d: Date | null) => d ? d.getTime() : null;
@@ -37,8 +42,22 @@ export function itemView(row: AttentionRow): AttentionItem {
         replyToId: row.replyToId, inferred: row.inferred, needsOwner: row.needsOwner, state: row.state, ownerChoice: row.ownerChoice, ownerNote: row.ownerNote,
         resolvedBy: row.resolvedBy, resolveNote: row.resolveNote, repostCount: row.repostCount,
         createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime(), resolvedAt: ms(row.resolvedAt), pushedAt: ms(row.pushedAt), version: row.version,
-        payload: row.payload ?? null,
-    };
+        payload: row.pluginInstallId ? pluginPayloadView(row) : row.payload ?? null,
+        ...(row.pluginInstallId ? { pluginInstallId: row.pluginInstallId } : {}),
+    } as AttentionItem;
+}
+
+/** B-974 §5.3: the plugin owes an acknowledgement (DELETE / PATCH) within this long after the owner answered. */
+export const PLUGIN_ACK_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** A plugin card's payload (wire `AttentionPluginPayload`) with the time-based「插件未确认」flag filled in. */
+export function pluginPayloadView(row: Pick<AttentionRow, 'payload' | 'pluginState'>, now = Date.now()): unknown {
+    const p = parsePluginPayload(row.payload);
+    if (!p) return row.payload ?? null;
+    const ackedAt = (row.pluginState as { ackedAt?: number } | null)?.ackedAt;
+    const unacknowledged = p.pluginState === 'responded' && !ackedAt && !!p.response && now - p.response.at > PLUGIN_ACK_WINDOW_MS;
+    const { unacknowledged: _stored, ...rest } = p;
+    return unacknowledged ? { ...rest, unacknowledged: true } : rest;
 }
 
 /** Key-less posts dedupe on their request id, so a retried POST never creates a second row. */
@@ -254,8 +273,9 @@ export function capAnswered<T extends Pick<AttentionRow, 'sessionId' | 'state'>>
     const seen = new Map<string, number>();
     return rowsNewestFirst.filter(row => {
         if (row.state !== 'answered') return true;
-        const n = seen.get(row.sessionId) ?? 0;
-        seen.set(row.sessionId, n + 1);
+        const group = row.sessionId ?? '';
+        const n = seen.get(group) ?? 0;
+        seen.set(group, n + 1);
         return n < ANSWERED_VISIBLE_PER_SESSION;
     });
 }

@@ -56,6 +56,8 @@ import { projectShareRoutes } from './routes/projectShareRoutes';
 import { sessionShareLinkRoutes } from './routes/sessionShareLinkRoutes';
 import { connectionDiagnosticsRoutes } from './routes/connectionDiagnosticsRoutes';
 import { cspReportRoutes } from './routes/cspReportRoutes';
+import { pluginRoutes } from './routes/pluginRoutes';
+import { handlePluginHostRequest } from '@/app/plugins/pluginGateway';
 import { relayFeatureConfig } from '@/app/relay/relayConfig';
 
 export interface StartApiOptions {
@@ -86,6 +88,14 @@ export async function startApi(opts: StartApiOptions = {}) {
         loggerInstance: logger.child({}, { serializers: { req: requestLogSerializer } }),
         bodyLimit: configuredBodyLimit === 0 ? Number.MAX_SAFE_INTEGER : configuredBodyLimit,
         trustProxy,
+    });
+    // B-974: `<label>.<VH_PLUGIN_HOST>` requests are plugin panel origins — answered by the plugin gateway before
+    // any CORS, auth, route, static file or HTML hook (none of which may apply to a plugin's origin).
+    app.addHook('onRequest', async (request, reply) => {
+        if (handlePluginHostRequest(request.raw, reply.raw)) {
+            reply.hijack();
+            return reply;
+        }
     });
     startBusinessAudit();
     app.addHook('onResponse', async (request, reply) => { auditLoginFailure(request, reply.statusCode); });
@@ -180,6 +190,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     sessionShareLinkRoutes(typed);
     connectionDiagnosticsRoutes(typed);
     cspReportRoutes(typed);
+    pluginRoutes(typed);
 
     // Static webapp (self-host mode)
     if (opts.staticDir) {

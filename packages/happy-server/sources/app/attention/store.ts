@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import {
+    attentionQueryIncludesPlugin, isAttentionPluginItem,
     applySelectCheck, applyWrapupCheck, attentionItemNeedsOwner, isMainAgentQuietTime, parseSelectPayload, parseWrapupPayload, readMainAgentQuietHours, attentionKindNeedsOwner, attentionResolveState, isAttentionActive,
     type AttentionItem, type AttentionItemListQuery, type AttentionItemOwnerRespond, type AttentionItemPatch, type AttentionItemPost,
     type AttentionItemResolve, type TeamState,
@@ -13,6 +14,9 @@ import { afterTx, inTx, isRetryableTransactionConflict, type Tx } from '@/storag
 import { allocateUserSeq } from '@/storage/seq';
 import { log } from '@/utils/log';
 import { ISSUE_REVIEW_KEY_PREFIX } from '@/app/issues/rules';
+import { pushPluginItemOnce } from '@/app/plugins/pluginPush';
+import { emitPluginAttentionItem } from '@/app/plugins/pluginSocket';
+import { ownerRespondPluginItem, visiblePluginInstallIds } from '@/app/plugins/pluginAttention';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 import { decodeKvJson, MAIN_AGENT_CONFIG_KV_KEY, MAIN_AGENT_KV_KEY, mainAgentPointerOf } from '@/app/projects/mainAgent';
 import {
@@ -62,6 +66,8 @@ function announce(tx: Tx, row: AttentionRow, push?: { notify?: boolean }) {
     afterTx(tx, () => { void emitItem(row.accountId, item); void pushOnce(row, push); });
 }
 async function emitItem(accountId: string, item: AttentionItem) {
+    // B-974: a plugin item (sessionId null) never goes on the sequenced `update` stream an older Web validates strictly.
+    if (isAttentionPluginItem(item)) { emitPluginAttentionItem(accountId, item); return; }
     try {
         const seq = await allocateUserSeq(accountId);
         eventRouter.emitUpdate({ userId: accountId, payload: buildAttentionItemUpdate(item, seq, randomKeyNaked(12)), recipientFilter: { type: 'user-scoped-only' } });
@@ -75,7 +81,10 @@ async function emitItem(accountId: string, item: AttentionItem) {
  * is the claim, so concurrent reposts / retries / server replicas race on one
  * row and only the winner dispatches. Closed items never push.
  */
-export async function pushOnce(row: Pick<AttentionRow, 'id' | 'accountId' | 'sessionId' | 'kind' | 'title' | 'replyToId' | 'state' | 'inferred'> & { source?: string }, options?: { notify?: boolean }, now: () => number = Date.now): Promise<boolean> {
+export async function pushOnce(row: Pick<AttentionRow, 'id' | 'accountId' | 'sessionId' | 'kind' | 'title' | 'replyToId' | 'state' | 'inferred'> & { source?: string; pluginInstallId?: string | null }, options?: { notify?: boolean }, now: () => number = Date.now): Promise<boolean> {
+    // B-974: a plugin card has no session; it pushes (once, unless muted or `push:false`) through the plugin module.
+    if (!row.sessionId) return row.pluginInstallId ? pushPluginItemOnce({ ...row, pluginInstallId: row.pluginInstallId }) : false;
+    const sessionId = row.sessionId;
     // B-924: only the account's main agent posts as `agent` with `notify` / quiet hours that matter; everyone else
     // keeps the old path (no extra reads before the claim).
     const maybeMainAgent = row.source === 'agent';
@@ -88,17 +97,17 @@ export async function pushOnce(row: Pick<AttentionRow, 'id' | 'accountId' | 'ses
             // `notify` counts only from the main agent; its cards go on the board without a push during its
             // quiet hours (KV vh.main-agent-config.v1). Either way the push slot is used up: a later edit never
             // pushes at 3 a.m. (and a report never pushes anyway).
-            const rule = await mainAgentPushRule(row.accountId, row.sessionId, now());
+            const rule = await mainAgentPushRule(row.accountId, sessionId, now());
             if (!rule.isMainAgent && options?.notify) presentation = pushPresentation(row);
             if (!presentation || rule.quiet) return false;
         }
-        const url = `/session/${row.sessionId}?panel=board&item=${encodeURIComponent(row.id)}`;
+        const url = `/session/${sessionId}?panel=board&item=${encodeURIComponent(row.id)}`;
         eventRouter.emitEphemeral({
             userId: row.accountId,
-            payload: buildSessionEventEphemeral(row.sessionId, presentation.kind, presentation.title, presentation.body, url),
-            recipientFilter: { type: 'all-interested-in-session', sessionId: row.sessionId },
+            payload: buildSessionEventEphemeral(sessionId, presentation.kind, presentation.title, presentation.body, url),
+            recipientFilter: { type: 'all-interested-in-session', sessionId },
         });
-        await dispatchSessionEventPush({ userId: row.accountId, sessionId: row.sessionId, title: presentation.title, body: presentation.body, data: { kind: presentation.kind, itemId: row.id, url } });
+        await dispatchSessionEventPush({ userId: row.accountId, sessionId, title: presentation.title, body: presentation.body, data: { kind: presentation.kind, itemId: row.id, url } });
         return true;
     } catch (error) {
         log({ module: 'attention', level: 'warn', error }, 'attention push failed');
@@ -131,7 +140,9 @@ async function sessionContext(tx: Tx, accountId: string, sessionId: string): Pro
 }
 
 async function loadItem(tx: Tx, accountId: string, id: string): Promise<AttentionRow> {
-    const row = await tx.attentionItem.findFirst({ where: { id, accountId } });
+    // B-974: a plugin's card is changed only by that plugin (via its daemon) or answered by the owner (ownerRespond
+    // → pluginDecisions); an agent's account token cannot edit or close it.
+    const row = await tx.attentionItem.findFirst({ where: { id, accountId, pluginInstallId: null } });
     requireAttention(row, 'attention_item_not_found', 404);
     return row;
 }
@@ -204,7 +215,8 @@ async function upsertTx(tx: Tx, accountId: string, input: Omit<AttentionItemPost
 async function settleReplyTarget(tx: Tx, accountId: string, targetId: string, kind: string, now: Date) {
     const next = replyTargetState(kind);
     if (!next) return;
-    const target = await tx.attentionItem.findFirst({ where: { id: targetId, accountId } });
+    // B-974: an agent's reply never settles a plugin's card.
+    const target = await tx.attentionItem.findFirst({ where: { id: targetId, accountId, pluginInstallId: null } });
     if (!target || (!isAttentionActive(target.state) && target.state !== 'answered') || target.state === next.state) return;
     const row = await tx.attentionItem.update({
         where: { id: target.id },
@@ -286,6 +298,9 @@ export async function resolveItem(accountId: string, id: string, input: Attentio
  */
 export async function ownerRespond(accountId: string, id: string, input: AttentionItemOwnerRespond): Promise<{ item: AttentionItem }> {
     assertAttentionEnabled();
+    const plugin = await db.attentionItem.findFirst({ where: { id, accountId }, select: { pluginInstallId: true } });
+    if (plugin?.pluginInstallId) return ownerRespondPluginItem(accountId, id, input);
+    requireAttention(input.action !== 'submit', 'attention_check_unsupported', 409);
     if (input.action === 'choose') {
         const row = await db.attentionItem.findFirst({ where: { id, accountId } });
         requireAttention(row, 'attention_item_not_found', 404);
@@ -354,6 +369,11 @@ async function settleRootTask(accountId: string, row: AttentionRow, choice: stri
     else throw new AttentionError('attention_unknown_choice', 400);
 }
 
+/** `?include=` is a comma list; `plugin` opts in to plugin items. */
+export function includesPluginItems(include: string | undefined): boolean {
+    return attentionQueryIncludesPlugin(include);
+}
+
 /** GET /v1/attention-items, newest `updatedAt` first. */
 export async function listItems(accountId: string, query: AttentionItemListQuery): Promise<{ items: AttentionItem[] }> {
     assertAttentionEnabled();
@@ -362,6 +382,12 @@ export async function listItems(accountId: string, query: AttentionItemListQuery
     const rows = await db.attentionItem.findMany({
         where: {
             accountId,
+            // B-974 (design §7): plugin items have no session, which an older client's schema rejects — only a
+            // client that asks for them (`?include=plugin`) gets them.
+            ...(includesPluginItems(query.include)
+                // Cards of a stopped plugin are hidden (kept; back when it is enabled again, design §3.4).
+                ? { OR: [{ pluginInstallId: null }, { pluginInstallId: { in: await visiblePluginInstallIds(accountId) } }] }
+                : { pluginInstallId: null }),
             ...(query.sessionId ? { sessionId: query.sessionId } : {}),
             ...(state === 'open' ? { state: { in: ACTIVE_STATES } } : state === 'active' ? { state: { in: [...ACTIVE_STATES, 'answered'] } } : {}),
             ...(needsOwner !== undefined ? { needsOwner } : {}),
@@ -462,7 +488,7 @@ export async function closeIssueItemsTx(tx: Tx, accountId: string, keys: string[
 
 async function closeActive(accountId: string, sessionId: string, select: (rows: AttentionRow[]) => string[], data: { state: string; resolvedBy: string }): Promise<string[]> {
     return inTx(async tx => {
-        const rows = await tx.attentionItem.findMany({ where: { accountId, sessionId, state: { in: ACTIVE_STATES } } });
+        const rows = await tx.attentionItem.findMany({ where: { accountId, sessionId, pluginInstallId: null, state: { in: ACTIVE_STATES } } });
         const ids = select(rows);
         const now = new Date();
         for (const id of ids) {
