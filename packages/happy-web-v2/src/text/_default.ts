@@ -3674,7 +3674,7 @@ export const en = {
                 title: 'Starting a pi session lets you pick its model',
                 summary: 'A new pi session could only start on the model pi itself was configured with. It now offers the models this computer\'s pi reports, plus its thinking levels, the same way a Codex or DeepSeek Harness session does.',
                 models: 'Before the session starts, the model list comes from pi on the machine you picked, so it works on a computer that has never run a pi session. The model you choose is what the session starts on, and restarting or restoring the session keeps it.',
-                thinking: 'Thinking levels are offered when pi reports the model as reasoning; otherwise only Default shows until the session starts and lists its own, as for DeepSeek Harness. If pi on that computer cannot list its models, the list holds only models.json entries and says that built-in providers are missing.'
+                thinking: 'Thinking levels are offered when pi reports the model as reasoning; otherwise only Default shows until the session starts and lists its own, as for DeepSeek Harness. If pi on that computer cannot list its models, the list holds only models.json entries and says that built-in providers are missing.',
                 settings: 'Settings → Agents, Issues and Teams offer the same list, one per computer, like the other agents. A DeepSeek Harness session without a model list no longer offers Claude models.',
                 upgrade: 'Needs CLI 0.2.232. On an older CLI the picker keeps showing only the machine default, and pi sessions behave as before.',
             },

@@ -3902,7 +3902,7 @@ export const zhHans: TranslationStructure = {
                 title: '新建 pi 会话时可以选择模型',
                 summary: '以前新建 pi 会话只能用它自己配置的模型。现在和 Codex、DeepSeek Harness 会话一样，可以选这台电脑上的 pi 报出的模型，也能选思考档位。',
                 models: '会话开始前，模型列表来自你选的那台机器上的 pi，所以从没用过 pi 会话的电脑也能选。选中的模型就是会话启动时用的模型，重启或恢复会话后保持不变。',
-                thinking: 'pi 报告某个模型支持思考时才显示档位；否则新建前只显示「默认」，会话开始后按会话自己的档位来，和 DeepSeek Harness 一样。那台电脑上的 pi 列不出模型时，列表只有 models.json 里的模型，并注明缺少内置 provider 的模型。'
+                thinking: 'pi 报告某个模型支持思考时才显示档位；否则新建前只显示「默认」，会话开始后按会话自己的档位来，和 DeepSeek Harness 一样。那台电脑上的 pi 列不出模型时，列表只有 models.json 里的模型，并注明缺少内置 provider 的模型。',
                 settings: '设置 → Agents、Issues 和团队表单用同一份列表，和其他 agent 一样按机器取。DeepSeek Harness 会话没有模型列表时，也不会再列出 Claude 的模型。',
                 upgrade: '需要 CLI 0.2.232。旧版 CLI 下选择器仍然只显示「机器默认」，pi 会话行为不变。',
             },
