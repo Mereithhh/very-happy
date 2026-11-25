@@ -78,9 +78,9 @@ export type CodexContextMode = (typeof CODEX_CONTEXT_MODES)[number];
 
 /**
  * The mode a session runs when nobody picked one (no session pick, no account
- * default). Product decision pending with the Owner: change only this constant.
+ * default). Owner decision 11-26 (#171): extended, honored only for models the machine reports as extendable; the others stay standard. Change only this constant.
  */
-export const CODEX_CONTEXT_DEFAULT_MODE: CodexContextMode = 'standard';
+export const CODEX_CONTEXT_DEFAULT_MODE: CodexContextMode = 'extended';
 
 /** Compaction point as a share of the window, Codex's own default ratio. */
 export const CODEX_AUTO_COMPACT_RATIO = 0.9;

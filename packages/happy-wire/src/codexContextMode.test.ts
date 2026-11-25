@@ -9,8 +9,8 @@ import {
 } from './codexContext';
 
 describe('B-977 Codex context modes', () => {
-    it('defaults to standard (pending Owner decision: change only the constant)', () => {
-        expect(CODEX_CONTEXT_DEFAULT_MODE).toBe('standard');
+    it('defaults to extended (Owner 11-26, #171: change only the constant)', () => {
+        expect(CODEX_CONTEXT_DEFAULT_MODE).toBe('extended');
     });
 
     it('reads only the two modes', () => {

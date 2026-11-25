@@ -150,7 +150,7 @@ ${block(TODO_HELP)}`,
 - \`very-happy connect codex|claude|gemini|status\`: store a vendor credential on the relay.
 - \`very-happy agent-home\`: where Claude Code / Codex keep their conversations on this machine.
 - Model per session: \`spawn --model\`, \`send --model\`, \`auto create --model\`. \`latest\` follows the newest model of the agent's tier. New-session defaults per agent are a Web setting.
-- Codex context window: the model menu's 「上下文」 offers Standard (Codex's own default: 258,400 tokens, or 475,000 for the sol family) and Extended (the model's maximum, ~828,400); it needs CLI 0.2.232. Do not edit the user's \`~/.codex/config.toml\` to change it — pick it in the Web or send \`meta.codexContext\`.
+- Codex context window: the model menu's 「上下文」 offers Standard (Codex's own default: 258,400 tokens, or 475,000 for the sol family) and Extended (the model's maximum, ~828,400, the default for new sessions on models that support it; existing sessions keep their level); it needs CLI 0.2.232. Do not edit the user's \`~/.codex/config.toml\` to change it — pick it in the Web or send \`meta.codexContext\`.
 
 ## \`very-happy account --help\`
 ${block(ACCOUNT_HELP)}

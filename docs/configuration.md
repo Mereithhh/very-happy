@@ -914,8 +914,8 @@ A Codex session's model menu has a **Context** row, and Settings → Agents →
 Codex sets the default for new sessions:
 
 - **Standard** — Codex's own default for the model (258,400 / 475,000).
-- **Extended** — the model's catalog maximum (828,400). Shown only for models
-  the machine reports as able to run larger.
+- **Extended** — the model's catalog maximum (828,400), the default for new sessions (Owner 11-26). Shown only for models
+  the machine reports as able to run larger; every other model, an older CLI and a machine without a catalog stay on standard. Existing sessions keep their level, and an account default set in Settings overrides the global default.
 
 Both are passed as thread config (`model_context_window`, plus
 `model_auto_compact_token_limit` at 90% of it), never written into the user's

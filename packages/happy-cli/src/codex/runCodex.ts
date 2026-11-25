@@ -435,7 +435,7 @@ export async function runCodex(opts: {
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
     let currentModel: string | undefined = DEFAULT_CODEX_MODEL;
     // B-977: standard / extended context window; config goes out on every thread start / resume / fork.
-    const contextModes = new CodexContextModeController(resumedContextMode ?? CODEX_CONTEXT_DEFAULT_MODE, (fields) => {
+    const contextModes = new CodexContextModeController(resumedContextMode ?? (reconnectSeeded && response ? 'standard' : CODEX_CONTEXT_DEFAULT_MODE), (fields) => {
         session.updateMetadata((metadata) => ({ ...metadata, ...fields }));
     });
     // Before a turn: the config for the model it runs; a loaded thread reloads when it differs.

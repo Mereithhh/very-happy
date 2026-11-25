@@ -1083,8 +1083,8 @@ export const en = {
             contextLabel: 'Context',
             contextStandard: ({ window }: { window: string }) => `Standard · ${window}`,
             contextExtended: ({ window }: { window: string }) => `Extended · ~${window}`,
-            contextStandardDescription: 'Codex\'s own default window for this model; compacts at 90% of it',
-            contextExtendedDescription: 'This model\'s maximum window; compacts at 90% of it',
+            contextStandardDescription: 'Codex\'s own default window for this model; pick it to go back to the smaller window; compacts at 90% of it',
+            contextExtendedDescription: 'This model\'s maximum window; new sessions start here; compacts at 90% of it',
             sessionSettings: 'Session settings',
             sessionSettingsTitle: 'Session settings',
             sessionSettingsDescription: 'Permission changes can apply immediately while Claude runs; other changes apply to the next message.',
@@ -3757,8 +3757,8 @@ export const en = {
             },
             nov26b: {
                 title: 'Codex sessions can use the model\'s full context window',
-                summary: 'Codex sizes a new thread from its own conservative default — 25.8 万 tokens for most gpt-6 / gpt-5.6 models, 47.5 万 for the sol family — well under the model\'s maximum. The model menu now has a Context row: Standard keeps Codex\'s default, Extended asks for the maximum this model really accepts (about 82.8 万), and either way Codex compacts at 90% of the window.',
-                picker: 'Pick it in the model menu of a Codex session, or set the default for new sessions in Settings → Agents → Codex. Only models the machine reports as able to run larger show the row; switching on a running session reloads the same thread with the new window, history kept.',
+                summary: 'Codex sizes a new thread from its own conservative default — 25.8 万 tokens for most gpt-6 / gpt-5.6 models, 47.5 万 for the sol family — well under the model\'s maximum. New Codex sessions now start on the extended window (about 82.8 万) where the model supports it. The model menu has a Context row: Standard keeps Codex\'s default, Extended asks for the maximum this model really accepts (about 82.8 万), and either way Codex compacts at 90% of the window.',
+                picker: 'Pick it in the model menu of a Codex session, or set the default for new sessions in Settings → Agents → Codex. New sessions start on Extended (change the default under Settings → Agents → Codex); existing sessions keep their window; pick Standard to return to the smaller default window. Only models the machine reports as able to run larger show the row; switching on a running session reloads the same thread with the new window, history kept.',
                 meter: 'The context meter shows the window the session really runs. Needs CLI 0.2.232.',
             },
             nov25a: {

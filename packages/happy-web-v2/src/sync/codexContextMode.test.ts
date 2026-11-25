@@ -49,3 +49,21 @@ describe('B-977 web codex context mode', () => {
         expect(settingsCodexContextOptions({ modelMode: 'default', catalogs: [] })).toBeNull();
     });
 });
+
+describe('B-977 default extended (Owner 11-26, #171)', () => {
+    const fresh = { flavor: 'codex', currentModelCode: 'gpt-6.2-astra', codexContextWindows: codex.codexContextWindows };
+    it('a new session with no report, pick or account default runs extended on an extendable model', () => {
+        expect(resolveCodexContextMode(fresh, null, null)).toBe('extended');
+    });
+    it('the account default set in Settings overrides the global default, a session pick overrides both', () => {
+        expect(resolveCodexContextMode(fresh, null, 'standard')).toBe('standard');
+        expect(resolveCodexContextMode(fresh, 'standard', 'extended')).toBe('standard');
+    });
+    it('no catalog (older CLI, machine without windows) falls back to standard without error', () => {
+        expect(resolveCodexContextMode({ flavor: 'codex', currentModelCode: 'gpt-5.5' }, null, null)).toBe('standard');
+        expect(resolveCodexContextMode(undefined, null, 'extended')).toBe('standard');
+    });
+    it('an existing session keeps the level the wrapper reported', () => {
+        expect(resolveCodexContextMode({ ...fresh, codexContextMode: 'standard' }, null, 'extended')).toBe('standard');
+    });
+});

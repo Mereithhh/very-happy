@@ -51,7 +51,8 @@ export function resolveCodexContextMode(
     const known = windows[metadata?.currentModelCode ?? ''] !== undefined || Object.keys(windows).length > 0;
     const reported = readCodexContextMode(metadata?.codexContextMode);
     const mode = reported ?? readCodexContextMode(local) ?? readCodexContextMode(accountDefault) ?? CODEX_CONTEXT_DEFAULT_MODE;
-    return known ? mode : CODEX_CONTEXT_DEFAULT_MODE;
+    // No catalog / a model that cannot run larger: standard, never the extended default.
+    return known ? mode : 'standard';
 }
 
 /** Formatted window for a label: 「27.2 万」 / 「约 83 万」. */

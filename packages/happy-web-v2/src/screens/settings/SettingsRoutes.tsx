@@ -78,6 +78,7 @@ import { withPiDefaults } from '@/sync/piModelOptions';
 import { piDraftThoughtLevels } from '@/sync/piModelTable';
 import { settingsCodexEffort } from '@/sync/settingsEffort';
 import { settingsCodexContextOptions } from '@/sync/codexContextMode';
+import { CODEX_CONTEXT_DEFAULT_MODE } from '@slopus/happy-wire';
 import { followEntryModel, followLatestState } from '@/sync/followLatestDisplay';
 import { resolveLatestForAgent } from '@/sync/agentDefaults';
 import { collectRecentCatalogs, runnableFromCatalogs } from '@/sync/launcherModels';
@@ -1387,8 +1388,8 @@ function AgentDefaults() {
                     className="set-effort"
                     label={t('session.chat.contextLabel')}
                     options={namedContextOptions(codexContext.options, t)}
-                    value={savedContext ?? 'standard'}
-                    onChange={(v) => pick(agent, 'contextMode', v === 'standard' ? null : v)}
+                    value={savedContext ?? CODEX_CONTEXT_DEFAULT_MODE}
+                    onChange={(v) => pick(agent, 'contextMode', v === CODEX_CONTEXT_DEFAULT_MODE ? null : v)}
                   />}
                 />
               )}

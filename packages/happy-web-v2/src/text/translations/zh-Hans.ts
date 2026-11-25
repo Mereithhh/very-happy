@@ -1290,8 +1290,8 @@ export const zhHans: TranslationStructure = {
             contextLabel: '上下文',
             contextStandard: ({ window }: { window: string }) => `标准 · ${window}`,
             contextExtended: ({ window }: { window: string }) => `扩展 · 约 ${window}`,
-            contextStandardDescription: 'Codex 对这个模型的默认窗口，用到 90% 自动压缩',
-            contextExtendedDescription: '这个模型的最大窗口，用到 90% 自动压缩',
+            contextStandardDescription: 'Codex 对这个模型的默认窗口，想用较小窗口就选它，用到 90% 自动压缩',
+            contextExtendedDescription: '这个模型的最大窗口，新会话默认用它，用到 90% 自动压缩',
             sessionSettings: '会话设置',
             sessionSettingsTitle: '会话设置',
             sessionSettingsDescription: 'Claude 运行中可即时切换权限；其他更改会应用到下一条消息。',
@@ -3906,8 +3906,8 @@ export const zhHans: TranslationStructure = {
             },
             nov26b: {
                 title: 'Codex 会话可以用满模型的上下文窗口',
-                summary: 'Codex 起新线程时按自己的保守默认给窗口——多数 gpt-6 / gpt-5.6 是 25.8 万 token，sol 系 47.5 万——离模型上限还差很远。模型菜单里新增「上下文」：标准保留 Codex 默认，扩展取这个模型真正接受的最大窗口（约 82.8 万），两种都在窗口的 90% 自动压缩。',
-                picker: '在 Codex 会话的模型菜单里选，或在「设置 → Agent → Codex」设为新会话默认。只有机器报告能扩的模型才显示这一行；运行中的会话切换时会重载同一个线程换成新窗口，历史保留。',
+                summary: 'Codex 起新线程时按自己的保守默认给窗口——多数 gpt-6 / gpt-5.6 是 25.8 万 token，sol 系 47.5 万——离模型上限还差很远。新建的 Codex 会话默认用扩展窗口（约 82.8 万，模型支持时）。模型菜单里新增「上下文」：标准保留 Codex 默认，扩展取这个模型真正接受的最大窗口（约 82.8 万），两种都在窗口的 90% 自动压缩。',
+                picker: '在 Codex 会话的模型菜单里选，或在「设置 → Agent → Codex」设为新会话默认。新会话默认扩展（可在设置里改默认），已有会话保持原档位，想回到较小窗口选「标准」。只有机器报告能扩的模型才显示这一行；运行中的会话切换时会重载同一个线程换成新窗口，历史保留。',
                 meter: '上下文用量条按会话实际运行的窗口显示。需要 CLI 0.2.232。',
             },
             nov26a: {
