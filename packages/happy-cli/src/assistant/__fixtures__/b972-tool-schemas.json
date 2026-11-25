@@ -1,0 +1,4903 @@
+{
+ "main": {
+  "automation_ack": {
+   "type": "object",
+   "properties": {
+    "runId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "required": [
+    "runId"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_create": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "description": {
+     "type": "string",
+     "maxLength": 4000
+    },
+    "machineId": {
+     "description": "Target machine id; omit or 'this' for the current machine",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "trigger": {
+     "oneOf": [
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "cron"
+        },
+        "expr": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 256
+        },
+        "tz": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 64
+        }
+       },
+       "required": [
+        "kind",
+        "expr",
+        "tz"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "interval"
+        },
+        "everyMs": {
+         "type": "integer",
+         "minimum": 60000,
+         "maximum": 31622400000
+        },
+        "anchorAt": {
+         "type": "integer",
+         "exclusiveMinimum": 0,
+         "maximum": 8640000000000000
+        }
+       },
+       "required": [
+        "kind",
+        "everyMs"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "once"
+        },
+        "at": {
+         "type": "integer",
+         "exclusiveMinimum": 0,
+         "maximum": 8640000000000000
+        }
+       },
+       "required": [
+        "kind",
+        "at"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "manual"
+        }
+       },
+       "required": [
+        "kind"
+       ]
+      }
+     ]
+    },
+    "action": {
+     "oneOf": [
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "spawn"
+        },
+        "agent": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 64
+        },
+        "directory": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 4096
+        },
+        "prompt": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 32000
+        },
+        "model": {
+         "anyOf": [
+          {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 256
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "permissionMode": {
+         "anyOf": [
+          {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 64
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "worktree": {
+         "type": "boolean"
+        },
+        "sticky": {
+         "type": "object",
+         "properties": {
+          "key": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 512
+          }
+         },
+         "required": [
+          "key"
+         ]
+        },
+        "agentProfile": {
+         "anyOf": [
+          {
+           "type": "object",
+           "properties": {
+            "id": {
+             "type": "string",
+             "minLength": 1,
+             "maxLength": 64
+            },
+            "label": {
+             "type": "string",
+             "minLength": 1,
+             "maxLength": 200
+            }
+           },
+           "required": [
+            "id"
+           ]
+          },
+          {
+           "type": "null"
+          }
+         ]
+        }
+       },
+       "required": [
+        "kind",
+        "agent",
+        "directory",
+        "prompt"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "send"
+        },
+        "sessionId": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 128
+        },
+        "target": {
+         "type": "string",
+         "enum": [
+          "main-agent"
+         ]
+        },
+        "prompt": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 32000
+        }
+       },
+       "required": [
+        "kind",
+        "prompt"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "script"
+        },
+        "command": {
+         "minItems": 1,
+         "maxItems": 256,
+         "type": "array",
+         "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+         }
+        },
+        "cwd": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 4096
+        },
+        "env": {
+         "type": "object",
+         "propertyNames": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+         },
+         "additionalProperties": {
+          "type": "string",
+          "maxLength": 32000
+         }
+        },
+        "timeoutMs": {
+         "type": "integer",
+         "minimum": 1000,
+         "maximum": 604800000
+        }
+       },
+       "required": [
+        "kind",
+        "command"
+       ]
+      }
+     ]
+    },
+    "concurrency": {
+     "description": "skip (default): a run while another is active is recorded as skipped; queue: it waits",
+     "type": "string",
+     "enum": [
+      "skip",
+      "queue"
+     ]
+    },
+    "maxRuntimeMs": {
+     "type": "integer",
+     "minimum": 60000,
+     "maximum": 604800000
+    },
+    "paused": {
+     "description": "Create paused",
+     "type": "boolean"
+    },
+    "precheck": {
+     "description": "Optional gate run on the machine before the action: exactly one of command (argv array) or shell (one command line, not template-rendered; payload in $VH_AUTOMATION_PAYLOAD). Exit 0 runs the action; anything else records the run as skipped (repeats fold into one run, ×N). cwd defaults to the action directory; timeoutMs default 60000, max 600000; includeOutput appends its stdout to the spawn/send prompt.",
+     "type": "object",
+     "properties": {
+      "command": {
+       "minItems": 1,
+       "maxItems": 256,
+       "type": "array",
+       "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+       }
+      },
+      "shell": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 8000
+      },
+      "cwd": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 4096
+      },
+      "timeoutMs": {
+       "type": "integer",
+       "minimum": 1000,
+       "maximum": 600000
+      },
+      "includeOutput": {
+       "type": "boolean"
+      }
+     }
+    },
+    "projectId": {
+     "description": "Project the sessions it spawns join: a project id, or 'current' for this session's project (same as `very-happy auto --project`). The server checks it; an older server ignores it and the result carries a notice.",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "risk": {
+     "type": "string",
+     "enum": [
+      "none",
+      "external",
+      "production"
+     ],
+     "description": "Required. none = stays inside Very Happy / this machine; external = the result is sent or published where other people see it (messages, mail, comments, PRs, pushes, shares); production = writes production data or infrastructure. Non-none goes to the owner's decision board first."
+    }
+   },
+   "required": [
+    "name",
+    "trigger",
+    "action",
+    "risk"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_delete": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "description": "Automation name",
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "id": {
+     "description": "Automation id (alternative to name)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_fire": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "payload": {
+     "description": "Payload text; JSON lets prompts use {{payload.field}}",
+     "type": "string",
+     "maxLength": 65536
+    },
+    "dedupeKey": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 256
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_get": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "description": "Automation name",
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "id": {
+     "description": "Automation id (alternative to name)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_list": {
+   "type": "object",
+   "properties": {
+    "machineId": {
+     "description": "Only this machine id, or 'this' for the current machine",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_pause": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "description": "Automation name",
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "id": {
+     "description": "Automation id (alternative to name)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_report": {
+   "type": "object",
+   "properties": {
+    "runId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "status": {
+     "type": "string",
+     "enum": [
+      "done",
+      "failed"
+     ]
+    },
+    "summary": {
+     "type": "string",
+     "maxLength": 4096
+    },
+    "error": {
+     "type": "string",
+     "maxLength": 4096
+    },
+    "needsAttention": {
+     "type": "boolean"
+    },
+    "attentionReason": {
+     "type": "string",
+     "maxLength": 512
+    }
+   },
+   "required": [
+    "status"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_resume": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "description": "Automation name",
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "id": {
+     "description": "Automation id (alternative to name)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_run": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "description": "Automation name",
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "id": {
+     "description": "Automation id (alternative to name)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "payload": {
+     "description": "Payload text; JSON lets prompts use {{payload.field}}",
+     "type": "string",
+     "maxLength": 65536
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_runs": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "description": "Automation name",
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "id": {
+     "description": "Automation id (alternative to name)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "status": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 64
+    },
+    "attention": {
+     "description": "Only runs flagged for a human",
+     "type": "boolean"
+    },
+    "limit": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 200
+    },
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_update": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "description": "Automation name",
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "id": {
+     "description": "Automation id (alternative to name)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "version": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    },
+    "newName": {
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "description": {
+     "anyOf": [
+      {
+       "type": "string",
+       "maxLength": 4000
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "machineId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "trigger": {
+     "oneOf": [
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "cron"
+        },
+        "expr": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 256
+        },
+        "tz": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 64
+        }
+       },
+       "required": [
+        "kind",
+        "expr",
+        "tz"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "interval"
+        },
+        "everyMs": {
+         "type": "integer",
+         "minimum": 60000,
+         "maximum": 31622400000
+        },
+        "anchorAt": {
+         "type": "integer",
+         "exclusiveMinimum": 0,
+         "maximum": 8640000000000000
+        }
+       },
+       "required": [
+        "kind",
+        "everyMs"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "once"
+        },
+        "at": {
+         "type": "integer",
+         "exclusiveMinimum": 0,
+         "maximum": 8640000000000000
+        }
+       },
+       "required": [
+        "kind",
+        "at"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "manual"
+        }
+       },
+       "required": [
+        "kind"
+       ]
+      }
+     ]
+    },
+    "action": {
+     "oneOf": [
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "spawn"
+        },
+        "agent": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 64
+        },
+        "directory": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 4096
+        },
+        "prompt": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 32000
+        },
+        "model": {
+         "anyOf": [
+          {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 256
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "permissionMode": {
+         "anyOf": [
+          {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 64
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "worktree": {
+         "type": "boolean"
+        },
+        "sticky": {
+         "type": "object",
+         "properties": {
+          "key": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 512
+          }
+         },
+         "required": [
+          "key"
+         ]
+        },
+        "agentProfile": {
+         "anyOf": [
+          {
+           "type": "object",
+           "properties": {
+            "id": {
+             "type": "string",
+             "minLength": 1,
+             "maxLength": 64
+            },
+            "label": {
+             "type": "string",
+             "minLength": 1,
+             "maxLength": 200
+            }
+           },
+           "required": [
+            "id"
+           ]
+          },
+          {
+           "type": "null"
+          }
+         ]
+        }
+       },
+       "required": [
+        "kind",
+        "agent",
+        "directory",
+        "prompt"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "send"
+        },
+        "sessionId": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 128
+        },
+        "target": {
+         "type": "string",
+         "enum": [
+          "main-agent"
+         ]
+        },
+        "prompt": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 32000
+        }
+       },
+       "required": [
+        "kind",
+        "prompt"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "script"
+        },
+        "command": {
+         "minItems": 1,
+         "maxItems": 256,
+         "type": "array",
+         "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+         }
+        },
+        "cwd": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 4096
+        },
+        "env": {
+         "type": "object",
+         "propertyNames": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+         },
+         "additionalProperties": {
+          "type": "string",
+          "maxLength": 32000
+         }
+        },
+        "timeoutMs": {
+         "type": "integer",
+         "minimum": 1000,
+         "maximum": 604800000
+        }
+       },
+       "required": [
+        "kind",
+        "command"
+       ]
+      }
+     ]
+    },
+    "concurrency": {
+     "type": "string",
+     "enum": [
+      "skip",
+      "queue"
+     ]
+    },
+    "maxRuntimeMs": {
+     "type": "integer",
+     "minimum": 60000,
+     "maximum": 604800000
+    },
+    "precheck": {
+     "description": "Optional gate run on the machine before the action: exactly one of command (argv array) or shell (one command line, not template-rendered; payload in $VH_AUTOMATION_PAYLOAD). Exit 0 runs the action; anything else records the run as skipped (repeats fold into one run, ×N). cwd defaults to the action directory; timeoutMs default 60000, max 600000; includeOutput appends its stdout to the spawn/send prompt. null removes it.",
+     "anyOf": [
+      {
+       "type": "object",
+       "properties": {
+        "command": {
+         "minItems": 1,
+         "maxItems": 256,
+         "type": "array",
+         "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+         }
+        },
+        "shell": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 8000
+        },
+        "cwd": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 4096
+        },
+        "timeoutMs": {
+         "type": "integer",
+         "minimum": 1000,
+         "maximum": 600000
+        },
+        "includeOutput": {
+         "type": "boolean"
+        }
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "projectId": {
+     "description": "Project the sessions it spawns join: a project id, or 'current' for this session's project (same as `very-happy auto --project`). The server checks it; an older server ignores it and the result carries a notice. null detaches.",
+     "anyOf": [
+      {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 128
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "risk": {
+     "type": "string",
+     "enum": [
+      "none",
+      "external",
+      "production"
+     ],
+     "description": "Required. none = stays inside Very Happy / this machine; external = the result is sent or published where other people see it (messages, mail, comments, PRs, pushes, shares); production = writes production data or infrastructure. Non-none goes to the owner's decision board first."
+    }
+   },
+   "required": [
+    "version",
+    "risk"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "boards_read": {
+   "type": "object",
+   "properties": {
+    "teamId": {
+     "description": "From teams_list",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "perTeam": {
+     "description": "Items per team (default 10)",
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 25
+    },
+    "needsOwner": {
+     "description": "Only items waiting on the owner",
+     "type": "boolean"
+    },
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "change_title": {
+   "type": "object",
+   "properties": {
+    "title": {
+     "type": "string",
+     "description": "The new title for the chat session"
+    }
+   },
+   "required": [
+    "title"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "copy_to_clipboard": {
+   "type": "object",
+   "properties": {
+    "text": {
+     "type": "string",
+     "description": "The text to copy to the user's clipboard"
+    }
+   },
+   "required": [
+    "text"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "dispatch_approved": {
+   "type": "object",
+   "properties": {
+    "approvalId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 64
+    },
+    "boardItemId": {
+     "description": "The decision card id, when the approvalId is not at hand",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "followups_list": {
+   "type": "object",
+   "properties": {
+    "state": {
+     "description": "open (default) or all (done / stuck / closed of the last two weeks too)",
+     "type": "string",
+     "enum": [
+      "open",
+      "all"
+     ]
+    },
+    "limit": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 50
+    },
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "handoff_send": {
+   "type": "object",
+   "properties": {
+    "to": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Session id that takes the work over"
+    },
+    "to_title": {
+     "description": "Its title, for the card",
+     "type": "string",
+     "maxLength": 200
+    },
+    "machine_id": {
+     "description": "Machine the target runs on, when known",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "summary": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 12000,
+     "description": "The handoff summary: goal, done, current state, next steps, open questions"
+    },
+    "artifacts": {
+     "description": "Artifact paths (files, branches, PRs, docs) the target needs",
+     "maxItems": 30,
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+     }
+    },
+    "archive_after": {
+     "description": "Archive this session once delivery to a live session is confirmed (default false)",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "to",
+    "summary"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "issue_assign": {
+   "type": "object",
+   "properties": {
+    "issueId": {
+     "description": "Issue id",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "key": {
+     "description": "Issue key, e.g. VH-12 (instead of issueId)",
+     "type": "string",
+     "pattern": "^VH-[1-9][0-9]{0,8}$"
+    },
+    "assignee": {
+     "type": "object",
+     "properties": {
+      "agent": {
+       "type": "string",
+       "enum": [
+        "claude",
+        "codex",
+        "pi"
+       ]
+      },
+      "machineId": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 128
+      },
+      "directory": {
+       "description": "Working directory of the run",
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 4096
+      },
+      "model": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 256
+      }
+     },
+     "required": [
+      "agent"
+     ]
+    },
+    "requestId": {
+     "description": "Unique operation id; reuse it with the same arguments after an uncertain answer",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "required": [
+    "assignee"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "issue_comment": {
+   "type": "object",
+   "properties": {
+    "issue": {
+     "description": "Issue key (VH-12) or id",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "body": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 60000
+    }
+   },
+   "required": [
+    "body"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "issue_create": {
+   "type": "object",
+   "properties": {
+    "title": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 500
+    },
+    "description": {
+     "type": "string",
+     "maxLength": 60000
+    },
+    "projectId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "priority": {
+     "type": "string",
+     "enum": [
+      "urgent",
+      "high",
+      "medium",
+      "low",
+      "none"
+     ]
+    },
+    "labels": {
+     "maxItems": 20,
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+     }
+    },
+    "requestId": {
+     "description": "Unique operation id; reuse it with the same arguments after an uncertain answer",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "required": [
+    "title"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "issue_get": {
+   "type": "object",
+   "properties": {
+    "issue": {
+     "description": "Issue key (VH-12) or id; omit for this session's issue",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "issue_list": {
+   "type": "object",
+   "properties": {
+    "scope": {
+     "description": "account (the only scope on the main agent)",
+     "type": "string",
+     "enum": [
+      "account"
+     ]
+    },
+    "status": {
+     "description": "Only these statuses (default: every open status)",
+     "maxItems": 7,
+     "type": "array",
+     "items": {
+      "type": "string",
+      "enum": [
+       "backlog",
+       "todo",
+       "in_progress",
+       "in_review",
+       "blocked",
+       "done",
+       "cancelled"
+      ]
+     }
+    },
+    "projectId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "assignee": {
+     "description": "none = todos, self = the owner's, agent = an agent's",
+     "type": "string",
+     "enum": [
+      "none",
+      "self",
+      "agent"
+     ]
+    },
+    "q": {
+     "description": "Text search",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 200
+    },
+    "limit": {
+     "description": "Default 20",
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 50
+    },
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "issue_update": {
+   "type": "object",
+   "properties": {
+    "status": {
+     "description": "in_progress | in_review | blocked",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 64
+    },
+    "comment": {
+     "description": "Comment posted on the issue with this change",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 16384
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "journal_append": {
+   "type": "object",
+   "properties": {
+    "content": {
+     "type": "string",
+     "description": "The note to append (plain text/markdown)"
+    }
+   },
+   "required": [
+    "content"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "lead_delegate": {
+   "type": "object",
+   "properties": {
+    "teamId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "From teams_list"
+    },
+    "goal": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 32000
+    },
+    "acceptance": {
+     "minItems": 1,
+     "maxItems": 32,
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32000
+     },
+     "description": "Checkable acceptance criteria, one per item"
+    },
+    "note": {
+     "description": "Context for the Lead (owner's words, links)",
+     "type": "string",
+     "maxLength": 4000
+    },
+    "requestId": {
+     "description": "Unique operation id; reuse it with the same arguments after an uncertain answer",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "risk": {
+     "type": "string",
+     "enum": [
+      "none",
+      "external",
+      "production"
+     ],
+     "description": "Required. none = stays inside Very Happy / this machine; external = the result is sent or published where other people see it (messages, mail, comments, PRs, pushes, shares); production = writes production data or infrastructure. Non-none goes to the owner's decision board first."
+    }
+   },
+   "required": [
+    "teamId",
+    "goal",
+    "acceptance",
+    "risk"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "lead_message": {
+   "type": "object",
+   "properties": {
+    "teamId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "From teams_list"
+    },
+    "body": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 32000
+    },
+    "taskId": {
+     "description": "Team task this is about (quoted in the message)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "requestId": {
+     "description": "Unique operation id; reuse it with the same arguments after an uncertain answer",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "risk": {
+     "type": "string",
+     "enum": [
+      "none",
+      "external",
+      "production"
+     ],
+     "description": "Required. none = stays inside Very Happy / this machine; external = the result is sent or published where other people see it (messages, mail, comments, PRs, pushes, shares); production = writes production data or infrastructure. Non-none goes to the owner's decision board first."
+    }
+   },
+   "required": [
+    "teamId",
+    "body",
+    "risk"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "memory_update": {
+   "type": "object",
+   "properties": {
+    "section": {
+     "type": "string",
+     "description": "The level-2 heading title (without \"## \") to replace or create"
+    },
+    "content": {
+     "type": "string",
+     "description": "The new body for that section (replaces the old body entirely)"
+    }
+   },
+   "required": [
+    "section",
+    "content"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "open_preview": {
+   "type": "object",
+   "properties": {
+    "path": {
+     "type": "string",
+     "description": "Absolute path (or ~/…) of the file to show the user"
+    },
+    "mode": {
+     "description": "'file' (default) renders the file; 'diff' is reserved and currently falls back to 'file'",
+     "type": "string",
+     "enum": [
+      "file",
+      "diff"
+     ]
+    },
+    "download": {
+     "description": "true when the user wants to download/receive the file itself (any type) rather than just read it",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "path"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "owner_board_list": {
+   "type": "object",
+   "properties": {
+    "state": {
+     "type": "string",
+     "enum": [
+      "open",
+      "all"
+     ]
+    },
+    "since": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 64
+    },
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "owner_board_post": {
+   "type": "object",
+   "properties": {
+    "kind": {
+     "type": "string",
+     "enum": [
+      "decision",
+      "todo",
+      "report",
+      "answer"
+     ]
+    },
+    "title": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 120
+    },
+    "body_md": {
+     "type": "string",
+     "maxLength": 32768
+    },
+    "options": {
+     "minItems": 2,
+     "maxItems": 4,
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 16
+       },
+       "label": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+       },
+       "detail": {
+        "type": "string",
+        "maxLength": 1000
+       },
+       "recommended": {
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "id",
+       "label"
+      ]
+     }
+    },
+    "links": {
+     "maxItems": 16,
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "type": {
+        "type": "string",
+        "enum": [
+         "task",
+         "pr",
+         "commit",
+         "url",
+         "panel",
+         "issue"
+        ]
+       },
+       "ref": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2048
+       },
+       "label": {
+        "type": "string",
+        "maxLength": 120
+       }
+      },
+      "required": [
+       "type",
+       "ref"
+      ]
+     }
+    },
+    "reply_to": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "key": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 256
+    },
+    "anchor": {
+     "anyOf": [
+      {
+       "type": "string",
+       "const": "this_turn"
+      },
+      {
+       "type": "object",
+       "properties": {
+        "localId": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 256
+        }
+       },
+       "required": [
+        "localId"
+       ]
+      }
+     ]
+    },
+    "request_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "notify": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "kind",
+    "title",
+    "request_id"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "owner_board_resolve": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "outcome": {
+     "type": "string",
+     "enum": [
+      "done",
+      "answered",
+      "dropped",
+      "superseded"
+     ]
+    },
+    "note": {
+     "type": "string",
+     "maxLength": 2000
+    },
+    "request_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "required": [
+    "id",
+    "outcome",
+    "request_id"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "owner_board_update": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "title": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 120
+    },
+    "body_md": {
+     "type": "string",
+     "maxLength": 32768
+    },
+    "append_md": {
+     "type": "string",
+     "maxLength": 32768
+    },
+    "options": {
+     "minItems": 2,
+     "maxItems": 4,
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 16
+       },
+       "label": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+       },
+       "detail": {
+        "type": "string",
+        "maxLength": 1000
+       },
+       "recommended": {
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "id",
+       "label"
+      ]
+     }
+    },
+    "links": {
+     "maxItems": 16,
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "type": {
+        "type": "string",
+        "enum": [
+         "task",
+         "pr",
+         "commit",
+         "url",
+         "panel",
+         "issue"
+        ]
+       },
+       "ref": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2048
+       },
+       "label": {
+        "type": "string",
+        "maxLength": 120
+       }
+      },
+      "required": [
+       "type",
+       "ref"
+      ]
+     }
+    },
+    "state": {
+     "type": "string",
+     "enum": [
+      "open",
+      "in_progress"
+     ]
+    },
+    "request_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "required": [
+    "id",
+    "request_id"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "project_context": {
+   "type": "object",
+   "properties": {
+    "projectId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "From project_list"
+    },
+    "section": {
+     "description": "Only this part",
+     "type": "string",
+     "enum": [
+      "instructions",
+      "log",
+      "sessions",
+      "messages"
+     ]
+    },
+    "full": {
+     "description": "Everything",
+     "type": "boolean"
+    },
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "required": [
+    "projectId"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "project_list": {
+   "type": "object",
+   "properties": {
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "project_note": {
+   "type": "object",
+   "properties": {
+    "projectId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "From project_list"
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "decision",
+      "finding",
+      "handoff"
+     ]
+    },
+    "title": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 200
+    },
+    "body": {
+     "type": "string",
+     "maxLength": 4000
+    },
+    "supersedes": {
+     "description": "Entry it replaces: \"#12\" or its id",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "required": [
+    "projectId",
+    "kind",
+    "title"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "report_progress": {
+   "type": "object",
+   "properties": {
+    "progress": {
+     "type": "string",
+     "description": "One short line describing the current state of this task"
+    },
+    "attention": {
+     "description": "'blocked' = cannot proceed without the user; 'review' = wants their eyes; 'none' = ordinary progress",
+     "type": "string",
+     "enum": [
+      "none",
+      "review",
+      "blocked"
+     ]
+    },
+    "phase": {
+     "description": "Optional phase of the work, shown as a label next to the progress line",
+     "type": "string",
+     "enum": [
+      "planning",
+      "implementing",
+      "testing",
+      "reviewing",
+      "blocked",
+      "done"
+     ]
+    }
+   },
+   "required": [
+    "progress"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "request_human": {
+   "type": "object",
+   "properties": {
+    "reason": {
+     "type": "string",
+     "description": "What you need from the user, one short line (no secrets)"
+    },
+    "panel": {
+     "description": "Id of this machine's web panel that shows what you are working in (from ~/.happy/settings.json webPanels)",
+     "type": "string"
+    }
+   },
+   "required": [
+    "reason"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "request_idle_restart": {
+   "type": "object",
+   "properties": {},
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "session_archive": {
+   "type": "object",
+   "properties": {
+    "sessionId": {
+     "type": "string",
+     "description": "The Happy session id to archive"
+    }
+   },
+   "required": [
+    "sessionId"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "session_handoff": {
+   "type": "object",
+   "properties": {
+    "from": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "to": {
+     "description": "Session id; omit (or \"new\") for a new session",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "note": {
+     "type": "string",
+     "maxLength": 4000
+    },
+    "requestId": {
+     "description": "Unique operation id; reuse it with the same arguments after an uncertain answer",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "required": [
+    "from"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "session_kill": {
+   "type": "object",
+   "properties": {
+    "sessionId": {
+     "type": "string",
+     "description": "The Happy session id to stop"
+    }
+   },
+   "required": [
+    "sessionId"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "session_message": {
+   "type": "object",
+   "properties": {
+    "to": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Target session id (from session_peers, or a peer's message header)"
+    },
+    "body": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 16000,
+     "description": "The message text"
+    },
+    "replyTo": {
+     "description": "Id of the peer message you are answering (from its header), if any",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 64
+    },
+    "machineId": {
+     "description": "Machine id the target session runs on, when known (skips the lookup across the account's machines)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "risk": {
+     "type": "string",
+     "enum": [
+      "none",
+      "external",
+      "production"
+     ],
+     "description": "Required. none = stays inside Very Happy / this machine; external = the result is sent or published where other people see it (messages, mail, comments, PRs, pushes, shares); production = writes production data or infrastructure. Non-none goes to the owner's decision board first."
+    }
+   },
+   "required": [
+    "to",
+    "body",
+    "risk"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "session_peers": {
+   "type": "object",
+   "properties": {
+    "scope": {
+     "description": "repo (default) | cwd | machine | project",
+     "type": "string",
+     "enum": [
+      "repo",
+      "cwd",
+      "machine",
+      "project"
+     ]
+    },
+    "machineId": {
+     "description": "Another machine of this account (from the web's machine list) to list instead of this one",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "cwd": {
+     "description": "With machineId: a directory on that machine to compute repo/cwd scope from",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 4096
+    },
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "session_read": {
+   "type": "object",
+   "properties": {
+    "sessionId": {
+     "type": "string",
+     "description": "The Happy session id to read"
+    },
+    "limit": {
+     "description": "How many recent messages to fetch (default 20, max 20)",
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 20
+    },
+    "machineId": {
+     "description": "Machine id the session runs on, when known (skips the lookup across the account's machines)",
+     "type": "string"
+    },
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "required": [
+    "sessionId"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "session_restart": {
+   "type": "object",
+   "properties": {
+    "sessionId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "when": {
+     "type": "string",
+     "enum": [
+      "idle",
+      "now"
+     ]
+    },
+    "requestId": {
+     "description": "Unique operation id; reuse it with the same arguments after an uncertain answer",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "required": [
+    "sessionId"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "session_send": {
+   "type": "object",
+   "properties": {
+    "sessionId": {
+     "type": "string",
+     "description": "The Happy session id to message"
+    },
+    "text": {
+     "type": "string",
+     "description": "The message text to send"
+    },
+    "resume": {
+     "description": "If the session is archived or offline, resume it on its machine (like the web Restore button) and wait until it is live before sending",
+     "type": "boolean"
+    },
+    "machineId": {
+     "description": "Machine id the session runs on, when known (skips the lookup across the account's machines)",
+     "type": "string"
+    },
+    "risk": {
+     "type": "string",
+     "enum": [
+      "none",
+      "external",
+      "production"
+     ],
+     "description": "Required. none = stays inside Very Happy / this machine; external = the result is sent or published where other people see it (messages, mail, comments, PRs, pushes, shares); production = writes production data or infrastructure. Non-none goes to the owner's decision board first."
+    }
+   },
+   "required": [
+    "sessionId",
+    "text",
+    "risk"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "session_spawn": {
+   "type": "object",
+   "properties": {
+    "directory": {
+     "type": "string",
+     "description": "Absolute working directory for the new session (a leading ~ is expanded)"
+    },
+    "prompt": {
+     "description": "Optional first message to send once the session is up",
+     "type": "string"
+    },
+    "title": {
+     "description": "The new session's title, one line (≤200 chars). Without it the title is generated from the first prompt.",
+     "type": "string",
+     "maxLength": 1000
+    },
+    "agent": {
+     "description": "Backend to run: claude | codex | pi (default claude)",
+     "type": "string",
+     "enum": [
+      "claude",
+      "codex",
+      "pi"
+     ]
+    },
+    "projectId": {
+     "description": "Very Happy project to put the session in before its first prompt (from project_list)",
+     "type": "string",
+     "pattern": "^[a-zA-Z0-9_-]{1,128}$"
+    },
+    "risk": {
+     "type": "string",
+     "enum": [
+      "none",
+      "external",
+      "production"
+     ],
+     "description": "Required. none = stays inside Very Happy / this machine; external = the result is sent or published where other people see it (messages, mail, comments, PRs, pushes, shares); production = writes production data or infrastructure. Non-none goes to the owner's decision board first."
+    }
+   },
+   "required": [
+    "directory",
+    "risk"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "session_wrapup": {
+   "type": "object",
+   "properties": {
+    "sessionId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "requestId": {
+     "description": "Unique operation id; reuse it with the same arguments after an uncertain answer",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "required": [
+    "sessionId"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "sessions_list": {
+   "type": "object",
+   "properties": {
+    "filter": {
+     "type": "object",
+     "properties": {
+      "machineId": {
+       "description": "Only sessions of this machine (this list covers this machine)",
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 128
+      },
+      "projectId": {
+       "description": "Only members of this project (from project_list)",
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 128
+      },
+      "state": {
+       "type": "string",
+       "enum": [
+        "running",
+        "stopped"
+       ]
+      }
+     }
+    },
+    "limit": {
+     "description": "How many sessions (default 20, max 50)",
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 50
+    },
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "sessions_search": {
+   "type": "object",
+   "properties": {
+    "projectId": {
+     "description": "From project_list",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "state": {
+     "type": "string",
+     "enum": [
+      "active",
+      "inactive",
+      "api_error",
+      "needs_owner",
+      "archived"
+     ]
+    },
+    "flavor": {
+     "description": "claude | codex | pi | …",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 32
+    },
+    "q": {
+     "description": "Text in title, directory or id",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 200
+    },
+    "limit": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 50
+    },
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_accept": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "taskId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "attemptId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "goalVersion": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "requestId",
+    "taskId",
+    "attemptId",
+    "goalVersion"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_cancel": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "taskId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "reason": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 32000
+    },
+    "attemptId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "goalVersion": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "requestId",
+    "taskId",
+    "reason",
+    "attemptId",
+    "goalVersion"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_create": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "machineId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "projectId": {
+     "description": "Existing project to put the team in",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "noProject": {
+     "description": "Create the team without a project",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "name",
+    "requestId"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_delegate": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "goal": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 32000
+    },
+    "acceptance": {
+     "minItems": 1,
+     "maxItems": 32,
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32000
+     }
+    },
+    "parentTaskId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "assigneeBotId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "botName": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "directory": {
+     "type": "string",
+     "minLength": 1
+    },
+    "assistant": {
+     "type": "string",
+     "enum": [
+      "claude",
+      "codex",
+      "pi-acp"
+     ]
+    },
+    "model": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 256
+    },
+    "agentProfile": {
+     "description": "Account a member spawns on (id from `very-happy account list`; null = machine login; omit = team default). Unusable → the launch is refused, never the machine login.",
+     "anyOf": [
+      {
+       "type": "object",
+       "properties": {
+        "id": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 64
+        },
+        "label": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 200
+        }
+       },
+       "required": [
+        "id"
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "risk": {
+     "type": "string",
+     "enum": [
+      "none",
+      "external",
+      "production"
+     ],
+     "description": "Required. none = stays inside Very Happy / this machine; external = the result is sent or published where other people see it (messages, mail, comments, PRs, pushes, shares); production = writes production data or infrastructure. Non-none goes to the owner's decision board first."
+    }
+   },
+   "required": [
+    "requestId",
+    "goal",
+    "acceptance",
+    "risk"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_handoff": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "taskId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "assigneeBotId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "attemptId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "goalVersion": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "requestId",
+    "taskId",
+    "assigneeBotId",
+    "attemptId",
+    "goalVersion"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_inspect": {
+   "type": "object",
+   "properties": {
+    "taskId": {
+     "description": "Return this task in full: goal, acceptance, all attempts with results, its messages and operations",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "includeClosed": {
+     "description": "List closed (done / cancelled) tasks with clipped goals instead of counting them",
+     "type": "boolean"
+    },
+    "messagesLimit": {
+     "description": "How many of your most recent messages to list (default 20); undelivered ones are always listed",
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 500
+    },
+    "full": {
+     "description": "Return the whole team view (can be very large)",
+     "type": "boolean"
+    },
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_join": {
+   "type": "object",
+   "properties": {
+    "teamId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "botId": {
+     "description": "Existing root bot to reconnect; preserves its identity",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    }
+   },
+   "required": [
+    "teamId",
+    "name",
+    "requestId"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_return": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "taskId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "reason": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 32000
+    },
+    "attemptId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "goalVersion": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "requestId",
+    "taskId",
+    "reason",
+    "attemptId",
+    "goalVersion"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_schedule_cancel": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "scheduleId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "version": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "requestId",
+    "scheduleId",
+    "version"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_schedule_create": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "botId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "body": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 32000
+    },
+    "runAt": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 9007199254740991
+    },
+    "intervalMs": {
+     "type": "integer",
+     "minimum": 60000,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "requestId",
+    "name",
+    "botId",
+    "body",
+    "runAt"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_schedule_pause": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "scheduleId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "version": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "requestId",
+    "scheduleId",
+    "version"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_schedule_resume": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "scheduleId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "version": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "requestId",
+    "scheduleId",
+    "version"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "teams_list": {
+   "type": "object",
+   "properties": {
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "terminal_read": {
+   "type": "object",
+   "properties": {
+    "terminalId": {
+     "type": "string",
+     "description": "The terminal id (from terminals_list)"
+    },
+    "lines": {
+     "description": "How many history lines to read (default 80, max 2000)",
+     "type": "number"
+    },
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "required": [
+    "terminalId"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "terminal_send": {
+   "type": "object",
+   "properties": {
+    "terminalId": {
+     "type": "string",
+     "description": "The terminal id (from terminals_list)"
+    },
+    "text": {
+     "type": "string",
+     "description": "The text to paste into the terminal"
+    },
+    "submit": {
+     "description": "Also press Enter after pasting (default false)",
+     "type": "boolean"
+    },
+    "risk": {
+     "type": "string",
+     "enum": [
+      "none",
+      "external",
+      "production"
+     ],
+     "description": "Required. none = stays inside Very Happy / this machine; external = the result is sent or published where other people see it (messages, mail, comments, PRs, pushes, shares); production = writes production data or infrastructure. Non-none goes to the owner's decision board first."
+    }
+   },
+   "required": [
+    "terminalId",
+    "text",
+    "risk"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "terminals_list": {
+   "type": "object",
+   "properties": {
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "todo_add": {
+   "type": "object",
+   "properties": {
+    "title": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 500
+    },
+    "note": {
+     "type": "string",
+     "maxLength": 8000
+    },
+    "requestId": {
+     "description": "A UUID; reuse it with the same arguments after an uncertain answer",
+     "type": "string",
+     "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    }
+   },
+   "required": [
+    "title"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "todo_complete": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "version": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "id"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "todo_list": {
+   "type": "object",
+   "properties": {
+    "cursor": {
+     "description": "Continue a truncated answer: pass the cursor named in its \"[truncated: … cursor=…]\" line",
+     "type": "string",
+     "maxLength": 16
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "wrapup_report": {
+   "type": "object",
+   "properties": {
+    "summary": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 4000,
+     "description": "What this session did, a few lines (the card shows the first three)"
+    },
+    "files": {
+     "description": "Paths you created or changed",
+     "maxItems": 100,
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+     }
+    },
+    "commits": {
+     "description": "Commits made in this session: sha (7-64 hex), subject, repo (owner/name or remote URL) when known",
+     "maxItems": 30,
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "sha": {
+        "type": "string",
+        "pattern": "^[0-9a-fA-F]{7,64}$"
+       },
+       "subject": {
+        "type": "string",
+        "maxLength": 200
+       },
+       "repo": {
+        "type": "string",
+        "maxLength": 512
+       }
+      },
+      "required": [
+       "sha"
+      ]
+     }
+    },
+    "pending": {
+     "description": "Short items that need the user's confirmation or are left undone; each becomes a checkbox",
+     "maxItems": 10,
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+     }
+    },
+    "can_close": {
+     "type": "boolean",
+     "description": "true when nothing here still needs this session"
+    },
+    "artifacts": {
+     "description": "Other outputs worth keeping: docs, reports, screenshots, PR links",
+     "maxItems": 30,
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+     }
+    }
+   },
+   "required": [
+    "summary",
+    "can_close"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "wrapup_selected": {
+   "type": "object",
+   "properties": {
+    "boardItemId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "The card id (in the owner's message)"
+    }
+   },
+   "required": [
+    "boardItemId"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "wrapup_suggest": {
+   "type": "object",
+   "properties": {
+    "sessions": {
+     "minItems": 1,
+     "maxItems": 20,
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "sessionId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+       },
+       "title": {
+        "description": "Shown on the card (default: the session id)",
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+       },
+       "reason": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 300,
+        "description": "One line: why it looks done"
+       }
+      },
+      "required": [
+       "sessionId",
+       "reason"
+      ]
+     }
+    },
+    "requestId": {
+     "description": "Reuse it with the same arguments after an uncertain answer",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 64
+    }
+   },
+   "required": [
+    "sessions"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+ },
+ "normal": {
+  "automation_ack": {
+   "type": "object",
+   "properties": {
+    "runId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "required": [
+    "runId"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_create": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "description": {
+     "type": "string",
+     "maxLength": 4000
+    },
+    "machineId": {
+     "description": "Target machine id; omit or 'this' for the current machine",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "trigger": {
+     "oneOf": [
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "cron"
+        },
+        "expr": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 256
+        },
+        "tz": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 64
+        }
+       },
+       "required": [
+        "kind",
+        "expr",
+        "tz"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "interval"
+        },
+        "everyMs": {
+         "type": "integer",
+         "minimum": 60000,
+         "maximum": 31622400000
+        },
+        "anchorAt": {
+         "type": "integer",
+         "exclusiveMinimum": 0,
+         "maximum": 8640000000000000
+        }
+       },
+       "required": [
+        "kind",
+        "everyMs"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "once"
+        },
+        "at": {
+         "type": "integer",
+         "exclusiveMinimum": 0,
+         "maximum": 8640000000000000
+        }
+       },
+       "required": [
+        "kind",
+        "at"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "manual"
+        }
+       },
+       "required": [
+        "kind"
+       ]
+      }
+     ]
+    },
+    "action": {
+     "oneOf": [
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "spawn"
+        },
+        "agent": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 64
+        },
+        "directory": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 4096
+        },
+        "prompt": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 32000
+        },
+        "model": {
+         "anyOf": [
+          {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 256
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "permissionMode": {
+         "anyOf": [
+          {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 64
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "worktree": {
+         "type": "boolean"
+        },
+        "sticky": {
+         "type": "object",
+         "properties": {
+          "key": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 512
+          }
+         },
+         "required": [
+          "key"
+         ]
+        },
+        "agentProfile": {
+         "anyOf": [
+          {
+           "type": "object",
+           "properties": {
+            "id": {
+             "type": "string",
+             "minLength": 1,
+             "maxLength": 64
+            },
+            "label": {
+             "type": "string",
+             "minLength": 1,
+             "maxLength": 200
+            }
+           },
+           "required": [
+            "id"
+           ]
+          },
+          {
+           "type": "null"
+          }
+         ]
+        }
+       },
+       "required": [
+        "kind",
+        "agent",
+        "directory",
+        "prompt"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "send"
+        },
+        "sessionId": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 128
+        },
+        "target": {
+         "type": "string",
+         "enum": [
+          "main-agent"
+         ]
+        },
+        "prompt": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 32000
+        }
+       },
+       "required": [
+        "kind",
+        "prompt"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "script"
+        },
+        "command": {
+         "minItems": 1,
+         "maxItems": 256,
+         "type": "array",
+         "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+         }
+        },
+        "cwd": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 4096
+        },
+        "env": {
+         "type": "object",
+         "propertyNames": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+         },
+         "additionalProperties": {
+          "type": "string",
+          "maxLength": 32000
+         }
+        },
+        "timeoutMs": {
+         "type": "integer",
+         "minimum": 1000,
+         "maximum": 604800000
+        }
+       },
+       "required": [
+        "kind",
+        "command"
+       ]
+      }
+     ]
+    },
+    "concurrency": {
+     "description": "skip (default): a run while another is active is recorded as skipped; queue: it waits",
+     "type": "string",
+     "enum": [
+      "skip",
+      "queue"
+     ]
+    },
+    "maxRuntimeMs": {
+     "type": "integer",
+     "minimum": 60000,
+     "maximum": 604800000
+    },
+    "paused": {
+     "description": "Create paused",
+     "type": "boolean"
+    },
+    "precheck": {
+     "description": "Optional gate run on the machine before the action: exactly one of command (argv array) or shell (one command line, not template-rendered; payload in $VH_AUTOMATION_PAYLOAD). Exit 0 runs the action; anything else records the run as skipped (repeats fold into one run, ×N). cwd defaults to the action directory; timeoutMs default 60000, max 600000; includeOutput appends its stdout to the spawn/send prompt.",
+     "type": "object",
+     "properties": {
+      "command": {
+       "minItems": 1,
+       "maxItems": 256,
+       "type": "array",
+       "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+       }
+      },
+      "shell": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 8000
+      },
+      "cwd": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 4096
+      },
+      "timeoutMs": {
+       "type": "integer",
+       "minimum": 1000,
+       "maximum": 600000
+      },
+      "includeOutput": {
+       "type": "boolean"
+      }
+     }
+    },
+    "projectId": {
+     "description": "Project the sessions it spawns join: a project id, or 'current' for this session's project (same as `very-happy auto --project`). The server checks it; an older server ignores it and the result carries a notice.",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "required": [
+    "name",
+    "trigger",
+    "action"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_delete": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "description": "Automation name",
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "id": {
+     "description": "Automation id (alternative to name)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_fire": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "payload": {
+     "description": "Payload text; JSON lets prompts use {{payload.field}}",
+     "type": "string",
+     "maxLength": 65536
+    },
+    "dedupeKey": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 256
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_get": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "description": "Automation name",
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "id": {
+     "description": "Automation id (alternative to name)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_list": {
+   "type": "object",
+   "properties": {
+    "machineId": {
+     "description": "Only this machine id, or 'this' for the current machine",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_pause": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "description": "Automation name",
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "id": {
+     "description": "Automation id (alternative to name)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_report": {
+   "type": "object",
+   "properties": {
+    "runId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "status": {
+     "type": "string",
+     "enum": [
+      "done",
+      "failed"
+     ]
+    },
+    "summary": {
+     "type": "string",
+     "maxLength": 4096
+    },
+    "error": {
+     "type": "string",
+     "maxLength": 4096
+    },
+    "needsAttention": {
+     "type": "boolean"
+    },
+    "attentionReason": {
+     "type": "string",
+     "maxLength": 512
+    }
+   },
+   "required": [
+    "status"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_resume": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "description": "Automation name",
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "id": {
+     "description": "Automation id (alternative to name)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_run": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "description": "Automation name",
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "id": {
+     "description": "Automation id (alternative to name)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "payload": {
+     "description": "Payload text; JSON lets prompts use {{payload.field}}",
+     "type": "string",
+     "maxLength": 65536
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_runs": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "description": "Automation name",
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "id": {
+     "description": "Automation id (alternative to name)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "status": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 64
+    },
+    "attention": {
+     "description": "Only runs flagged for a human",
+     "type": "boolean"
+    },
+    "limit": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 200
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "automation_update": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "description": "Automation name",
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "id": {
+     "description": "Automation id (alternative to name)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "version": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    },
+    "newName": {
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-_.]{0,63}$"
+    },
+    "description": {
+     "anyOf": [
+      {
+       "type": "string",
+       "maxLength": 4000
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "machineId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "trigger": {
+     "oneOf": [
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "cron"
+        },
+        "expr": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 256
+        },
+        "tz": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 64
+        }
+       },
+       "required": [
+        "kind",
+        "expr",
+        "tz"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "interval"
+        },
+        "everyMs": {
+         "type": "integer",
+         "minimum": 60000,
+         "maximum": 31622400000
+        },
+        "anchorAt": {
+         "type": "integer",
+         "exclusiveMinimum": 0,
+         "maximum": 8640000000000000
+        }
+       },
+       "required": [
+        "kind",
+        "everyMs"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "once"
+        },
+        "at": {
+         "type": "integer",
+         "exclusiveMinimum": 0,
+         "maximum": 8640000000000000
+        }
+       },
+       "required": [
+        "kind",
+        "at"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "manual"
+        }
+       },
+       "required": [
+        "kind"
+       ]
+      }
+     ]
+    },
+    "action": {
+     "oneOf": [
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "spawn"
+        },
+        "agent": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 64
+        },
+        "directory": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 4096
+        },
+        "prompt": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 32000
+        },
+        "model": {
+         "anyOf": [
+          {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 256
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "permissionMode": {
+         "anyOf": [
+          {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 64
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "worktree": {
+         "type": "boolean"
+        },
+        "sticky": {
+         "type": "object",
+         "properties": {
+          "key": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 512
+          }
+         },
+         "required": [
+          "key"
+         ]
+        },
+        "agentProfile": {
+         "anyOf": [
+          {
+           "type": "object",
+           "properties": {
+            "id": {
+             "type": "string",
+             "minLength": 1,
+             "maxLength": 64
+            },
+            "label": {
+             "type": "string",
+             "minLength": 1,
+             "maxLength": 200
+            }
+           },
+           "required": [
+            "id"
+           ]
+          },
+          {
+           "type": "null"
+          }
+         ]
+        }
+       },
+       "required": [
+        "kind",
+        "agent",
+        "directory",
+        "prompt"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "send"
+        },
+        "sessionId": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 128
+        },
+        "target": {
+         "type": "string",
+         "enum": [
+          "main-agent"
+         ]
+        },
+        "prompt": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 32000
+        }
+       },
+       "required": [
+        "kind",
+        "prompt"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "script"
+        },
+        "command": {
+         "minItems": 1,
+         "maxItems": 256,
+         "type": "array",
+         "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+         }
+        },
+        "cwd": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 4096
+        },
+        "env": {
+         "type": "object",
+         "propertyNames": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+         },
+         "additionalProperties": {
+          "type": "string",
+          "maxLength": 32000
+         }
+        },
+        "timeoutMs": {
+         "type": "integer",
+         "minimum": 1000,
+         "maximum": 604800000
+        }
+       },
+       "required": [
+        "kind",
+        "command"
+       ]
+      }
+     ]
+    },
+    "concurrency": {
+     "type": "string",
+     "enum": [
+      "skip",
+      "queue"
+     ]
+    },
+    "maxRuntimeMs": {
+     "type": "integer",
+     "minimum": 60000,
+     "maximum": 604800000
+    },
+    "precheck": {
+     "description": "Optional gate run on the machine before the action: exactly one of command (argv array) or shell (one command line, not template-rendered; payload in $VH_AUTOMATION_PAYLOAD). Exit 0 runs the action; anything else records the run as skipped (repeats fold into one run, ×N). cwd defaults to the action directory; timeoutMs default 60000, max 600000; includeOutput appends its stdout to the spawn/send prompt. null removes it.",
+     "anyOf": [
+      {
+       "type": "object",
+       "properties": {
+        "command": {
+         "minItems": 1,
+         "maxItems": 256,
+         "type": "array",
+         "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+         }
+        },
+        "shell": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 8000
+        },
+        "cwd": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 4096
+        },
+        "timeoutMs": {
+         "type": "integer",
+         "minimum": 1000,
+         "maximum": 600000
+        },
+        "includeOutput": {
+         "type": "boolean"
+        }
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "projectId": {
+     "description": "Project the sessions it spawns join: a project id, or 'current' for this session's project (same as `very-happy auto --project`). The server checks it; an older server ignores it and the result carries a notice. null detaches.",
+     "anyOf": [
+      {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 128
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "version"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "change_title": {
+   "type": "object",
+   "properties": {
+    "title": {
+     "type": "string",
+     "description": "The new title for the chat session"
+    }
+   },
+   "required": [
+    "title"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "copy_to_clipboard": {
+   "type": "object",
+   "properties": {
+    "text": {
+     "type": "string",
+     "description": "The text to copy to the user's clipboard"
+    }
+   },
+   "required": [
+    "text"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "handoff_send": {
+   "type": "object",
+   "properties": {
+    "to": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Session id that takes the work over"
+    },
+    "to_title": {
+     "description": "Its title, for the card",
+     "type": "string",
+     "maxLength": 200
+    },
+    "machine_id": {
+     "description": "Machine the target runs on, when known",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "summary": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 12000,
+     "description": "The handoff summary: goal, done, current state, next steps, open questions"
+    },
+    "artifacts": {
+     "description": "Artifact paths (files, branches, PRs, docs) the target needs",
+     "maxItems": 30,
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+     }
+    },
+    "archive_after": {
+     "description": "Archive this session once delivery to a live session is confirmed (default false)",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "to",
+    "summary"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "issue_comment": {
+   "type": "object",
+   "properties": {
+    "body": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 16384,
+     "description": "Markdown comment"
+    },
+    "mention_owner": {
+     "description": "Ask the owner (@me)",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "body"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "issue_get": {
+   "type": "object",
+   "properties": {
+    "issue": {
+     "description": "Issue key (VH-12) or id; omit for this session's issue",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "issue_list": {
+   "type": "object",
+   "properties": {
+    "status": {
+     "description": "Only these statuses",
+     "maxItems": 7,
+     "type": "array",
+     "items": {
+      "type": "string",
+      "enum": [
+       "backlog",
+       "todo",
+       "in_progress",
+       "in_review",
+       "blocked",
+       "done",
+       "cancelled"
+      ]
+     }
+    },
+    "project": {
+     "description": "current = this session's project only",
+     "type": "string",
+     "enum": [
+      "current",
+      "any"
+     ]
+    },
+    "limit": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 50
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "issue_update": {
+   "type": "object",
+   "properties": {
+    "status": {
+     "description": "in_progress | in_review | blocked",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 64
+    },
+    "comment": {
+     "description": "Comment posted on the issue with this change",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 16384
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "open_preview": {
+   "type": "object",
+   "properties": {
+    "path": {
+     "type": "string",
+     "description": "Absolute path (or ~/…) of the file to show the user"
+    },
+    "mode": {
+     "description": "'file' (default) renders the file; 'diff' is reserved and currently falls back to 'file'",
+     "type": "string",
+     "enum": [
+      "file",
+      "diff"
+     ]
+    },
+    "download": {
+     "description": "true when the user wants to download/receive the file itself (any type) rather than just read it",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "path"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "project_context": {
+   "type": "object",
+   "properties": {
+    "section": {
+     "description": "Only this part",
+     "type": "string",
+     "enum": [
+      "instructions",
+      "log",
+      "sessions",
+      "messages"
+     ]
+    },
+    "full": {
+     "description": "Everything, not just changes since your last read",
+     "type": "boolean"
+    },
+    "others": {
+     "description": "Also the other sessions and their notes (reference only) — only when the user asks",
+     "type": "boolean"
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "project_note": {
+   "type": "object",
+   "properties": {
+    "kind": {
+     "type": "string",
+     "enum": [
+      "decision",
+      "finding",
+      "handoff"
+     ],
+     "description": "decision | finding | handoff"
+    },
+    "title": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 200,
+     "description": "One line"
+    },
+    "body": {
+     "description": "Details (≤4KB)",
+     "type": "string",
+     "maxLength": 4000
+    },
+    "supersedes": {
+     "description": "Entry it replaces: \"#12\" or its id",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "revoke": {
+     "description": "With supersedes: withdraw that entry (only your own) instead of writing a new one",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "kind",
+    "title"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "report_progress": {
+   "type": "object",
+   "properties": {
+    "progress": {
+     "type": "string",
+     "description": "One short line describing the current state of this task"
+    },
+    "attention": {
+     "description": "'blocked' = cannot proceed without the user; 'review' = wants their eyes; 'none' = ordinary progress",
+     "type": "string",
+     "enum": [
+      "none",
+      "review",
+      "blocked"
+     ]
+    },
+    "phase": {
+     "description": "Optional phase of the work, shown as a label next to the progress line",
+     "type": "string",
+     "enum": [
+      "planning",
+      "implementing",
+      "testing",
+      "reviewing",
+      "blocked",
+      "done"
+     ]
+    }
+   },
+   "required": [
+    "progress"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "request_human": {
+   "type": "object",
+   "properties": {
+    "reason": {
+     "type": "string",
+     "description": "What you need from the user, one short line (no secrets)"
+    },
+    "panel": {
+     "description": "Id of this machine's web panel that shows what you are working in (from ~/.happy/settings.json webPanels)",
+     "type": "string"
+    }
+   },
+   "required": [
+    "reason"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "request_idle_restart": {
+   "type": "object",
+   "properties": {},
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "session_handoff": {
+   "type": "object",
+   "properties": {
+    "from": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Session that should hand its work over"
+    },
+    "to": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "An existing session that takes it over (to hand off to a new session, spawn it first)"
+    },
+    "to_title": {
+     "description": "Title of the target, quoted in the request",
+     "type": "string",
+     "maxLength": 200
+    },
+    "machine_id": {
+     "description": "Machine the TARGET runs on, when known",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "archive_after": {
+     "description": "The source archives itself after a confirmed delivery (default false)",
+     "type": "boolean"
+    },
+    "note": {
+     "description": "Extra instruction appended to the request",
+     "type": "string",
+     "maxLength": 2000
+    },
+    "request_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique id of this call; repeat it with the same arguments when the outcome was unknown (the same turn is never sent twice)"
+    }
+   },
+   "required": [
+    "from",
+    "to"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "session_message": {
+   "type": "object",
+   "properties": {
+    "to": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Target session id (from session_peers, or a peer's message header)"
+    },
+    "body": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 16000,
+     "description": "The message text"
+    },
+    "replyTo": {
+     "description": "Id of the peer message you are answering (from its header), if any",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 64
+    },
+    "machineId": {
+     "description": "Machine id the target session runs on, when known (skips the lookup across the account's machines)",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    }
+   },
+   "required": [
+    "to",
+    "body"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "session_peers": {
+   "type": "object",
+   "properties": {
+    "scope": {
+     "description": "repo (default) | cwd | machine | project",
+     "type": "string",
+     "enum": [
+      "repo",
+      "cwd",
+      "machine",
+      "project"
+     ]
+    },
+    "machineId": {
+     "description": "Another machine of this account (from the web's machine list) to list instead of this one",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "cwd": {
+     "description": "With machineId: a directory on that machine to compute repo/cwd scope from",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 4096
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "session_wrapup": {
+   "type": "object",
+   "properties": {
+    "session_ids": {
+     "description": "Sessions to wrap up (1-20)",
+     "minItems": 1,
+     "maxItems": 20,
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+     }
+    },
+    "session_id": {
+     "description": "One session to wrap up (same as session_ids: [id])",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "template": {
+     "description": "Use this text instead of the account's wrap-up template",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 8000
+    },
+    "request_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique id of this call; repeat it with the same arguments when the outcome was unknown (the same turn is never sent twice)"
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_accept": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "taskId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "attemptId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "goalVersion": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "requestId",
+    "taskId",
+    "attemptId",
+    "goalVersion"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_cancel": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "taskId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "reason": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 32000
+    },
+    "attemptId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "goalVersion": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "requestId",
+    "taskId",
+    "reason",
+    "attemptId",
+    "goalVersion"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_create": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "machineId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "projectId": {
+     "description": "Existing project to put the team in",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "noProject": {
+     "description": "Create the team without a project",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "name",
+    "requestId"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_delegate": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "goal": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 32000
+    },
+    "acceptance": {
+     "minItems": 1,
+     "maxItems": 32,
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32000
+     }
+    },
+    "parentTaskId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "assigneeBotId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "botName": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "directory": {
+     "type": "string",
+     "minLength": 1
+    },
+    "assistant": {
+     "type": "string",
+     "enum": [
+      "claude",
+      "codex",
+      "pi-acp"
+     ]
+    },
+    "model": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 256
+    },
+    "agentProfile": {
+     "description": "Account a member spawns on (id from `very-happy account list`; null = machine login; omit = team default). Unusable → the launch is refused, never the machine login.",
+     "anyOf": [
+      {
+       "type": "object",
+       "properties": {
+        "id": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 64
+        },
+        "label": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 200
+        }
+       },
+       "required": [
+        "id"
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "requestId",
+    "goal",
+    "acceptance"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_handoff": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "taskId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "assigneeBotId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "attemptId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "goalVersion": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "requestId",
+    "taskId",
+    "assigneeBotId",
+    "attemptId",
+    "goalVersion"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_inspect": {
+   "type": "object",
+   "properties": {
+    "taskId": {
+     "description": "Return this task in full: goal, acceptance, all attempts with results, its messages and operations",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "includeClosed": {
+     "description": "List closed (done / cancelled) tasks with clipped goals instead of counting them",
+     "type": "boolean"
+    },
+    "messagesLimit": {
+     "description": "How many of your most recent messages to list (default 20); undelivered ones are always listed",
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 500
+    },
+    "full": {
+     "description": "Return the whole team view (can be very large)",
+     "type": "boolean"
+    }
+   },
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_join": {
+   "type": "object",
+   "properties": {
+    "teamId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "botId": {
+     "description": "Existing root bot to reconnect; preserves its identity",
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    }
+   },
+   "required": [
+    "teamId",
+    "name",
+    "requestId"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_return": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "taskId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "reason": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 32000
+    },
+    "attemptId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "goalVersion": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "requestId",
+    "taskId",
+    "reason",
+    "attemptId",
+    "goalVersion"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_schedule_cancel": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "scheduleId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "version": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "requestId",
+    "scheduleId",
+    "version"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_schedule_create": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "botId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "body": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 32000
+    },
+    "runAt": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 9007199254740991
+    },
+    "intervalMs": {
+     "type": "integer",
+     "minimum": 60000,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "requestId",
+    "name",
+    "botId",
+    "body",
+    "runAt"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_schedule_pause": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "scheduleId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "version": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "requestId",
+    "scheduleId",
+    "version"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "team_schedule_resume": {
+   "type": "object",
+   "properties": {
+    "requestId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128,
+     "description": "Unique operation ID. Reuse the same ID and arguments after an uncertain response."
+    },
+    "scheduleId": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "version": {
+     "type": "integer",
+     "exclusiveMinimum": 0,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "requestId",
+    "scheduleId",
+    "version"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "wrapup_report": {
+   "type": "object",
+   "properties": {
+    "summary": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 4000,
+     "description": "What this session did, a few lines (the card shows the first three)"
+    },
+    "files": {
+     "description": "Paths you created or changed",
+     "maxItems": 100,
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+     }
+    },
+    "commits": {
+     "description": "Commits made in this session: sha (7-64 hex), subject, repo (owner/name or remote URL) when known",
+     "maxItems": 30,
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "sha": {
+        "type": "string",
+        "pattern": "^[0-9a-fA-F]{7,64}$"
+       },
+       "subject": {
+        "type": "string",
+        "maxLength": 200
+       },
+       "repo": {
+        "type": "string",
+        "maxLength": 512
+       }
+      },
+      "required": [
+       "sha"
+      ]
+     }
+    },
+    "pending": {
+     "description": "Short items that need the user's confirmation or are left undone; each becomes a checkbox",
+     "maxItems": 10,
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+     }
+    },
+    "can_close": {
+     "type": "boolean",
+     "description": "true when nothing here still needs this session"
+    },
+    "artifacts": {
+     "description": "Other outputs worth keeping: docs, reports, screenshots, PR links",
+     "maxItems": 30,
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+     }
+    }
+   },
+   "required": [
+    "summary",
+    "can_close"
+   ],
+   "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+ }
+}
