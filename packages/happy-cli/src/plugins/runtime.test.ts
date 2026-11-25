@@ -155,10 +155,78 @@ describe('B-974c runtime: capability gate, install.sync, queue replay, notices (
         });
         expect(sessions.isLocal('s1')).toBe(true);
         expect(sessions.isLocal('s2')).toBe(false);
-        expect(sessions.list()).toEqual([{ id: 's1', title: 'n', cwd: '/w', agent: 'claude', status: 'running', updatedAt: 0 }]);
+        // P3-10: no live reader and no update time → `updatedAt` is left out, not 0.
+        expect(await sessions.list()).toEqual([{ id: 's1', title: 'n', cwd: '/w', agent: 'claude', status: 'running' }]);
         const page = await sessions.readMessages('s1', 20, '99');
         expect(readLog).toHaveBeenCalledWith('s1', 200, 99);
         expect(page.messages).toEqual([{ id: '10', role: 'user', text: 'hello', createdAt: 5 }, { id: '13', role: 'agent', text: 'done', createdAt: 6 }]);
         expect(messageFromLogEntry({ seq: 1, body: { role: 'agent', content: { type: 'acp', data: { type: 'tool-call', name: 'x' } } } })).toBeNull();
+    });
+});
+
+describe('B-974h P3-10: sessions.list carries the real title and updatedAt, or leaves them out', () => {
+    const children = () => [
+        { happySessionId: 's1', happySessionMetadataFromLocalWebhook: { path: '/a', flavor: 'claude', machineId: 'm1' } },
+        { happySessionId: 's2', happySessionMetadataFromLocalWebhook: { path: '/b', flavor: 'codex', machineId: 'm1', summary: { text: 'snapshot title', updatedAt: 5 } } },
+        { happySessionId: 's3', happySessionMetadataFromLocalWebhook: { path: '/c', machineId: 'm1', name: '  ' } },
+    ];
+    const base = { machineId: 'm1', children, isTurnActive: () => false, readLog: async () => [] };
+
+    it('live title / updatedAt win over the spawn-time snapshot; unknown fields are omitted (never null / 0)', async () => {
+        const liveInfo = vi.fn(async (id: string) => id === 's1' ? { title: 'Fix the login bug', updatedAt: 1_800_000_000_000 } : id === 's2' ? {} : null);
+        const list = await trackedPluginSessions({ ...base, liveInfo }).list();
+        expect(list).toEqual([
+            { id: 's1', title: 'Fix the login bug', cwd: '/a', agent: 'claude', status: 'idle', updatedAt: 1_800_000_000_000 },
+            { id: 's2', title: 'snapshot title', cwd: '/b', agent: 'codex', status: 'idle', updatedAt: 5 },
+            { id: 's3', cwd: '/c', agent: null, status: 'idle' },
+        ]);
+        for (const row of list) {
+            expect(row).not.toHaveProperty('title', null);
+            expect(Object.values(row)).not.toContain(0);
+        }
+    });
+
+    it('a failing live read falls back to the last answer; answers are cached for the TTL', async () => {
+        let t = 0;
+        let fail = false;
+        const liveInfo = vi.fn(async () => { if (fail) throw new Error('offline'); return { title: 'T', updatedAt: 9 }; });
+        const sessions = trackedPluginSessions({ ...base, children: () => [children()[0]], liveInfo, liveTtlMs: 1_000, now: () => t });
+        expect((await sessions.list())[0]).toMatchObject({ title: 'T', updatedAt: 9 });
+        await sessions.list();
+        expect(liveInfo).toHaveBeenCalledTimes(1);
+        t = 2_000; fail = true;
+        expect((await sessions.list())[0]).toMatchObject({ title: 'T', updatedAt: 9 });
+        expect(liveInfo).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('B-974h P3-9: the runtime learns install origins after install.sync', () => {
+    let cleanup = () => {};
+    afterEach(() => cleanup());
+
+    it('fetchOriginHosts runs after a successful sync and feeds the forwarder; a failure keeps the last map', async () => {
+        const t = tempHome(); cleanup = t.cleanup;
+        const store = new PluginStore(t.home);
+        const m = sampleManifest();
+        store.writePending(m.id, m);
+        store.writeInstall(m.id, { installId: 'pi_1', pluginId: m.id, state: 'pending', grants: [], approvedManifestHash: null, updatedAt: 1 });
+        const installs = [{ id: 'pi_1', pluginId: 'hello-board', state: 'enabled', grants: ['panel'], manifest: null, manifestHash: manifestHash(m), pending: false }];
+        let fail = false;
+        const fetchOriginHosts = vi.fn(async () => { if (fail) throw new Error('down'); return new Map([['pi_1', 'hello-board-abcdefgh.p.example.test']]); });
+        const runtime = new PluginRuntime({
+            home: t.home, machineId: () => 'm1',
+            serverOp: async (_i, op) => op === 'install.sync' ? { kind: 'ok', result: { installs } } : op === 'events.pull' ? { kind: 'ok', result: { events: [], cursor: null } } : { kind: 'ok', result: {} },
+            sessions: { list: () => [], isLocal: () => false, readMessages: async () => ({ messages: [], cursor: null }) },
+            probeServerSupport: async () => 'yes',
+            fetchOriginHosts,
+        });
+        runtime.start(43211);
+        await runtime.onConnected();
+        expect(fetchOriginHosts).toHaveBeenCalledTimes(1);
+        expect(runtime.originHostOf('pi_1')).toBe('hello-board-abcdefgh.p.example.test');
+        fail = true;
+        await runtime.onInstallChanged('pi_1');
+        expect(runtime.originHostOf('pi_1')).toBe('hello-board-abcdefgh.p.example.test');
+        runtime.stop();
     });
 });

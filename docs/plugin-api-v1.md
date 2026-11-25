@@ -270,11 +270,15 @@ per minute, shared by all plugins writing to that session.
 
 ```
 GET /plugin/v1/sessions?limit=1..100&cursor=…   (default 50)        [sessions.list]
-→ { sessions: [{ id, title, cwd, agent, status: "running"|"idle"|"archived", updatedAt }], cursor }
+→ { sessions: [{ id, title?, cwd, agent, status: "running"|"idle"|"archived", updatedAt? }], cursor }
 
 GET /plugin/v1/sessions/:id/messages?limit=1..50&before=…   (default 20) [sessions.read]
 → { messages: [{ id, role: "user"|"agent", text, createdAt }], cursor }
 ```
+
+In `sessions`, `title` is the session's current title and `updatedAt` its last
+update (ms), read from the server; either is left out when unknown (never
+`null` or `0`).
 
 This computer's sessions only; text only (no tool input/output, no
 attachments). Every call is audited and the owner sees "read N sessions in the
@@ -434,7 +438,8 @@ Then dedupe on `id`. The full version, including panel requests, is
   literal (no DNS, no proxy variables). `Host` becomes the upstream authority;
   a same-origin `Origin` becomes `http://127.0.0.1:<port>` (others are removed);
   `X-Forwarded-Proto: https` and `X-Forwarded-Host: <plugin origin host>` are
-  added. Non-GET requests must be same-origin.
+  added (on every request, GET included; the daemon learns the origin host
+  from the server). Non-GET requests must be same-origin.
 - Redirects are not followed; a `Location` pointing at the upstream itself is
   rewritten to a relative path.
 - Response headers added by the host (not removable): `Content-Security-Policy:

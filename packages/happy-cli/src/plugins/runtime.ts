@@ -41,6 +41,7 @@ export class PluginRuntime {
     private apiBase: string | null = null;
     private syncing: Promise<void> | null = null;
     private support: ServerPluginSupport = 'unknown';
+    private originHosts = new Map<string, string>();
     private readonly serverOp: ServerOp;
 
     constructor(private readonly deps: {
@@ -50,6 +51,8 @@ export class PluginRuntime {
         sessions: LocalSessions;
         /** r2 capability gate: does the server publish `plugins-v1`? */
         probeServerSupport: () => Promise<ServerPluginSupport>;
+        /** P3-9: installId → origin host (`GET /v1/plugins/installs`), read after each install sync; best-effort. */
+        fetchOriginHosts?: () => Promise<Map<string, string>>;
     }) {
         // r4/r6: `plugins_disabled` from any op = the switch is off → same as an old server: 503, nothing queued.
         const serverOp: ServerOp = async (installId, op, payload, requestId) => {
@@ -66,7 +69,7 @@ export class PluginRuntime {
         this.queue = new OfflineQueue((installId, items) => this.persistFor(installId, 'queue.json', items));
         this.events = new PluginEventHub({ registry: this.registry, serverOp });
         this.api = new PluginApi({ registry: this.registry, queue: this.queue, events: this.events, serverOp, sessions: deps.sessions, machineId: deps.machineId, serverSupport: () => this.support });
-        this.forwarder = new PluginHttpForwarder(this.registry);
+        this.forwarder = new PluginHttpForwarder(this.registry, { originHost: (installId) => this.originHosts.get(installId) ?? null });
     }
 
     private persistFor(installId: string, file: string, value: unknown): void {
@@ -174,8 +177,23 @@ export class PluginRuntime {
             }
         }
         this.reload();
+        await this.refreshOriginHosts();
         return true;
     }
+
+    /** P3-9: keep the last good map when the read fails (the origin of an install never changes). */
+    private async refreshOriginHosts(): Promise<void> {
+        if (!this.deps.fetchOriginHosts) return;
+        try {
+            const fresh = await this.deps.fetchOriginHosts();
+            for (const [installId, host] of fresh) this.originHosts.set(installId, host);
+        } catch (error) {
+            logger.debug('[PLUGINS] origin read failed; X-Forwarded-Host falls back to request headers', error);
+        }
+    }
+
+    /** Test hook / diagnostics. */
+    originHostOf(installId: string): string | null { return this.originHosts.get(installId) ?? null; }
 
     /** `very-happy plugin list/show` through the daemon. */
     describe(): Array<{ id: string; installId: string; state: string; grants: string[]; queued: number; pendingEvents: number }> {
@@ -203,6 +221,22 @@ export function pluginRpcHandlers(runtime: PluginRuntime): Record<string, (param
 }
 
 function squash(text: string): string { return text.replace(/\s+/g, ' ').trim(); }
+
+function nonEmpty(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function positive(value: unknown): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+    const out: R[] = new Array(items.length);
+    let next = 0;
+    const worker = async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i]); } };
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+    return out;
+}
 
 /**
  * §5.7: text only — user prompts and agent replies; no tool input/output,
@@ -233,23 +267,52 @@ export function trackedPluginSessions(opts: {
     isTurnActive: (sessionId: string) => boolean;
     /** Decrypted log entries (ascending seq) with seq < beforeSeq, read with this machine's session key. */
     readLog: (sessionId: string, limit: number, beforeSeq: number) => Promise<LogEntry[]>;
+    /**
+     * P3-10: the session's current title and last update from the server (decrypted here). The daemon's own
+     * metadata is the spawn-time snapshot — no title yet, no update time — so without this the list said
+     * `title: null, updatedAt: 0`. Best-effort, cached for `liveTtlMs`.
+     */
+    liveInfo?: (sessionId: string) => Promise<{ title?: string; updatedAt?: number } | null>;
+    liveTtlMs?: number;
+    now?: () => number;
 }): LocalSessions {
+    const now = opts.now ?? Date.now;
+    const ttl = opts.liveTtlMs ?? 60_000;
+    const cache = new Map<string, { at: number; info: { title?: string; updatedAt?: number } | null }>();
+    const live = async (sessionId: string): Promise<{ title?: string; updatedAt?: number } | null> => {
+        if (!opts.liveInfo) return null;
+        const hit = cache.get(sessionId);
+        if (hit && now() - hit.at < ttl) return hit.info;
+        let info: { title?: string; updatedAt?: number } | null = null;
+        try { info = await opts.liveInfo(sessionId); } catch { info = hit?.info ?? null; }
+        cache.set(sessionId, { at: now(), info });
+        return info;
+    };
     const local = () => opts.children().filter((c) => typeof c.happySessionId === 'string' && c.happySessionId.length > 0
         && (c.happySessionMetadataFromLocalWebhook?.machineId === undefined || c.happySessionMetadataFromLocalWebhook.machineId === opts.machineId));
     return {
         isLocal: (sessionId) => local().some((c) => c.happySessionId === sessionId),
-        list: () => local().map((c) => {
-            const m = c.happySessionMetadataFromLocalWebhook;
-            const id = c.happySessionId!;
-            return {
-                id,
-                title: m?.summary?.text ?? m?.name ?? null,
-                cwd: m?.path ?? null,
-                agent: m?.flavor ?? null,
-                status: m?.lifecycleState === 'archived' ? 'archived' as const : opts.isTurnActive(id) ? 'running' as const : 'idle' as const,
-                updatedAt: m?.summary?.updatedAt ?? 0,
-            };
-        }),
+        list: async () => {
+            const children = local();
+            const ids = new Set(children.map((c) => c.happySessionId!));
+            for (const key of cache.keys()) if (!ids.has(key)) cache.delete(key);
+            const infos = await mapLimit(children, 8, (c) => live(c.happySessionId!));
+            return children.map((c, i) => {
+                const m = c.happySessionMetadataFromLocalWebhook;
+                const id = c.happySessionId!;
+                const fresh = infos[i];
+                const title = nonEmpty(fresh?.title) ?? nonEmpty(m?.summary?.text) ?? nonEmpty(m?.name);
+                const updatedAt = positive(fresh?.updatedAt) ?? positive(m?.summary?.updatedAt);
+                return {
+                    id,
+                    ...(title ? { title } : {}),
+                    cwd: m?.path ?? null,
+                    agent: m?.flavor ?? null,
+                    status: m?.lifecycleState === 'archived' ? 'archived' as const : opts.isTurnActive(id) ? 'running' as const : 'idle' as const,
+                    ...(updatedAt ? { updatedAt } : {}),
+                };
+            });
+        },
         readMessages: async (sessionId, limit, before) => {
             const beforeSeq = before ? Number(before) : 2147483647;
             // Over-read: most log entries are tool calls / lifecycle, not text.
