@@ -81,7 +81,7 @@ import { apiSocket } from '@/sync/apiSocket';
 import { forkCatalogSource, type LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
 import { codexEffortDowngrade, resolveMessageModeMeta } from '@/sync/messageMeta';
-import { codexContextOptions, reportedCodexContextIntent, resolveCodexContextMode, settledCodexContextPick } from '@/sync/codexContextMode';
+import { codexContextModelOf, codexContextOptions, reportedCodexContextIntent, resolveCodexContextMode, settledCodexContextPick } from '@/sync/codexContextMode';
 import { deriveCodexRunningModel, deriveRunningModelSubtitle, runningModelForTrigger, selectDisplayedModelKey, withSelectedModelEntry } from './modelDisplay';
 import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
 import {
@@ -623,7 +623,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     // B-977: Codex 「上下文」 — only for a model the wrapper reports as able to run larger.
     // B-977d: a run pick like model / effort — a local pick is pending (and sent with
     // every message) until the wrapper reports it; then the report is the truth.
-    const contextModelId = isCodex ? (modelKey && modelKey !== 'default' ? modelKey : metadata?.currentModelCode ?? launcherContext?.configuredModel) : undefined;
+    const contextModelId = isCodex ? (codexContextModelOf(metadata, modelKey) ?? launcherContext?.configuredModel) : undefined;
     const contextChoices = isCodex
         ? codexContextOptions(isCodex && !session ? draftCatalog : metadata, contextModelId)
         : null;

@@ -61,3 +61,28 @@ describe('B-977d meta.codexContext carries the pick', () => {
         resetRunPickBasesForTests(null);
     });
 });
+
+describe('B-977d a session that has not run a turn yet', () => {
+    // Spawned, no turn: no currentModelCode; the machine config names the model.
+    const fresh = { codexContextMode: 'extended', currentModelCode: undefined, codexThreadId: undefined, configuredModel: 'gpt-6.2-astra', defaultModelCode: 'gpt-6.2-astra' };
+    it('still sends codexContext (account default 「标准」 reaches the first turn)', () => {
+        resetRunPickBasesForTests({});
+        expect(resolveMessageModeMeta(codexSession(fresh), { agentDefaultOverrides: { codex: { contextMode: 'standard' } } }).codexContext).toBe('standard');
+        expect(resolveMessageModeMeta(codexSession(fresh)).codexContext).toBe('extended');
+        expect(resolveMessageModeMeta(codexSession({ ...fresh, configuredModel: 'gpt-5.5', defaultModelCode: 'gpt-5.5' })).codexContext).toBeUndefined();
+        resetRunPickBasesForTests(null);
+    });
+});
+
+describe('B-977d first message before the wrapper published its window table', () => {
+    const early = { codexContextMode: 'extended', currentModelCode: undefined, codexThreadId: undefined, codexContextWindows: undefined, models: undefined };
+    it('sends the draft pick or the account default; nothing when nothing was chosen', () => {
+        resetRunPickBasesForTests({});
+        expect(resolveMessageModeMeta(codexSession(early, 'standard')).codexContext).toBe('standard');
+        expect(resolveMessageModeMeta(codexSession(early), { agentDefaultOverrides: { codex: { contextMode: 'standard' } } }).codexContext).toBe('standard');
+        expect(resolveMessageModeMeta(codexSession(early)).codexContext).toBeUndefined();
+        // Older wrapper (no report, no table): nothing.
+        expect(resolveMessageModeMeta(codexSession({ ...early, codexContextMode: undefined }, 'standard')).codexContext).toBeUndefined();
+        resetRunPickBasesForTests(null);
+    });
+});

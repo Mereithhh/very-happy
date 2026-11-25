@@ -34,6 +34,8 @@ export function buildOutboundUserRecord(input: OutboundUserRecordInput): RawReco
             ...(modeMeta.effort !== undefined ? { effort: modeMeta.effort } : {}),
             ...(modeMeta.modelIntent !== undefined ? { modelIntent: modeMeta.modelIntent } : {}),
             ...(modeMeta.effortIntent !== undefined ? { effortIntent: modeMeta.effortIntent } : {}),
+            // B-977d: the Codex 「上下文」 pick (it was computed but never left the device).
+            ...(modeMeta.codexContext !== undefined ? { codexContext: modeMeta.codexContext } : {}),
             ...(input.delivery === 'steer' ? { delivery: input.delivery } : {}),
             ...(input.displayText ? { displayText: input.displayText } : {}),
             ...(input.queuedAt !== undefined ? { queuedAt: input.queuedAt } : {}),
@@ -53,5 +55,6 @@ export function readOutboundUserRecord(record: unknown): { text: string; modeMet
     if ('effort' in meta && (typeof meta.effort === 'string' || meta.effort === null)) modeMeta.effort = meta.effort;
     if (typeof meta.modelIntent === 'string') modeMeta.modelIntent = meta.modelIntent;
     if (typeof meta.effortIntent === 'string') modeMeta.effortIntent = meta.effortIntent;
+    if (typeof meta.codexContext === 'string') modeMeta.codexContext = meta.codexContext;
     return { text: candidate.content.text, modeMeta };
 }

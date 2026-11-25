@@ -8,7 +8,7 @@ import { getEffortLevelsForModel } from '@/components/modelModeOptions';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 import { EFFORT_PICK_AUTO, getRunPickBase, recordsRunIntent, sessionRunIntents, withRunPicks } from './runPicks';
 import { readEffortIntent } from '@slopus/happy-wire';
-import { codexContextOptions, resolveCodexContextMode } from './codexContextMode';
+import { codexContextModelOf, codexContextOptions, explicitCodexContextPick, resolveCodexContextMode } from './codexContextMode';
 
 export type MessageModeMeta = {
     permissionMode?: PermissionModeKey;
@@ -132,9 +132,16 @@ export function resolveMessageModeMeta(
     // on another device is never left behind. A model with one window sends
     // nothing.
     if (normalizeAgentKey(session.metadata?.flavor) === 'codex') {
-        const model = modelMode && modelMode !== 'default' ? modelMode : session.metadata?.currentModelCode;
-        const choices = codexContextOptions(session.metadata, model);
-        if (choices) meta.codexContext = resolveCodexContextMode(session.metadata, session.contextMode, agentOverrides.contextMode, getRunPickBase(sessionIn.id, 'context'));
+        const choices = codexContextOptions(session.metadata, codexContextModelOf(session.metadata, modelMode));
+        const base = getRunPickBase(sessionIn.id, 'context');
+        if (choices) meta.codexContext = resolveCodexContextMode(session.metadata, session.contextMode, agentOverrides.contextMode, base);
+        else {
+            // B-977d: a new session's first message usually leaves before the
+            // wrapper published its window table; a stated choice still goes
+            // (the wrapper applies it only to a model that can run it).
+            const explicit = explicitCodexContextPick(session.metadata, session.contextMode, agentOverrides.contextMode, base);
+            if (explicit) meta.codexContext = explicit;
+        }
     }
 
     return meta;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { codexContextOptions, contextWindowsForModel, formatContextWindow, reportedCodexContextIntent, resolveCodexContextMode, settledCodexContextPick, settingsCodexContextOptions, supportsCodexContextChoice } from './codexContextMode';
+import { codexContextModelOf, codexContextOptions, contextWindowsForModel, formatContextWindow, reportedCodexContextIntent, resolveCodexContextMode, settledCodexContextPick, settingsCodexContextOptions, supportsCodexContextChoice } from './codexContextMode';
 
 const codex = {
     flavor: 'codex',
@@ -116,5 +116,15 @@ describe('B-977d 「上下文」 is a run pick (QA R87b P1)', () => {
         expect(resolveCodexContextMode(echoed, 'extended', null, 'standard')).toBe('extended');
         expect(settledCodexContextPick({ ...echoed, codexContextMode: 'extended' }, 'extended', 'standard')).toBe('clear');
         expect(settledCodexContextPick(ran, null, undefined)).toBeNull();
+    });
+});
+
+describe('B-977d codexContextModelOf', () => {
+    it('explicit pick > last run model > machine config model', () => {
+        expect(codexContextModelOf({ currentModelCode: 'a', configuredModel: 'b' }, 'c')).toBe('c');
+        expect(codexContextModelOf({ currentModelCode: 'a', configuredModel: 'b' }, 'default')).toBe('a');
+        expect(codexContextModelOf({ configuredModel: 'b', defaultModelCode: 'd' }, null)).toBe('b');
+        expect(codexContextModelOf({ defaultModelCode: 'd' }, undefined)).toBe('d');
+        expect(codexContextModelOf(null, undefined)).toBeUndefined();
     });
 });

@@ -29,6 +29,18 @@ type ContextMetadata = {
 
 export type CodexContextOption = { key: CodexContextMode; window: number };
 
+/**
+ * B-977d: the model a Codex session's next turn runs, for the 「上下文」 row:
+ * an explicit pick, else what it ran last, else (no turn yet) the model the
+ * machine config / Codex would start it on. Without that last step a session
+ * that never ran had no row and sent no `codexContext`, so a pick or the
+ * account default could not reach its first turn.
+ */
+export function codexContextModelOf(metadata: ContextMetadata, modelKey: string | null | undefined): string | null | undefined {
+    if (modelKey && modelKey !== 'default') return modelKey;
+    return metadata?.currentModelCode ?? metadata?.configuredModel ?? metadata?.defaultModelCode;
+}
+
 /** A model's two windows, or null when the machine cannot tell / the model cannot run larger. */
 export function contextWindowsForModel(metadata: ContextMetadata, model: string | null | undefined): { standard: number; extended: number } | null {
     if (normalizeAgentKey(metadata?.flavor) !== 'codex' || !model) return null;
@@ -80,6 +92,27 @@ export function resolveCodexContextMode(
     const mode = picked ?? readCodexContextMode(accountDefault) ?? CODEX_CONTEXT_DEFAULT_MODE;
     // No catalog / a model that cannot run larger: standard, never the extended default.
     return known ? mode : 'standard';
+}
+
+/**
+ * B-977d: the choice to send when the wrapper has not published its window
+ * table yet (no catalog at all): a pending local pick or the account default.
+ * Null when nothing was chosen, the wrapper already reports a chosen mode, or
+ * it is an older wrapper.
+ */
+export function explicitCodexContextPick(
+    metadata: ContextMetadata,
+    local: string | null | undefined,
+    accountDefault: string | null | undefined,
+    base: string | null | undefined,
+): CodexContextMode | null {
+    if (Object.keys(readCodexContextWindows(metadata?.codexContextWindows)).length > 0) return null;
+    // An older wrapper reports no mode and takes none.
+    if (reportedCodexContextIntent(metadata) === undefined) return null;
+    const pick = resolveCodexContextPick(metadata, local, base);
+    if (pick.state === 'pending') return readCodexContextMode(pick.value) ?? null;
+    if (reportedCodexContextIntent(metadata)) return null;
+    return readCodexContextMode(accountDefault) ?? null;
 }
 
 /** A local pick the wrapper echoed (or another device's later choice replaced) is no longer local. */
