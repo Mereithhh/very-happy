@@ -334,10 +334,10 @@ export function saveSessionContextModes(modes: Record<string, string>) {
 
 /**
  * B-849b: per session, the recorded intent this device saw when its user
- * picked (`m` model, `e` effort; a missing key = the wrapper recorded none).
+ * picked (`m` model, `e` effort, `c` Codex 「上下文」; a missing key = the wrapper recorded none).
  * Lets a later choice from another device win over an unsent local pick.
  */
-export type RunPickBases = Record<string, { m?: string | null; e?: string | null }>;
+export type RunPickBases = Record<string, { m?: string | null; e?: string | null; c?: string | null }>;
 
 export function loadSessionRunPickBases(): RunPickBases {
     try {

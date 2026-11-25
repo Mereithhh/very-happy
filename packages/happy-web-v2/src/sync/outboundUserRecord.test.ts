@@ -24,3 +24,13 @@ describe('B-509 outbound user record', () => {
         expect(readOutboundUserRecord({ role: 'user', content: { type: 'text', text: 'x' } })).toEqual({ text: 'x', modeMeta: {} });
     });
 });
+
+describe('B-977d Codex 「上下文」 rides the message', () => {
+    it('meta.codexContext is written and read back; absent when not chosen', () => {
+        const record = buildOutboundUserRecord({ text: 'hi', sentFrom: 'web', modeMeta: { codexContext: 'standard' } });
+        expect((record.meta as Record<string, unknown>).codexContext).toBe('standard');
+        expect(readOutboundUserRecord(record)?.modeMeta.codexContext).toBe('standard');
+        const plain = buildOutboundUserRecord({ text: 'hi', sentFrom: 'web', modeMeta: {} });
+        expect('codexContext' in (plain.meta as Record<string, unknown>)).toBe(false);
+    });
+});

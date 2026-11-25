@@ -86,15 +86,17 @@ export function sessionRunIntents(metadata: IntentMetadata): { model: string | n
 
 let bases: RunPickBases | null = null;
 const loadBases = () => (bases ??= loadSessionRunPickBases());
-const BASE_KEY = { model: 'm', effort: 'e' } as const;
+const BASE_KEY = { model: 'm', effort: 'e', context: 'c' } as const;
+/** B-977d: Codex 「上下文」 is a run pick too (sync/codexContextMode.ts), with its own base. */
+export type RunPickBaseField = keyof typeof BASE_KEY;
 
-export function getRunPickBase(sessionId: string | undefined, field: RunPickField): string | null | undefined {
+export function getRunPickBase(sessionId: string | undefined, field: RunPickBaseField): string | null | undefined {
     if (!sessionId) return undefined;
     const entry = loadBases()[sessionId];
     return entry && Object.prototype.hasOwnProperty.call(entry, BASE_KEY[field]) ? entry[BASE_KEY[field]] : undefined;
 }
 
-export function setRunPickBase(sessionId: string, field: RunPickField, base: string | null | undefined): void {
+export function setRunPickBase(sessionId: string, field: RunPickBaseField, base: string | null | undefined): void {
     const all = { ...loadBases() };
     const entry = { ...(all[sessionId] ?? {}) };
     if (base === undefined) delete entry[BASE_KEY[field]];
