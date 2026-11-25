@@ -336,7 +336,7 @@ export function enableMessages(id: string, record: InstallRecord, server: Enable
     const settings = `${webappUrl.replace(/\/+$/, '')}/settings/plugins`;
     const lines: Array<{ text: string; warn?: boolean }> = [];
     if (server.kind === 'enabled') {
-        lines.push({ text: `${id}: enabled (${effectiveState(record)}).` });
+        lines.push({ text: effectiveState(record) === 'disabled' ? `${id}: no longer disabled; its state refreshes when the daemon syncs.` : `${id}: enabled (${effectiveState(record)}).` });
         return lines;
     }
     lines.push({ text: `${id}: enabled on this machine.` });

@@ -269,6 +269,14 @@ describe('B-974h plugin enable (P2-2): local first, then the machine-token /enab
         expect(enableMessages('hello-board', r.record, r.server, 'https://w.test').some((l) => l.warn && l.text.includes('not told'))).toBe(true);
     });
 
+    it('409 not_disabled with a stale local disabled record: success, but the record is not promoted', async () => {
+        const store = await installed('disabled');
+        const r = await enablePlugin(store, mockServer({ enable: async () => { throw new PluginServerError('not_disabled', 'x', 409); } }), 'hello-board');
+        expect(r.server).toEqual({ kind: 'enabled' });
+        expect(store.readInstall('hello-board')?.state).toBe('disabled');
+        expect(enableMessages('hello-board', r.record, r.server, 'https://w.test')[0].text).toContain('no longer disabled');
+    });
+
     it('409 disabled_by_operator (local record stale) names the operator, not the account', async () => {
         const store = await installed();
         const r = await enablePlugin(store, mockServer({ enable: async () => { throw new PluginServerError('disabled_by_operator', 'x', 409); } }), 'hello-board');

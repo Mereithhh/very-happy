@@ -161,8 +161,10 @@ export async function enablePlugin(store: PluginStore, server: PluginServerApi, 
         const code = error instanceof PluginServerError ? error.code : null;
         if (code === 'enable_requires_owner') return { record: next, server: { kind: 'requires_owner' } };
         if (code === 'disabled_by_operator') return { record: next, server: { kind: 'operator' } };
-        // 409 not_disabled: nothing left to lift, i.e. done.
-        if (code !== 'not_disabled') return { record: next, server: { kind: 'not_sent', error: (error as Error).message } };
+        // 409 not_disabled: nothing left to lift, i.e. done. The real state (maybe rejected / removed) comes with the
+        // next install.sync; never promote the local record here.
+        if (code === 'not_disabled') return { record: next, server: { kind: 'enabled' } };
+        return { record: next, server: { kind: 'not_sent', error: (error as Error).message } };
     }
     // Lifted on the server: show it as enabled now; the daemon's next install.sync is authoritative.
     if (next.state === 'disabled') next = { ...next, state: 'enabled', updatedAt: Date.now() };
