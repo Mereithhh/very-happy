@@ -3450,6 +3450,8 @@ export const zhHans: TranslationStructure = {
             muteSubtitle: '不推送通知，角标不计入 App 角标。',
             openPanel: '打开面板',
             reviewCta: '去审批',
+            reviewCardInstall: ({ name }: { name: string }) => `插件安装待批准 · ${name}`,
+            reviewCardUpdate: ({ name }: { name: string }) => `插件更新待批准 · ${name}`,
             auditTitle: '最近记录',
             auditEmpty: '还没有记录。',
             sensitiveReads: ({ count }: { count: number }) => `最近 24 小时读过 ${count} 个会话`,

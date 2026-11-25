@@ -21,6 +21,8 @@ import {
     isAttentionPluginItem,
     isSessionAttentionItem,
     parsePluginPayload,
+    parsePluginReviewPayload,
+    AttentionPluginReviewPayloadSchema,
 } from './attention';
 import {
     PLUGIN_ERROR_STATUS,
@@ -617,5 +619,18 @@ describe('r1 host views', () => {
         expect(attentionLinkedSessionId({ links: [{ type: 'pr', ref: '1' }, { type: 'session', ref: 'sess_1' }] })).toBe('sess_1');
         expect(attentionLinkedSessionId({ links: null })).toBeNull();
         expect(isAttentionPluginItem({ source: 'owner-system', sessionId: null })).toBe(true);
+    });
+});
+
+describe('B-974f install review card payload', () => {
+    it('reads a v1 plugin-review payload and nothing else', () => {
+        const p = { v: 1, type: 'plugin-review', pluginName: 'Hello Board', update: true };
+        expect(AttentionPluginReviewPayloadSchema.parse(p)).toEqual(p);
+        expect(parsePluginReviewPayload(p)).toEqual(p);
+        expect(parsePluginReviewPayload({ ...p, extra: 1, update: 'x' })).toEqual({ ...p, update: false });
+        expect(parsePluginReviewPayload({ v: 1, type: 'plugin', pluginName: 'x' })).toBeNull();
+        expect(parsePluginReviewPayload({ v: 1, type: 'plugin-review', pluginName: '' })).toBeNull();
+        expect(parsePluginReviewPayload(null)).toBeNull();
+        expect(parsePluginPayload(p)).toBeNull();
     });
 });

@@ -152,7 +152,7 @@ badge stops counting toward the app badge. Only badges with
 | | Official service | Self-hosted |
 |---|---|---|
 | Plugin host | Configured by the operator | Set `VH_PLUGIN_HOST` (e.g. `p.example.com`, a port is allowed) with wildcard DNS and TLS for `*.p.example.com`. Put it under the same registrable domain as the web app so panel cookies stay same-site. Without it, panels are unavailable; badge, cards and widgets still work. `VH_PLUGIN_WEB_ORIGINS` (comma-separated) sets which web app origins may frame panels; it defaults to the origin of `PUBLIC_URL`. For local development only, `VH_PLUGIN_HOST_SCHEME=http` serves panels without TLS (e.g. `VH_PLUGIN_HOST=lvh.me:3005`). |
-| Feature switch | On, may be rolled out per account (`VH_PLUGINS_ENABLED_ACCOUNTS`, comma-separated account ids) | `VH_PLUGINS_ENABLED=1`. While off, `/v1/features` does not list `plugins-v1` and `/v1/plugins/*` answers `404 plugins_disabled`. |
+| Feature switch | On, may be rolled out per account (`VH_PLUGINS_ENABLED_ACCOUNTS`, comma-separated account ids) | `VH_PLUGINS_ENABLED=1`. While off, `/v1/features` does not list `plugins-v1` and every `/v1/plugins/*` request (any path, any body) answers `404 plugins_disabled` before validation. |
 | Decision cards | Shown in **Needs you** | Also need the owner board: `VH_OWNER_BOARD_ENABLED=true`. Without it, cards are stored but nowhere to answer them. |
 | Kill switch | `VH_PLUGINS_DISABLED`, `VH_PLUGIN_DENYLIST` | Yours |
 | Who can see panel content | The operator | Only you |

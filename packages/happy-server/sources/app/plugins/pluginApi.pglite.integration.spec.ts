@@ -162,7 +162,24 @@ describe('B-974 plugins through startApi (pglite)', () => {
         expect((await call('POST', '/v1/plugins/installs', { machineId, manifest }, machineToken)).status).toBe(404);
         expect(await db.attentionItem.count({ where: { sessionId: null } })).toBe(0);
         expect(await op(machineSocket, { op: 'install.sync' })).toMatchObject({ ok: false, status: 404, error: 'plugins_disabled' });
+        // B-974f P3-1: the switch answers before body validation, and an unknown path looks the same as a real one.
+        const off = { status: 404, body: { error: 'plugins_disabled' } };
+        expect(await call('POST', '/v1/plugins/installs', { machineId: 7, manifest }, machineToken)).toEqual(off);
+        expect(await call('POST', '/v1/plugins/installs/pi_x/approve', { grants: 'nope' })).toEqual(off);
+        expect(await call('POST', '/v1/plugins/installs/pi_x/mute', { muted: 'yes' })).toEqual(off);
+        expect(await call('POST', '/v1/plugins/installs/pi_x/grants', {})).toEqual(off);
+        expect(await call('POST', '/v1/plugins/installs/pi_x/frame-ticket', { panelId: 1 })).toEqual(off);
+        expect(await call('POST', '/v1/plugins/installs/pi_x/disable', { reason: 5 }, machineToken)).toEqual(off);
+        expect(await call('POST', '/v1/plugins/installs/pi_x/enable', { machineId: 5 }, machineToken)).toEqual(off);
+        expect(await call('POST', '/v1/plugins/widgets/pi_x/s/action', { actionId: 3 })).toEqual(off);
+        expect(await call('GET', '/v1/plugins/installs/pi_x/audit?limit=abc')).toEqual(off);
+        expect(await call('GET', '/v1/plugins/no-such-route')).toEqual(off);
+        expect(await call('DELETE', '/v1/plugins/installs/pi_x?keepItems=maybe', undefined, machineToken)).toEqual(off);
+        expect((await call('GET', '/v1/plugins/no-such-route', undefined, 'bad-token')).status).toBe(401);
         process.env.VH_PLUGINS_ENABLED = '1';
+        // On: validation applies again, and an unknown path is a plain not_found.
+        expect((await call('POST', '/v1/plugins/installs/pi_x/mute', { muted: 'yes' })).status).toBe(400);
+        expect(await call('GET', '/v1/plugins/no-such-route')).toEqual({ status: 404, body: { error: 'not_found' } });
     });
 
     it('install: machine token submits (pending + review card); approval is the signed-in owner only, hash-bound', async () => {
@@ -194,7 +211,12 @@ describe('B-974 plugins through startApi (pglite)', () => {
         expect(approved.body.install).toMatchObject({ state: 'enabled', grants: ['sidebar', 'panel', 'decisions', 'session.widget'] });
         expect(machineNotices.some(n => n.t === 'changed' && n.installId === installId)).toBe(true);
         const review = await db.attentionItem.findFirstOrThrow({ where: { pluginInstallId: installId, key: 'vh:install-review' } });
-        expect(review).toMatchObject({ source: 'owner-system', state: 'resolved', sessionId: null });
+        expect(review).toMatchObject({ source: 'owner-system', state: 'resolved', sessionId: null, title: '插件安装待批准 · Hello Board' });
+        // B-974f P3-5: the Web titles the card in its own language from the payload; `title` stays for an older Web.
+        expect(review.payload).toEqual({ v: 1, type: 'plugin-review', pluginName: 'Hello Board', update: false });
+        const listedReview = (await call('GET', '/v1/attention-items?state=all&include=plugin')).body.items.find((i: any) => i.id === review.id);
+        expect(listedReview.payload).toEqual({ v: 1, type: 'plugin-review', pluginName: 'Hello Board', update: false });
+        expect(OldWebItem.safeParse({ ...listedReview, sessionId: 'x' }).success).toBe(true);
     });
 
     it('plugin-op is checked against the socket: other machine → not_found; a user socket → machine_only; info without trust in the payload', async () => {
@@ -366,6 +388,12 @@ describe('B-974 plugins through startApi (pglite)', () => {
         expect((await raw('/sw.js', { host, headers: { cookie, 'service-worker': 'script' } })).status).toBe(404);
         expect((await raw('/a/%2e%2e/secret', { host, headers: { cookie } })).status).toBe(400);
         expect((await raw('/ws', { host, headers: { cookie, accept: 'text/event-stream' } })).status).toBe(501);
+        // B-974f P3-8: a real WebSocket upgrade (Node never runs request hooks for it) gets 501 too, cookie or not.
+        for (const headers of [{ cookie }, {}] as Array<Record<string, string>>) {
+            const ws = await raw('/ws', { host, headers: { ...headers, connection: 'Upgrade', upgrade: 'websocket', 'sec-websocket-version': '13', 'sec-websocket-key': randomBytes(16).toString('base64') } });
+            expect(ws.status).toBe(501);
+            expect(JSON.parse(ws.body.toString())).toEqual({ error: 'unsupported_upgrade' });
+        }
         expect(rpcCalls).toEqual([]);
 
         rpcReply = (method, params) => method === 'plugin-http'
@@ -427,9 +455,15 @@ describe('B-974 plugins through startApi (pglite)', () => {
             expect(await plugin('info')).toMatchObject({ ok: false, error: 'disabled_by_operator' });
             expect((await call('POST', `/v1/plugins/installs/${installId}/frame-ticket`, { panelId: 'main' })).body.error).toBe('disabled_by_operator');
             expect((await call('GET', '/v1/plugins/installs')).body.installs[0]).toMatchObject({ state: 'disabled_by_operator', stateReason: 'all_disabled' });
+            // B-974f P3-12: the owner cannot lift the operator's switch, and is told so (not `not_disabled`).
+            expect(await call('POST', `/v1/plugins/installs/${installId}/enable`)).toEqual({ status: 409, body: { error: 'disabled_by_operator' } });
+            await call('POST', `/v1/plugins/installs/${installId}/disable`, {});
+            expect(await call('POST', `/v1/plugins/installs/${installId}/enable`)).toEqual({ status: 409, body: { error: 'disabled_by_operator' } });
+            expect((await db.pluginInstall.findUniqueOrThrow({ where: { id: installId } })).state).toBe('disabled');
         } finally {
             delete process.env.VH_PLUGINS_DISABLED;
         }
+        expect((await call('POST', `/v1/plugins/installs/${installId}/enable`)).body.install.state).toBe('enabled');
         // R-b rollback = switch off: plugin cards vanish from every read (include ignored), nothing errors.
         delete process.env.VH_PLUGINS_ENABLED;
         try {
@@ -455,6 +489,7 @@ describe('B-974 plugins through startApi (pglite)', () => {
         const updated = await submit({ ...manifest, version: '0.2.0', permissions: [...manifest.permissions, 'sessions.list'] });
         expect(updated.state).toBe('update_pending');
         expect(updated.install.pendingDiff.addedPermissions).toEqual(['sessions.list']);
+        expect((await db.attentionItem.findFirstOrThrow({ where: { pluginInstallId: installId, key: 'vh:install-review' } })).payload).toEqual({ v: 1, type: 'plugin-review', pluginName: 'Hello Board', update: true });
         expect(await plugin('info')).toMatchObject({ ok: true });
         const rejected = await call('POST', `/v1/plugins/installs/${installId}/reject`);
         expect(rejected.body.install.state).toBe('enabled');
@@ -465,6 +500,41 @@ describe('B-974 plugins through startApi (pglite)', () => {
         expect((await submit({ ...manifest, version: '0.4.0', name: 'Hello Renamed' })).state).toBe('disabled');
         expect((await call('POST', `/v1/plugins/installs/${installId}/enable`)).body.install).toMatchObject({ state: 'update_pending', name: 'Hello Board' });
         await call('POST', `/v1/plugins/installs/${installId}/reject`);
+    });
+
+    it('B-974f: a machine re-enables only an install it disabled itself, on its own machine', async () => {
+        const enable = (body: unknown, bearer = machineToken) => call('POST', `/v1/plugins/installs/${installId}/enable`, body, bearer);
+        const stored = () => db.pluginInstall.findUniqueOrThrow({ where: { id: installId } });
+        expect((await stored()).state).toBe('enabled');
+        // Not disabled: same answer as for the owner.
+        expect(await enable({ machineId })).toEqual({ status: 409, body: { error: 'not_disabled', state: 'enabled' } });
+        expect(await enable({})).toEqual({ status: 400, body: { error: 'machine_id_required' } });
+
+        // Disabled by the machine (CLI `plugin disable`): another machine of the account cannot lift it; its own can.
+        expect((await call('POST', `/v1/plugins/installs/${installId}/disable`, { machineId }, machineToken)).body.install.state).toBe('disabled');
+        expect((await stored()).disabledBy).toBe('machine');
+        expect(await enable({ machineId: otherMachineId })).toEqual({ status: 403, body: { error: 'enable_requires_owner' } });
+        expect((await stored()).state).toBe('disabled');
+        // The operator's switch beats the machine's own lift.
+        process.env.VH_PLUGINS_DISABLED = '1';
+        try { expect(await enable({ machineId })).toEqual({ status: 409, body: { error: 'disabled_by_operator' } }); }
+        finally { delete process.env.VH_PLUGINS_DISABLED; }
+        expect((await stored()).state).toBe('disabled');
+        const before = await db.pluginAudit.count({ where: { installId, action: 'install.enabled', actor: 'machine' } });
+        expect(await call('POST', `/v1/plugins/installs/${installId}/enable`, undefined, machineToken)).toEqual({ status: 400, body: { error: 'machine_id_required' } });
+        // `X-VH-Machine-Id` names the machine as on /disable.
+        const viaHeader = await fetch(`${base}/v1/plugins/installs/${installId}/enable`, { method: 'POST', headers: { authorization: `Bearer ${machineToken}`, 'x-vh-machine-id': machineId } });
+        expect(viaHeader.status).toBe(200);
+        expect(((await viaHeader.json()) as any).install.state).toBe('enabled');
+        expect(await db.pluginAudit.count({ where: { installId, action: 'install.enabled', actor: 'machine' } })).toBe(before + 1);
+
+        // Disabled by the owner on the Web: the machine cannot lift it, not even its own.
+        await call('POST', `/v1/plugins/installs/${installId}/disable`, {});
+        expect((await stored()).disabledBy).toBe('owner');
+        expect(await enable({ machineId })).toEqual({ status: 403, body: { error: 'enable_requires_owner' } });
+        expect((await stored()).state).toBe('disabled');
+        expect((await call('POST', `/v1/plugins/installs/${installId}/enable`)).body.install.state).toBe('enabled');
+        expect(await db.pluginAudit.count({ where: { installId, action: 'install.enabled', actor: 'owner' } })).toBeGreaterThan(0);
     });
 
     it('audit and remove (machine may remove only its own install)', async () => {

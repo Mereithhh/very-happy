@@ -57,7 +57,7 @@ import { sessionShareLinkRoutes } from './routes/sessionShareLinkRoutes';
 import { connectionDiagnosticsRoutes } from './routes/connectionDiagnosticsRoutes';
 import { cspReportRoutes } from './routes/cspReportRoutes';
 import { pluginRoutes } from './routes/pluginRoutes';
-import { handlePluginHostRequest } from '@/app/plugins/pluginGateway';
+import { handlePluginHostRequest, handlePluginHostUpgrade } from '@/app/plugins/pluginGateway';
 import { relayFeatureConfig } from '@/app/relay/relayConfig';
 
 export interface StartApiOptions {
@@ -212,6 +212,8 @@ export async function startApi(opts: StartApiOptions = {}) {
 
     // Socket.IO and release-admin routes must be registered before Fastify
     // starts listening. Candidate readiness therefore cannot race route setup.
+    // B-974f: a WebSocket upgrade on a plugin origin is answered 501 `unsupported_upgrade` (first listener, so Socket.IO never sees it).
+    app.server.prependListener('upgrade', (req, socket) => { handlePluginHostUpgrade(req, socket); });
     await startSocket(typed, opts.staticDir);
 
     // Start HTTP

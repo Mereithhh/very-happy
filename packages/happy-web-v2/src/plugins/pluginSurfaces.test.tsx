@@ -115,6 +115,13 @@ describe('owner-system card', () => {
     await act(async () => card.click());
     expect(currentPath).toBe('/settings/plugins/pi_2/review');
   });
+
+  it('titles the card in the viewer\'s language from the payload (B-974f)', async () => {
+    await render(<OwnerSystemCardView card={{ id: 'o1', installId: 'pi_2', title: '插件安装待批准 · Hello Board', pluginName: 'Hello Board', update: false, bodyMd: null, open: true, version: 1, updatedAt: 1 }} />);
+    expect(host.querySelector('[data-testid=plugin-system-card] .plg-card-title')!.textContent).toBe('Plugin waiting for approval · Hello Board');
+    await render(<OwnerSystemCardView card={{ id: 'o1', installId: 'pi_2', title: '插件更新待批准 · Hello Board', pluginName: 'Hello Board', update: true, bodyMd: null, open: true, version: 1, updatedAt: 1 }} />);
+    expect(host.querySelector('[data-testid=plugin-system-card] .plg-card-title')!.textContent).toBe('Plugin update waiting for approval · Hello Board');
+  });
 });
 
 describe('PluginWidgetCard', () => {

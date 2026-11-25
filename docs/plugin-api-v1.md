@@ -107,6 +107,19 @@ change at any time (approval, `plugin disable`, a change on the web), so
 re-read `runtime.json` before each call instead of caching it.
 `GET /plugin/v1/info` answers in every state.
 
+**Re-enabling a `disabled` install** (`POST /v1/plugins/installs/:id/enable`,
+account API — the plugin itself never calls it):
+
+| Caller | Allowed when | Otherwise |
+|---|---|---|
+| The owner, signed in to the web app | The install is `disabled` (by the owner or by a machine). | `409 not_disabled` (with `state`) if it is not disabled. |
+| A machine token (`very-happy plugin enable`) — names itself with `{"machineId": …}` or `X-VH-Machine-Id`, as on `/disable` | The install sits on that machine **and** was disabled by a machine (`plugin disable`). | `403 enable_requires_owner` for another machine's install or one the owner disabled; `409 not_disabled` if it is not disabled; `400 machine_id_required` without a machine id. |
+
+Nobody lifts the operator's switch here: while `VH_PLUGINS_DISABLED` or
+`VH_PLUGIN_DENYLIST` matches, both callers get `409 disabled_by_operator`.
+Every re-enable is audited (`install.enabled`, actor `owner` or `machine`).
+A change submitted while disabled goes to `update_pending` on re-enable.
+
 `very-happy plugin env <id> --shell` prints `VH_PLUGIN_API`,
 `VH_PLUGIN_TOKEN_FILE` and `VH_PLUGIN_SECRET_FILE` (empty `VH_PLUGIN_API` until
 `runtime.json` exists). Re-read the files rather than caching them:
@@ -433,8 +446,9 @@ Then dedupe on `id`. The full version, including panel requests, is
 - Service workers cannot be registered on plugin origins.
 - Limits: request body 8 MB, response 32 MB (`413 payload_too_large`), 30 s
   per request (the daemon gives the upstream 25 s), 16 concurrent requests per
-  install (`429 rate_limited`). No WebSocket / SSE in v1 (`501
-  unsupported_upgrade`).
+  install (`429 rate_limited`). No WebSocket / SSE in v1: an `Upgrade`
+  request or `Accept: text/event-stream` gets `501 unsupported_upgrade`
+  (JSON body), and is never forwarded.
 - Non-GET requests without a same-origin `Origin` (or `Sec-Fetch-Site:
   same-origin`) get `403 origin_mismatch`. Paths under `/__vh/` other than the
   reserved ones answer 404.

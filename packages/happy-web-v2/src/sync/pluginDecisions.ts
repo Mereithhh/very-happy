@@ -24,6 +24,7 @@ import {
   isAttentionActive,
   isAttentionPluginItem,
   parsePluginPayload,
+  parsePluginReviewPayload,
   type AttentionItemOwnerRespond,
 } from '@slopus/happy-wire';
 
@@ -122,6 +123,9 @@ export interface OwnerSystemCard {
   id: string;
   installId: string | null;
   title: string;
+  /** B-974f: from the card payload; the Web titles the card in its own language (title is the fallback). */
+  pluginName?: string;
+  update?: boolean;
   bodyMd: string | null;
   open: boolean;
   version: number;
@@ -132,7 +136,8 @@ export function parseOwnerSystemCard(v: unknown): OwnerSystemCard | null {
   const parsed = AttentionItemAnySchema.safeParse(v);
   if (!parsed.success || parsed.data.source !== ATTENTION_OWNER_SYSTEM_SOURCE) return null;
   const r = parsed.data;
-  return { id: r.id, installId: r.pluginInstallId ?? null, title: r.title, bodyMd: r.bodyMd, open: isAttentionActive(r.state), version: r.version, updatedAt: r.updatedAt };
+  const review = parsePluginReviewPayload(r.payload);
+  return { id: r.id, installId: r.pluginInstallId ?? null, title: r.title, ...(review ? { pluginName: review.pluginName, update: review.update } : {}), bodyMd: r.bodyMd, open: isAttentionActive(r.state), version: r.version, updatedAt: r.updatedAt };
 }
 
 interface DecisionState {
