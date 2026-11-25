@@ -86,3 +86,22 @@ veryhappy.dev, happy.mereith.com {
 		}
 	}
 }
+
+# P6 (2026-11-25): plugin panels, one subdomain per install
+# (docs/plugins.md "Plugin host"; server matches VH_PLUGIN_HOST). DNS is a
+# DNS-only wildcard A record straight to this host, not CloudFront. The cert is
+# a wildcard from lego DNS-01, renewed by vh-plugin-cert-renew.timer, whose
+# hook /usr/local/sbin/vh-plugin-cert-deploy.sh copies it here and reloads.
+# Same active-upstream import as the main site, so blue-green switches follow;
+# Host is preserved and WebSockets pass through (reverse_proxy defaults).
+*.p.veryhappy.dev {
+	tls /etc/caddy/certs/p.veryhappy.dev.crt /etc/caddy/certs/p.veryhappy.dev.key
+	route {
+		@vh_internal path /_vh /_vh/*
+		respond @vh_internal 404
+
+		import vh_client_ip
+
+		import /opt/happy/release/active-upstream.caddy
+	}
+}
