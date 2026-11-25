@@ -333,10 +333,17 @@ export const RateLimitsStateSchema = z.object({
 export const DaemonStateSchema = z.object({
   agentVersions: AgentVersionsSchema.optional(),
   agentVersionEpoch: z.number().optional(),
-  /** B-978: the machine's pi model table (`pi --list-models`), readable without a session. Old Webs ignore it. */
+  /**
+   * B-978: the machine's pi model table, readable without a session. Optional:
+   * old daemons never write it, old Webs ignore it, the server stores
+   * daemonState as an opaque blob. `source` is `cli` (`pi --list-models`) or
+   * `models-json` (fallback without pi's built-in providers); an unknown value
+   * reads as `cli` on the Web.
+   */
   piModels: z.object({
     checkedAt: z.number(),
     daemonPid: z.number(),
+    source: z.string().optional(),
     models: z.array(z.object({ code: z.string(), value: z.string(), thinking: z.boolean() })),
   }).optional(),
   status: z.union([

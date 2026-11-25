@@ -4,6 +4,7 @@ import { readLongContextUnsupported } from '@slopus/happy-wire';
 import { readAgentVersions } from '@/app/agentVersions';
 import { catalogRunnableKeys } from '@/components/modelModeOptions';
 import { machineCliVersion, type StaleWrapperMachineLike } from '@/app/staleWrapperPolicy';
+import { isPartialPiCatalog, piCatalogFromMachine, readPiModelTable } from './piModelTable';
 
 /**
  * B-844: what a picker without a session can know about models — the live
@@ -40,15 +41,37 @@ export function forkCatalogSource<M extends Pick<Metadata, 'flavor' | 'machineId
  * Codex was upgraded publishes a newer list from its next session, and that
  * list replaces the machine's older ones. `machineId` narrows to one machine
  * (new-session dialog); without it every machine contributes (settings).
+ *
+ * B-978: pi has no list of its own before a session, so the machines' daemons
+ * report one (`pi --list-models`, `daemonState.piModels`). When the caller
+ * passes `machines`, that table becomes the machine's catalog and wins over any
+ * pi session on it — it is re-probed when pi or its config changes, while a
+ * session's list is frozen at its start. Everything that picks a model for pi
+ * (new session, Settings, Issues, Teams) therefore goes through here, exactly
+ * like the other agents.
  */
+export type MachineCatalogSource = { id: string; daemonState?: unknown };
+
 export function collectRecentCatalogs(
     sessions: readonly LauncherCatalogSource[],
     flavor: string | null | undefined,
     machineId?: string | null,
+    machines: readonly MachineCatalogSource[] = [],
 ): Metadata[] {
     const agent = normalizeAgentKey(flavor);
     const seenMachines = new Set<string>();
     const out: Metadata[] = [];
+    if (agent === 'pi') {
+        for (const machine of machines) {
+            if (machineId && machine.id !== machineId) continue;
+            const reported = piCatalogFromMachine(readPiModelTable(machine.daemonState), flavor, machine.id);
+            if (!reported?.models?.length) continue;
+            // A models.json fallback lacks pi's built-in providers: that machine's
+            // newest pi session list is added below as well.
+            if (!isPartialPiCatalog(reported)) seenMachines.add(machine.id);
+            out.push(reported as unknown as Metadata);
+        }
+    }
     const started = (session: LauncherCatalogSource) => session.createdAt ?? session.updatedAt;
     for (const session of [...sessions].sort((a, b) => started(b) - started(a))) {
         const metadata = session.metadata;
@@ -79,12 +102,7 @@ export function launcherMachineContext(
     };
 }
 
-export type LauncherModelSource = {
-    context: LauncherMachineContext | null;
-    catalogs: Metadata[];
-    /** B-978: the machine's reported pi model table (`daemonState.piModels`), with its thinking flags. */
-    piTable?: import('./piModelTable').PiModelTable | null;
-};
+export type LauncherModelSource = { context: LauncherMachineContext | null; catalogs: Metadata[] };
 
 /**
  * QA26 P2-7: the model keys these catalogs can run (catalogRunnableKeys: plus

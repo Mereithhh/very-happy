@@ -40,7 +40,7 @@ import { sendUserMessage } from '@/commands/sessionMessage';
 import { sanitizeSpawnPermissionMode } from './spawnPermissionMode';
 import { publishedRelaunchPermissionMode } from './relaunchPermissionMode';
 import { resumePrecheck, resumeStartsFreshConversation, sanitizeResumeModel } from './resumePrecheck';
-import { detectPiModels } from './piModels';
+import { createPiModelRefresher, detectPiModels, piConfigFingerprint, piListModelsCommand, relaunchModel } from './piModels';
 import { decideRestart, recordRestartAttempt, restartBudget, type RestartBudget } from './restartBreaker';
 import type { SpawnGate } from './assistantSpawn';
 import { startDaemonControlServer } from './controlServer';
@@ -1465,8 +1465,8 @@ export async function startDaemon(): Promise<void> {
           { startedBy: 'daemon', claudeStartingMode: 'remote', freshConversation },
         );
 
-        // B-978: pi model ids are `provider/id`; the Claude-oriented sanitizer drops the slash.
-        const model = sanitizeResumeModel(options?.model) ?? (metadata.flavor === 'acp' ? sanitizeSpawnModel(options?.model) : null);
+        // B-978: pi keeps its `provider/id` and, with no model sent, the model it ran.
+        const model = relaunchModel(options?.model, metadata, sanitizeResumeModel);
         if (model) launch.args.push('--model', model);
         else if (options?.model !== undefined) logger.debug(`[DAEMON RUN] resume: ignoring invalid model ${JSON.stringify(options.model)}`);
         // B-696: a daemon-initiated wake has no client to supply the mode —
@@ -1692,7 +1692,7 @@ export async function startDaemon(): Promise<void> {
         }
 
         // B-978: see resumeSessionImpl — keep pi's `provider/id` model on a restart.
-        const model = sanitizeResumeModel(options?.model) ?? (metadata.flavor === 'acp' ? sanitizeSpawnModel(options?.model) : null);
+        const model = relaunchModel(options?.model, metadata, sanitizeResumeModel);
         if (model) args.push('--model', model);
         // B-794: a local restart (`very-happy session provider`) keeps the
         // mode the last wrapper published, like the B-707 resume path.
@@ -2640,12 +2640,27 @@ export async function startDaemon(): Promise<void> {
       const delay = policyAnnouncements.onAnnouncement(payload);
       if (delay !== null) logger.warn(`[DAEMON RUN] CLI update policy announced; re-checking in ${Math.round(delay / 1000)}s`);
     });
+    // B-978: the pi model table the Web picker reads before any pi session
+    // exists. Re-probed when pi's version, the resolved path or pi's config
+    // files change, or the last table is 6h old; a failed probe keeps the last
+    // table (an empty one would drop every model from the picker).
+    const piModelRefresher = createPiModelRefresher({
+      detect: (command) => detectPiModels(undefined, Date.now(), process.pid, command),
+      publish: (table) => apiMachine.updateDaemonState(state => ({ ...state, status: state?.status ?? 'running', piModels: table })),
+      key: () => ({
+        version: latestAgentVersions?.agents.find((agent) => agent.id === 'pi')?.installed ?? null,
+        config: piConfigFingerprint(),
+        command: piListModelsCommand(),
+      }),
+      log: (message) => logger.debug(`[DAEMON RUN] ${message}`),
+    });
+    const piModelsInterval = setInterval(() => void piModelRefresher.refresh(), 5 * 60 * 1000);
+    piModelsInterval.unref();
     const stopAgentVersionChecks = startAgentVersionChecks(
       snapshot => {
         latestAgentVersions = snapshot;
-        // B-978: the pi model table rides the same schedule (startup, every 6h, after an install).
-        return detectPiModels()
-          .then(piModels => apiMachine.updateDaemonState(state => ({ ...state, status: state?.status ?? 'running', agentVersions: snapshot, ...(piModels ? { piModels } : {}) })))
+        void piModelRefresher.refresh();
+        return apiMachine.updateDaemonState(state => ({ ...state, status: state?.status ?? 'running', agentVersions: snapshot }))
           .finally(() => { void agentAutoUpdater?.tick(); });
       },
       error => logger.debug('[DAEMON RUN] Agent version check failed', error),
@@ -2783,6 +2798,7 @@ export async function startDaemon(): Promise<void> {
         policyAnnouncements.stop();
         policyRefresh.stop();
         stopAgentVersionChecks();
+        clearInterval(piModelsInterval);
         claudeAuthService.stop();
         stopAccountWatch();
         accountService.dispose();
@@ -3027,6 +3043,7 @@ export async function startDaemon(): Promise<void> {
       policyAnnouncements.stop();
       policyRefresh.stop();
       stopAgentVersionChecks();
+      clearInterval(piModelsInterval);
 
       // Update daemon state before shutting down
       await apiMachine.updateDaemonState((state: DaemonState | null) => ({

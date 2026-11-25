@@ -132,7 +132,7 @@ describe('auto-restart (B-852) relaunches into the restore path (QA27 P2-1)', ()
         expect(daemon).toContain("const result = await restartSession(sessionId, { keepPublishedPermissionMode: true, auto: { kind: staleness.kind, target: staleness.target } });");
         const impl = between(daemon, 'const restartSessionImpl = async', 'const stopSession = ');
         // B-978: pi's `provider/id` ids survive the Claude-oriented sanitizer.
-        expect(impl).toContain('const model = sanitizeResumeModel(options?.model) ?? (metadata.flavor === \'acp\' ? sanitizeSpawnModel(options?.model) : null);');
+        expect(impl).toContain('const model = relaunchModel(options?.model, metadata, sanitizeResumeModel);');
         expect(impl).toContain('HAPPY_RECONNECT_SESSION_ID: happySessionId,');
     });
 });

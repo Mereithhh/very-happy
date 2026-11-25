@@ -499,7 +499,9 @@ export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translat
     if (flavor === 'openclaw') {
         return getOpenClawModelModes();
     }
-    if (isPiAgent(flavor)) {
+    // B-978: dsh's models come only from its own catalog (B-952); without one it
+    // fell through to the Claude list below and offered Claude ids to dsh.
+    if (isPiAgent(flavor) || flavor === 'dsh') {
         return getPiModelModes();
     }
     return withLatestTableModels('claude', getClaudeModelModes(), table);

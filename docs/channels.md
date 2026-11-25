@@ -259,14 +259,22 @@ with the account content key, which `dataKey` CLI credentials do not hold.
   or working (`set-permission-mode` RPC). What is written there is also
   published as `metadata.permissionMode`, so the Web shows the effective value.
   Enforcement is provided by the CLI's official pi runtime extension, which
-  re-reads the mode file before each tool call. B-978: the daemon also probes
-  `pi --list-models` (startup, every 6h, after a harness install) and publishes
-  the table as `daemonState.piModels` (`{checkedAt, daemonPid, models:[{code,
-  value, thinking}]}`, ids in pi-acp's `provider/id` form), so the new-session
-  picker and Settings → Agents offer a machine's pi models before any pi session
-  exists; `thinking: true` is what lets a draft offer its thinking levels. An
-  older daemon never writes the field and the picker shows only the machine
-  default; a failed probe publishes nothing and keeps the last good table. `default` asks for non-read-only
+  re-reads the mode file before each tool call. B-978: the daemon also runs
+  `pi --list-models` (≤10s, with the `pi` the resolver found — the same one a
+  spawn uses, so a systemd/launchd daemon finds an nvm/npm-global pi) and
+  publishes the table as `daemonState.piModels` (`{checkedAt, daemonPid,
+  source, models:[{code, value, thinking}]}`, ids in pi-acp's `provider/id`
+  form). It re-runs when pi's version, its `models.json`/`settings.json` or the
+  resolved path change, or every 6h; when the command fails it falls back to
+  `models.json` (`source: models-json`), which lacks pi's built-in providers —
+  the picker says so and adds the machine's newest pi session list. A probe that
+  yields nothing publishes nothing and keeps the last table. New session,
+  Settings → Agents, Issues and Teams read it through the same per-machine
+  catalogs as the other agents. A draft offers thinking levels only for a model
+  reported with `thinking: true`; otherwise 「默认」 until the session publishes
+  its own, as for dsh. A relaunch (Web restore, auto-resume, restart) with no
+  model reopens a pi session on its `currentModelCode`. An older daemon never
+  writes the field and the picker shows only the machine default. `default` asks for non-read-only
   tools; `plan` blocks writes; `acceptEdits` permits edit/write but still asks for
   shell and other mutations; `bypassPermissions` is honored only when explicitly
   selected. User-installed extensions may enforce additional rules. The runtime

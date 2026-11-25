@@ -74,8 +74,8 @@ import {
 } from '@/sync/agentDefaults';
 import { layoutModelPicker } from '@/screens/session/modelPickerLayout';
 import { autoEffortName, effortLevelName, localizeModelDescriptions, localizeModelNames, namedEffortOptions } from '@/screens/session/runSetupCopy';
-import { collectPiModelOptions } from '@/sync/piModelOptions';
-import { piCatalogFromMachine, readPiModelTable } from '@/sync/piModelTable';
+import { withPiDefaults } from '@/sync/piModelOptions';
+import { piDraftThoughtLevels } from '@/sync/piModelTable';
 import { settingsCodexEffort } from '@/sync/settingsEffort';
 import { collectRecentCatalogs, runnableFromCatalogs } from '@/sync/launcherModels';
 import { machineLabel } from '@/utils/machineUtils';
@@ -1247,18 +1247,13 @@ function AgentDefaults() {
   // so the account value no longer flips with whichever machine started the
   // newest session.
   const allMachines = useAllMachines({ includeOffline: true });
-  // B-978: every machine's reported pi model table (`pi --list-models`), so the
-  // default is pickable on a machine that never ran a pi session.
-  const piMachineTables = useMemo(
-    () => allMachines.flatMap((machine) => {
-      const table = readPiModelTable(machine?.daemonState);
-      return table ? [table] : [];
-    }),
-    [allMachines],
-  );
+  // B-978: pi's list is one catalog per machine like every other agent's — the
+  // table each daemon reports (`pi --list-models`), else what its pi sessions
+  // published — so the default is pickable on a machine that never ran pi.
+  const piCatalogs = useMemo(() => collectRecentCatalogs(allSessions, 'pi', undefined, allMachines), [allSessions, allMachines]);
   const piModelOptions = useMemo(
-    () => collectPiModelOptions(allSessions, [piModelOverride], piMachineTables),
-    [allSessions, piModelOverride, piMachineTables],
+    () => withPiDefaults(piCatalogs, [piModelOverride]),
+    [piCatalogs, piModelOverride],
   );
   const machineList = useMemo(
     () => allMachines.map((machine) => ({ id: machine.id, label: machineLabel(machine) })).sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id)),
@@ -1307,7 +1302,7 @@ function AgentDefaults() {
           const permOptions = getHardcodedPermissionModes(agent, translate);
           // B-844: the live catalogs this agent's sessions published (one per
           // machine, newest first) join the code list and the latest table.
-          const catalogs = agent === 'pi' ? [] : collectRecentCatalogs(allSessions, agent);
+          const catalogs = agent === 'pi' ? piCatalogs : collectRecentCatalogs(allSessions, agent);
           // The raw `default` key is never shown: it is the machine default.
           const resolvedOf = (key: string) => catalogs.flatMap((catalog) => catalog.models ?? []).find((model) => model.code === key)?.resolvedModel ?? null;
           const modelOptions = localizeModelDescriptions(agent, localizeModelNames(agent, agent === 'pi' ? piModelOptions : getLauncherModelModes(agent, catalogs, translate, latestTable), t)
@@ -1323,10 +1318,10 @@ function AgentDefaults() {
           const savedEffort = getAgentDefaultOverrideValue(overrides, agent, 'effortLevel');
           // B-975b: Codex levels come from the machines' reported catalogs, as in the composer.
           const codexEffort = agent === 'codex' ? settingsCodexEffort({ modelMode: resolved.modelMode, catalogs, table: latestTable, saved: savedEffort }) : null;
-          // B-978: pi's thinking levels come from the machines' tables (pi-acp
-          // publishes them only after session/new), so a draft can pick one too.
+          // B-978: pi levels only for a model a machine reported as reasoning;
+          // otherwise 「默认」 alone, and the session's own levels apply once it runs.
           const piEffortCatalog = agent === 'pi'
-            ? piCatalogFromMachine(piMachineTables[0] ?? null, 'pi') as unknown as Parameters<typeof getEffortLevelsForModel>[2]
+            ? { thoughtLevels: piCatalogs.map((catalog) => piDraftThoughtLevels(catalog, effectiveModel)).find((levels) => levels.length > 0) ?? [] } as unknown as Parameters<typeof getEffortLevelsForModel>[2]
             : null;
           const effortOptions = namedEffortOptions(codexEffort?.levels ?? getEffortLevelsForModel(agent, effectiveModel, piEffortCatalog), t);
           // B-849a: the newest per family stays on top, older versions/aliases fold away.
