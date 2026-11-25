@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Settings, Palette, User, Bot, Bookmark, Bell, Cable, Volume2, HardDrive, BarChart3, Stethoscope, KeyRound, Mail, Link2, Search, ChevronRight, Share2, Info, MessageSquareHeart } from 'lucide-react';
+import { ArrowLeft, Settings, Palette, User, Bot, Bookmark, Bell, Cable, Volume2, HardDrive, BarChart3, Stethoscope, KeyRound, Mail, Link2, Search, ChevronRight, Share2, Info, MessageSquareHeart, Puzzle } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { SimpleTranslationKey } from '@/text';
@@ -9,6 +9,7 @@ import { getNotificationPermission } from '@/sync/webNotifications';
 import { displayText, searchSettings, sectionTitle, settingHref, SETTING_QUERY_PARAM } from './settingsIndex';
 import { revealSettingWhenReady } from './settingsReveal';
 import { AsciiField } from '@/ui/asciiField/AsciiField';
+import { usePluginStore } from '@/sync/pluginStore';
 import './settings.css';
 
 export const settingsSections: {path:string; key:SimpleTranslationKey; icon:typeof Settings}[] = [
@@ -22,6 +23,7 @@ export const settingsSections: {path:string; key:SimpleTranslationKey; icon:type
   {path:'main-agent',key:'settingsMainAgent.title',icon:Bot},
   {path:'voice',key:'settingsVoice.title',icon:Volume2},
   {path:'machines',key:'settingsMachines.title',icon:HardDrive},
+  {path:'plugins',key:'plugins.title',icon:Puzzle},
   {path:'shared',key:'share.settings.title',icon:Share2},
   {path:'usage',key:'settings.usage',icon:BarChart3},
   {path:'diagnostics',key:'diagnostics.title',icon:Stethoscope},
@@ -56,7 +58,9 @@ export function SettingsWorkspace({children,basePath='/settings'}:{children:Reac
   const current=location.pathname.slice(basePath.length).replace(/^\//,'');
   const label=(section:typeof settingsSections[number])=>section.path==='google'?'Google':t(section.key);
   const trimmed=query.trim().toLocaleLowerCase();
-  const visible=settingsSections.filter(s=>label(s).toLocaleLowerCase().includes(trimmed));
+  // B-974d: an older server (404 on /v1/plugins) hides the Plugins section entirely.
+  const pluginsOff=usePluginStore(s=>s.availability==='unavailable');
+  const visible=settingsSections.filter(s=>!(pluginsOff&&s.path==='plugins')&&label(s).toLocaleLowerCase().includes(trimmed));
   // B-575: item-level results ("分类 › 设置项") under the matching sections.
   const hits=useMemo(()=>trimmed?searchSettings(trimmed,{webPush:settingsWebPushAvailable()}).slice(0,12):[],[trimmed]);
   // B-575: `?setting=<id>` (search result, ⌘K) → scroll the content's own

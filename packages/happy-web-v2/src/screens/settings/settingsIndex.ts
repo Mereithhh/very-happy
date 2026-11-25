@@ -44,6 +44,7 @@ export const SETTINGS_SECTION_TITLES: Record<string, SettingsText> = {
   'main-agent': 'settingsMainAgent.title',
   voice: 'settingsVoice.title',
   machines: 'settingsMachines.title',
+  plugins: 'plugins.title',
   shared: 'share.settings.title',
   usage: 'settings.usage',
   diagnostics: 'diagnostics.title',

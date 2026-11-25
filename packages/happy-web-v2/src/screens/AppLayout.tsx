@@ -17,6 +17,7 @@ import { FsPreviewOverlay } from '@/screens/files/FsPreviewOverlay';
 import { NotesDock } from '@/screens/notes/NotesDock';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { AppBadgeSync } from '@/screens/notifications/AppBadgeSync';
+import { PluginsSync } from '@/plugins/PluginsSync';
 import { SignInMethodsNudge } from '@/app/SignInMethodsNudge';
 import { NotificationOptInCard } from '@/screens/notifications/NotificationOptInCard';
 import { FeatureTipHost } from '@/components/featureTips/FeatureTips';
@@ -176,6 +177,8 @@ export function AppLayout({ rootPath = '/' }: { rootPath?: string } = {}) {
       </AppShell>
       {/* B-559: inbox unread → PWA app-icon badge (mounted once; the bell is mounted twice) */}
       <AppBadgeSync />
+      {/* B-974d: plugin installs (sidebar, panels, badges); renders nothing */}
+      <PluginsSync />
       {/* B-570: non-blocking "turn on notifications" invitation (logged-in app only) */}
       {afterFirstScreen && <NotificationOptInCard />}
       {/* B-668: email-code-only accounts: add a password or Google (dismissible) */}

@@ -145,6 +145,7 @@ import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel'
 import { VoiceSettings } from './VoiceSettings';
 import { MainAgentSettings } from './MainAgentSettings';
 import { MachinesSettings } from './MachinesSettings';
+import { PluginDetailSettings, PluginReviewSettings, PluginsOverviewItem, PluginsSettings } from './PluginsSettings';
 import { SharedSettings } from './SharedSettings';
 import { FeedbackInbox, FeedbackSettings } from './FeedbackSettings';
 import { MachineModelsAndAccounts } from './ModelProviderSettings';
@@ -305,6 +306,7 @@ function Overview() {
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/machines')}
           />
+          <PluginsOverviewItem />
           <Item
             title={t('share.settings.title')}
             subtitle={t('share.settings.subtitle')}
@@ -2831,6 +2833,9 @@ export function SettingsRoutes({ basePath }: { basePath?: string } = {}) {
       <Route path="voice" element={<VoiceSettings />} />
       <Route path="main-agent" element={<MainAgentSettings />} />
       <Route path="machines" element={<MachinesSettings />} />
+      <Route path="plugins" element={<PluginsSettings />} />
+      <Route path="plugins/:installId" element={<PluginDetailSettings />} />
+      <Route path="plugins/:installId/review" element={<PluginReviewSettings />} />
       <Route path="shared" element={<SharedSettings />} />
       <Route path="usage" element={<Usage />} />
       <Route path="diagnostics" element={<Diagnostics />} />

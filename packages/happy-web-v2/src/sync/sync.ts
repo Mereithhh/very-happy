@@ -28,6 +28,7 @@ import { storage, isSessionDeleted } from './storage';
 import { markSendConfirmed } from './sendConfirmations';
 import { isHiddenSession } from '@/assistant/assistantSession';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
+import { handlePluginUpdate } from './pluginStore';
 import { applyAttentionItem } from './attentionStore';
 import { applyIssueCommentUpdate, applyIssueRunUpdate, applyIssueUpdate } from './issuesStore';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
@@ -3667,6 +3668,8 @@ class Sync {
     }
 
     private handleUpdate = async (update: unknown) => {
+        // B-974d: plugin updates are parsed leniently by their own store (not in ApiUpdateSchema).
+        if (handlePluginUpdate((update as { body?: unknown } | null)?.body)) return;
         const validatedUpdate = ApiUpdateContainerSchema.safeParse(update);
         if (!validatedUpdate.success) {
             console.log('❌ Sync: Invalid update received:', validatedUpdate.error);
