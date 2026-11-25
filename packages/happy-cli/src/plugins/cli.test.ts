@@ -4,7 +4,7 @@ import { existsSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PluginCliError, addPlugin, disablePlugin, enablePlugin, pluginEnv, readManifestSource, removePlugin, rotatePlugin, updatePlugin, type PluginServerApi } from './cli';
-import { PluginServerClient, PluginServerError } from './serverOp';
+import { PluginServerClient, PluginServerError, pluginSupportFromFeatures } from './serverOp';
 import { manifestHash } from './manifest';
 import { applyServerInstall, PluginStore } from './store';
 import { sampleManifest, tempHome } from './testFixtures';
@@ -37,6 +37,28 @@ describe('B-974c very-happy plugin (DESIGN §2.2, §3.3, §7)', () => {
         expect(statSync(store.dir('hello-board')).mode & 0o777).toBe(0o700);
         expect(statSync(join(t.home, 'plugins')).mode & 0o777).toBe(0o700);
         await expect(addPlugin(store, server, text())).rejects.toMatchObject({ code: 'already_installed' });
+    });
+
+    it('add again (r2): rejected resubmits; removed with a new installId starts over; other states refuse', async () => {
+        const t = tempHome(); cleanup = t.cleanup;
+        const store = new PluginStore(t.home);
+        await addPlugin(store, mockServer(), text());
+        applyServerInstall(store, 'hello-board', { installId: 'pi_1', state: 'rejected', grants: [], manifestHash: null });
+        const again = await addPlugin(store, mockServer(), text());
+        expect(again).toMatchObject({ installId: 'pi_1', state: 'pending' });
+        // Approved, then removed on the account side; a fresh add gets a new install and no old credentials.
+        applyServerInstall(store, 'hello-board', { installId: 'pi_1', state: 'enabled', grants: ['sidebar'], manifestHash: manifestHash(sampleManifest()) });
+        const oldToken = store.readToken('hello-board');
+        expect(oldToken).toMatch(/^vhp_/);
+        store.writeInstall('hello-board', { ...store.readInstall('hello-board')!, state: 'removed' });
+        const fresh = await addPlugin(store, mockServer({ submitManifest: async () => ({ installId: 'pi_2', state: 'pending', reviewUrl: 'r' }) }), text());
+        expect(fresh).toMatchObject({ installId: 'pi_2', state: 'pending' });
+        expect(store.readToken('hello-board')).toBeNull();
+        expect(store.readApprovedManifest('hello-board')).toBeNull();
+        for (const state of ['pending', 'enabled', 'disabled', 'disabled_by_operator'] as const) {
+            store.writeInstall('hello-board', { ...store.readInstall('hello-board')!, state });
+            await expect(addPlugin(store, mockServer(), text())).rejects.toMatchObject({ code: 'already_installed' });
+        }
     });
 
     it('add against an old server (404) → server_too_old and nothing written', async () => {
@@ -124,6 +146,20 @@ describe('B-974c manifest sources: only local files or loopback URLs', () => {
         const port = (server.address() as AddressInfo).port;
         expect((await readManifestSource(`http://127.0.0.1:${port}/.well-known/vh-plugin.json`)).text).toBe('{"b":2}');
         await expect(readManifestSource(`http://127.0.0.1:${port}/redirect`)).rejects.toMatchObject({ code: 'source_unreachable' });
+    });
+});
+
+describe('B-974c server capability (r2)', () => {
+    it.each([
+        [200, { features: ['plugins-v1', 'x'] }, 'yes'],
+        [200, { features: { 'plugins-v1': true } }, 'yes'],
+        [200, { features: ['x'] }, 'no'],
+        [200, { features: { 'plugins-v1': false } }, 'no'],
+        [200, {}, 'no'],
+        [404, { error: 'Not Found' }, 'no'],
+        [502, null, 'unknown'],
+    ] as const)('HTTP %i %j → %s', (status, data, expected) => {
+        expect(pluginSupportFromFeatures(status, data)).toBe(expected);
     });
 });
 

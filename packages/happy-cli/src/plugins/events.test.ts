@@ -1,117 +1,124 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PluginEventHub, RETRY_GIVE_UP_MS, nextRetryDelay } from './events';
-import { verifyEventSignature } from './signing';
+import { afterEach, describe, expect, it } from 'vitest';
+import { PLUGIN_EVENT_GIVE_UP_MS, verifyPluginEvent } from '@slopus/happy-wire';
+import { GAVE_UP, PluginEventHub } from './events';
+import type { ServerOpResult } from './localApi';
 import { installApproved, registryFor, sampleManifest, tempHome } from './testFixtures';
 
-describe('B-974c events: push with HMAC, retry schedule, pull (DESIGN §5.5)', () => {
+describe('B-974c events: notify + pull, signed push, retries, pull API (r4 §5.10, r5)', () => {
     let cleanup = () => {};
     afterEach(() => cleanup());
+
+    const event = (id = 'evt_1', type = 'decision.responded', attempt = 1) => ({
+        id, type, attempt, installId: 'pi_hello-board', pluginId: 'hello-board', createdAt: 1,
+        data: { itemId: 'a1', key: 'k', action: 'choose', choice: 'a', respondedAt: 1, actor: 'owner' },
+    });
 
     function setup(opts: { callback?: boolean } = {}) {
         const t = tempHome(); cleanup = t.cleanup;
         const { store, registry } = registryFor(t.home);
         const m = sampleManifest(opts.callback === false ? { callback: undefined } : {});
-        const { secret } = installApproved(store, m);
+        installApproved(store, m);
         registry.reload();
+        const key = registry.get('hello-board')!.secretKey!;
         let now = 1_795_577_286_000;
-        const results: Array<[string, string, number]> = [];
+        let serverEvents: unknown[] = [];
+        let online = true;
+        const ops: Array<[string | null, string, Record<string, unknown>]> = [];
         const posts: Array<{ headers: Record<string, string>; body: string }> = [];
         let status = 200;
         const hub = new PluginEventHub({
             registry,
-            reportResult: (_i, id, s, attempt) => results.push([id, s, attempt]),
+            serverOp: async (installId, op, payload): Promise<ServerOpResult> => {
+                ops.push([installId, op, payload]);
+                if (!online) return { kind: 'offline' };
+                if (op === 'events.pull') return { kind: 'ok', result: { events: serverEvents, cursor: serverEvents.length ? 'c2' : null } };
+                if (op === 'events.ack') return { kind: 'ok', result: { acked: 1 } };
+                return { kind: 'ok', result: {} };
+            },
             post: async (_url, headers, body) => { posts.push({ headers, body }); if (status < 0) throw new Error('ECONNREFUSED'); return status; },
             now: () => now,
         });
-        return { store, registry, secret, hub, results, posts, setStatus: (s: number) => { status = s; }, advance: (ms: number) => { now += ms; }, now: () => now };
+        const results = () => ops.filter((o) => o[1] === 'events.result').map((o) => o[2]);
+        return { store, registry, key, hub, ops, posts, results, setEvents: (e: unknown[]) => { serverEvents = e; }, setStatus: (s: number) => { status = s; }, setOnline: (v: boolean) => { online = v; }, advance: (ms: number) => { now += ms; }, now: () => now };
     }
-    const event = (id = 'evt_1', type = 'decision.responded') => ({ id, type, installId: 'pi_hello-board', pluginId: 'hello-board', createdAt: 1, data: { key: 'k', action: 'choose', choice: 'a' } });
-    const flush = () => new Promise((r) => setTimeout(r, 0));
 
-    it('delivers once with a signature the reference verifier accepts', async () => {
+    it('events-due → events.pull → signed push → events.result delivered; events of another install are never pushed', async () => {
         const s = setup();
-        expect(s.hub.receive(event())).toBe(true);
-        expect(s.hub.receive(event())).toBe(true); // duplicate id ignored
-        await flush();
-        expect(s.posts).toHaveLength(1);
+        s.setEvents([event(), { ...event('evt_x'), installId: 'pi_other' }]);
+        await s.hub.onDue('pi_hello-board');
+        await s.hub.onDue('pi_hello-board');
+        expect(s.ops.filter((o) => o[1] === 'events.pull')[0]).toEqual(['pi_hello-board', 'events.pull', { limit: 100 }]);
+        // Delivered once per pull; the foreign-install event is never pushed.
+        expect(s.posts.map((p) => JSON.parse(p.body).id)).toEqual(['evt_1', 'evt_1']);
         const { headers, body } = s.posts[0];
         expect(headers['x-vh-event-id']).toBe('evt_1');
-        expect(JSON.parse(body)).toMatchObject({ id: 'evt_1', attempt: 1 });
-        expect(verifyEventSignature(s.secret, headers['x-vh-signature'], Number(headers['x-vh-timestamp']), 'evt_1', body, Math.floor(s.now() / 1000))).toBe(true);
-        expect(s.results).toEqual([['evt_1', 'delivered', 1]]);
+        expect(verifyPluginEvent({ secret: s.key, signature: headers['x-vh-signature'], timestamp: headers['x-vh-timestamp'], eventId: 'evt_1', rawBody: body, nowSec: Math.floor(s.now() / 1000) }).ok).toBe(true);
+        expect(s.results()[0]).toEqual({ eventId: 'evt_1', status: 'delivered', attempt: 1 });
     });
 
-    it('retries on 10 s, 1 min, 5 min, 30 min, 2 h, then 6 h; gives up after 24 h', async () => {
-        expect([1, 2, 3, 4, 5, 6, 7].map(nextRetryDelay)).toEqual([10_000, 60_000, 300_000, 1_800_000, 7_200_000, 21_600_000, 21_600_000]);
+    it('a pending in-flight event is not pushed again by a second notice', async () => {
         const s = setup();
         s.setStatus(500);
-        s.hub.receive(event());
-        await flush();
+        s.setEvents([event()]);
+        await s.hub.onDue('pi_hello-board');
+        await s.hub.onDue('pi_hello-board');
         expect(s.posts).toHaveLength(1);
+    });
+
+    it.each([302, 404, 500, -1])('HTTP %i (or no answer) is a failed attempt; retries on the wire schedule, then gives up', async (code) => {
+        const s = setup();
+        s.setStatus(code);
+        s.setEvents([event()]);
+        await s.hub.onDue('pi_hello-board');
+        expect(s.results()).toEqual([{ eventId: 'evt_1', status: 'failed', attempt: 1, error: code < 0 ? 'ECONNREFUSED' : `HTTP ${code}` }]);
+        s.setEvents([]);
         s.advance(9_999); await s.hub.tick();
         expect(s.posts).toHaveLength(1);
         s.advance(1); await s.hub.tick();
         expect(s.posts).toHaveLength(2);
+        expect(JSON.parse(s.posts[1].body).attempt).toBe(2);
         let elapsed = 10_000;
         for (const d of [60_000, 300_000, 1_800_000, 7_200_000, 21_600_000, 21_600_000]) { s.advance(d); elapsed += d; await s.hub.tick(); }
-        expect(elapsed).toBeLessThan(RETRY_GIVE_UP_MS);
+        expect(elapsed).toBeLessThan(PLUGIN_EVENT_GIVE_UP_MS);
         expect(s.posts).toHaveLength(8);
-        expect(s.results).toEqual([]);
+        expect(s.results().filter((r) => r.error === GAVE_UP)).toEqual([]);
         s.advance(21_600_000); await s.hub.tick();
-        expect(s.results.at(-1)?.[1]).toBe('failed');
-        const count = s.posts.length;
-        s.advance(RETRY_GIVE_UP_MS); await s.hub.tick();
-        expect(s.posts).toHaveLength(count);
+        expect(s.results().at(-1)).toMatchObject({ status: 'failed', error: GAVE_UP });
         expect(s.hub.pendingCount('pi_hello-board')).toBe(0);
-    });
-
-    it.each([302, 404, 500])('HTTP %i from the callback is a failed attempt', async (code) => {
-        const s = setup();
-        s.setStatus(code);
-        s.hub.receive(event());
-        await flush();
-        expect(s.posts).toHaveLength(1);
-        expect(s.results).toEqual([]);
-        expect(s.hub.pendingCount('pi_hello-board')).toBe(1);
-        s.setStatus(-1);
-        s.advance(10_000); await s.hub.tick();
-        expect(s.posts).toHaveLength(2);
-        expect(s.hub.pendingCount('pi_hello-board')).toBe(1);
+        const count = s.posts.length;
+        s.advance(PLUGIN_EVENT_GIVE_UP_MS); await s.hub.tick();
+        expect(s.posts).toHaveLength(count);
     });
 
     it('a disabled plugin gets install.changed but not decision events', async () => {
         const s = setup();
         s.store.writeInstall('hello-board', { ...s.store.readInstall('hello-board')!, localDisabled: true });
         s.registry.reload();
-        s.hub.receive(event('evt_a'));
-        s.hub.receive(event('evt_b', 'install.changed'));
-        await flush();
+        s.setEvents([event('evt_a'), { ...event('evt_b', 'install.changed'), data: { state: 'disabled', grants: [], manifestHash: 'h' } }]);
+        await s.hub.onDue('pi_hello-board');
         expect(s.posts.map((p) => JSON.parse(p.body).id)).toEqual(['evt_b']);
     });
 
-    it('pull: cursor, signature field, ack, long-poll wake-up', async () => {
+    it('pull API: forwards after/limit, signs each event over rawBody, long-polls until a due notice', async () => {
         const s = setup({ callback: false });
         const entry = s.registry.get('hello-board')!;
-        s.hub.receive(event('evt_1'));
-        s.hub.receive(event('evt_2'));
-        const page = await s.hub.list(entry, 0, 0);
-        expect(page.events.map((e) => e.id)).toEqual(['evt_1', 'evt_2']);
-        expect(page.cursor).toBe('2');
-        const { signature, ...raw } = page.events[0];
-        expect(verifyEventSignature(s.secret, signature!.value, signature!.timestamp, 'evt_1', JSON.stringify(raw), signature!.timestamp)).toBe(true);
-        expect(s.hub.ack(entry, 1)).toBe(1);
-        expect((await s.hub.list(entry, 0, 0)).events.map((e) => e.id)).toEqual(['evt_2']);
-        expect(s.results).toEqual([['evt_1', 'delivered', 1]]);
-        const waiting = s.hub.list(entry, 2, 5_000);
-        setTimeout(() => s.hub.receive(event('evt_3')), 20);
-        expect((await waiting).events.map((e) => e.id)).toEqual(['evt_3']);
+        s.setEvents([event('evt_1')]);
+        const page = await s.hub.pull(entry, 'c1', 0);
+        expect(s.ops.at(-1)).toEqual(['pi_hello-board', 'events.pull', { after: 'c1', limit: 100 }]);
+        if (page.kind !== 'ok') throw new Error('expected ok');
+        expect(page.cursor).toBe('c2');
+        const pulled = page.events[0];
+        expect(JSON.parse(pulled.rawBody)).toEqual(pulled.event);
+        expect(verifyPluginEvent({ secret: s.key, signature: pulled.signature, timestamp: pulled.timestamp, eventId: 'evt_1', rawBody: pulled.rawBody, nowSec: pulled.timestamp }).ok).toBe(true);
+        // No callback: a due notice never pushes.
+        await s.hub.onDue('pi_hello-board');
         expect(s.posts).toHaveLength(0);
-    });
-
-    it('ignores events for another install or plugin', () => {
-        const s = setup();
-        expect(s.hub.receive({ ...event(), installId: 'pi_x' })).toBe(false);
-        expect(s.hub.receive({ ...event(), pluginId: 'someone-else' })).toBe(false);
-        expect(s.hub.receive({ nope: 1 })).toBe(false);
+        s.setEvents([]);
+        const waiting = s.hub.pull(entry, 'c2', 5_000);
+        setTimeout(() => { s.setEvents([event('evt_3')]); void s.hub.onDue('pi_hello-board'); }, 20);
+        const woke = await waiting;
+        expect(woke.kind === 'ok' && woke.events.map((e) => e.event.id)).toEqual(['evt_3']);
+        s.setOnline(false);
+        expect((await s.hub.pull(entry, undefined, 0)).kind).toBe('offline');
     });
 });

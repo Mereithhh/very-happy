@@ -70,6 +70,8 @@ import { startWebPanelsSync } from '@/webPanels/webPanelsSync';
 import { readSettings, updateSettings, readCredentials, rewriteCredentialsForRelay } from '@/persistence';
 import { applyServerMigration } from './serverMigration';
 import { PluginRuntime, pluginRpcHandlers, trackedPluginSessions } from '@/plugins/runtime';
+import { fetchServerPluginSupport } from '@/plugins/serverOp';
+import { readSessionLog } from '@/sessions/sessionOps';
 import { describeMachineIdentityConflict, detectMachineIdentityConflict } from './machineIdentityConflict';
 import { decideHandover, type HandoverPreflight } from './handoverPreflight';
 import { serialTask } from '@/update/serialTask';
@@ -2160,7 +2162,14 @@ export async function startDaemon(): Promise<void> {
         machineId,
         children: getCurrentChildren,
         isTurnActive: (sessionId) => turnActivity.activeSessions().includes(sessionId),
+        // §5.7: read and decrypted here with this machine's session key; the server only audits.
+        readLog: async (sessionId, limit, beforeSeq) => {
+          const persisted = readPersistedSessions()[sessionId];
+          if (!persisted) throw new Error('no local key for this session');
+          return readSessionLog(sessionId, persisted, limit, beforeSeq);
+        },
       }),
+      probeServerSupport: () => fetchServerPluginSupport(configuration.serverUrl, credentials.token, configuration.currentCliVersion),
     });
     const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
       controlToken,
@@ -2485,7 +2494,11 @@ export async function startDaemon(): Promise<void> {
     });
 
     // B-974c: plugin RPCs + install sync / queue replay on every connect.
-    apiMachine.setPluginHandlers(pluginRpcHandlers(pluginRuntime), () => { void pluginRuntime.onConnected(); });
+    apiMachine.setPluginHandlers(pluginRpcHandlers(pluginRuntime), {
+      onConnected: () => { void pluginRuntime.onConnected(); },
+      onEventsDue: (installId) => { void pluginRuntime.onEventsDue(installId); },
+      onInstallChanged: (installId) => { void pluginRuntime.onInstallChanged(installId); },
+    });
 
     // Connect to server
     apiMachine.connect();

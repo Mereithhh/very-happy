@@ -74,9 +74,15 @@ export type AddResult = { id: string; installId: string; state: string; reviewUr
 /** `plugin add`: validate, register as pending on the server, keep the manifest as pending.json. No token/secret yet. */
 export async function addPlugin(store: PluginStore, server: PluginServerApi, src: { text: string; source: string }): Promise<AddResult> {
     const { manifest, warnings } = parseOrThrow(src.text);
-    if (store.readInstall(manifest.id)) throw new PluginCliError('already_installed', `plugin "${manifest.id}" is already installed on this machine; use "very-happy plugin update ${manifest.id}"`);
+    const existing = store.readInstall(manifest.id);
+    // r2: a rejected (or account-removed) install may be submitted again; the server decides the new state.
+    if (existing && existing.state !== 'rejected' && existing.state !== 'removed') {
+        throw new PluginCliError('already_installed', `plugin "${manifest.id}" is already installed on this machine (${existing.state}); use "very-happy plugin update ${manifest.id}"`);
+    }
     // Server first: a refusal (incl. server_too_old) leaves no local state.
     const reply = await submit(server, manifest);
+    // A new installId (remove → add, or a removed install) starts over locally: no old credentials carry over.
+    if (existing && existing.installId !== reply.installId) store.remove(manifest.id);
     const pending = store.writePending(manifest.id, manifest);
     store.writeInstall(manifest.id, {
         installId: reply.installId,

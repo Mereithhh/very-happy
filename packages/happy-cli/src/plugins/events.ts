@@ -1,93 +1,91 @@
 /**
- * B-974c: VH → plugin events (DESIGN §5.5). Events arrive from the server
- * (`plugin-event` RPC, or `events.pending` after a reconnect), are kept per
- * install, pushed to the approved `callback.url` with an HMAC signature on the
- * retry schedule, and are also readable through `GET /plugin/v1/events`.
+ * B-974c: VH → plugin events (DESIGN §5.5, r4 §5.10 "notify + pull", r5).
+ *
+ * The server owns the event queue. It emits `plugin-events-due { installId }`
+ * (also once on every connect); the daemon then `events.pull`s, pushes each
+ * event to the approved `callback.url` with an HMAC signature, and reports
+ * every attempt with `events.result`. While it runs, the daemon retries a
+ * failed push on the wire schedule (`pluginEventRetryDelayMs`); one in-flight
+ * record per event id, so a repeated notice never double-pushes.
+ *
+ * Plugins without a callback pull through `GET /plugin/v1/events`, which the
+ * daemon forwards to `events.pull` and signs per event (`{ event, rawBody,
+ * timestamp, signature }`, signature over rawBody).
  */
-import { z } from 'zod';
+import { PluginEventReadSchema, pluginEventRetryDelayMs, signPluginEvent, PLUGIN_EVENT_DELIVERY_TIMEOUT_MS } from '@slopus/happy-wire';
+import { logger } from '@/ui/logger';
 import { parseLoopbackUrl } from './manifest';
 import { checkInstallState, type PluginEntry, type PluginRegistry } from './registry';
-import { signEvent } from './signing';
 import { loopbackRequest, readBody } from './loopbackHttp';
+import type { ServerOp } from './localApi';
 
-export const PluginEventSchema = z.object({
-    id: z.string().min(1).max(128),
-    type: z.string().min(1).max(64),
-    installId: z.string().min(1).max(128),
-    pluginId: z.string().min(1).max(64),
-    createdAt: z.number(),
-    attempt: z.number().int().nonnegative().optional(),
-    data: z.record(z.string(), z.unknown()).default({}),
-}).passthrough();
-export type PluginEvent = z.infer<typeof PluginEventSchema>;
+export type PluginEvent = { id: string; type: string; installId: string; pluginId: string; createdAt: number; attempt: number; data: Record<string, unknown> } & Record<string, unknown>;
+export type PulledEvent = { event: PluginEvent; rawBody: string; timestamp: number; signature: string };
 
-/** Delay after attempt n (1-based): 10 s, 1 min, 5 min, 30 min, 2 h, then every 6 h; give up 24 h after the first attempt. */
-export const RETRY_DELAYS_MS = [10_000, 60_000, 300_000, 1_800_000, 7_200_000];
-export const RETRY_STEADY_MS = 6 * 3_600_000;
-export const RETRY_GIVE_UP_MS = 24 * 3_600_000;
-export const CALLBACK_TIMEOUT_MS = 10_000;
-const BUFFER_MAX = 500;
 /** Events a disabled plugin still receives (so it can learn it was turned off). */
 const ALWAYS_DELIVER = new Set(['install.changed', 'ping']);
+const PULL_LIMIT = 100;
+export const GAVE_UP = 'gave_up';
 
-export function nextRetryDelay(attempt: number): number {
-    return attempt <= RETRY_DELAYS_MS.length ? RETRY_DELAYS_MS[attempt - 1] : RETRY_STEADY_MS;
-}
+export type CallbackTarget = { host: '127.0.0.1' | '::1'; port: number; path: string };
+export type CallbackPost = (url: CallbackTarget, headers: Record<string, string>, body: string) => Promise<number>;
 
-type Slot = { seq: number; event: PluginEvent; attempts: number; firstAttemptAt: number | null; nextAt: number; status: 'pending' | 'delivered' | 'failed' };
-
-export type CallbackPost = (url: { host: '127.0.0.1' | '::1'; port: number; path: string }, headers: Record<string, string>, body: string) => Promise<number>;
-
-/** The real POST: loopback only, 10 s, a 2xx counts. */
+/** The real POST: loopback only, 10 s, the caller decides what counts as delivered. */
 export const postCallback: CallbackPost = async (url, headers, body) => {
     const res = await loopbackRequest({ host: url.host, port: url.port }, {
         method: 'POST',
         path: url.path,
         headers: { ...headers, host: url.host === '::1' ? `[::1]:${url.port}` : `127.0.0.1:${url.port}`, 'content-length': String(Buffer.byteLength(body)) },
         body: Buffer.from(body, 'utf8'),
-        timeoutMs: CALLBACK_TIMEOUT_MS,
+        timeoutMs: PLUGIN_EVENT_DELIVERY_TIMEOUT_MS,
     });
     await readBody(res.body, 64 * 1024).catch(() => undefined);
     return res.status;
 };
 
-export function signedEnvelope(secret: string, event: PluginEvent, nowSec: number): { rawBody: string; headers: Record<string, string> } {
+/** Sign one event for push or pull: the signature covers exactly `rawBody`. */
+export function signedEvent(secretKey: Uint8Array, event: PluginEvent, nowSec: number): PulledEvent {
     const rawBody = JSON.stringify(event);
+    return { event, rawBody, timestamp: nowSec, signature: signPluginEvent(secretKey, nowSec, event.id, rawBody) };
+}
+
+export function pushHeaders(signed: PulledEvent): Record<string, string> {
     return {
-        rawBody,
-        headers: {
-            'content-type': 'application/json',
-            'x-vh-event-id': event.id,
-            'x-vh-timestamp': String(nowSec),
-            'x-vh-signature': signEvent(secret, nowSec, event.id, rawBody),
-        },
+        'content-type': 'application/json',
+        'x-vh-event-id': signed.event.id,
+        'x-vh-timestamp': String(signed.timestamp),
+        'x-vh-signature': signed.signature,
     };
 }
 
+function parseEvents(raw: unknown, installId: string, pluginId: string): PluginEvent[] {
+    if (!Array.isArray(raw)) return [];
+    const out: PluginEvent[] = [];
+    for (const item of raw) {
+        const parsed = PluginEventReadSchema.safeParse(item);
+        // An event for another install never reaches this plugin, whatever the server sent.
+        if (parsed.success && parsed.data.installId === installId && parsed.data.pluginId === pluginId) out.push(parsed.data as PluginEvent);
+    }
+    return out;
+}
+
+type Slot = { event: PluginEvent; attempt: number; firstAttemptAt: number | null; nextAt: number };
+
 export class PluginEventHub {
-    private slots = new Map<string, Slot[]>();
-    private seqs = new Map<string, number>();
-    private waiters = new Map<string, Set<() => void>>();
+    private slots = new Map<string, Map<string, Slot>>();
     private delivering = new Set<string>();
+    private dueAgain = new Set<string>();
+    private waiters = new Map<string, Set<() => void>>();
     private timer: NodeJS.Timeout | null = null;
 
     constructor(private readonly deps: {
         registry: PluginRegistry;
-        /** Tell the server how a push ended (`events.result`). */
-        reportResult: (installId: string, eventId: string, status: 'delivered' | 'failed', attempt: number) => void;
+        serverOp: ServerOp;
         post?: CallbackPost;
         now?: () => number;
-        persist?: (installId: string, state: { seq: number; slots: Slot[] }) => void;
     }) {}
 
     private now(): number { return this.deps.now?.() ?? Date.now(); }
-
-    load(installId: string, state: unknown): void {
-        const s = state as { seq?: number; slots?: Slot[] } | null;
-        if (!s || !Array.isArray(s.slots)) return;
-        this.slots.set(installId, s.slots.filter((x) => PluginEventSchema.safeParse(x?.event).success));
-        this.seqs.set(installId, typeof s.seq === 'number' ? s.seq : 0);
-    }
 
     start(intervalMs = 5_000): void {
         if (this.timer) return;
@@ -97,143 +95,134 @@ export class PluginEventHub {
 
     stop(): void { if (this.timer) clearInterval(this.timer); this.timer = null; }
 
-    private save(installId: string): void {
-        this.deps.persist?.(installId, { seq: this.seqs.get(installId) ?? 0, slots: this.slots.get(installId) ?? [] });
+    private report(installId: string, eventId: string, status: 'delivered' | 'failed', attempt: number, error?: string): void {
+        void this.deps.serverOp(installId, 'events.result', { eventId, status, attempt, ...(error ? { error: error.slice(0, 500) } : {}) }, `evr_${eventId}_${attempt}`)
+            .catch(() => undefined);
     }
 
-    /** Add a server event (duplicates by id are ignored). Returns false when it is not for a known install. */
-    receive(raw: unknown): boolean {
-        const parsed = PluginEventSchema.safeParse(raw);
-        if (!parsed.success) return false;
-        const event = parsed.data;
-        const entry = this.deps.registry.byInstallId(event.installId);
-        if (!entry || entry.id !== event.pluginId) return false;
-        const list = this.slots.get(event.installId) ?? [];
-        if (list.some((s) => s.event.id === event.id)) return true;
-        const seq = (this.seqs.get(event.installId) ?? 0) + 1;
-        this.seqs.set(event.installId, seq);
-        list.push({ seq, event, attempts: 0, firstAttemptAt: null, nextAt: this.now(), status: 'pending' });
-        // Cap: drop the oldest finished ones first, then the oldest.
-        while (list.length > BUFFER_MAX) {
-            const i = list.findIndex((s) => s.status !== 'pending');
-            list.splice(i >= 0 ? i : 0, 1);
-        }
-        this.slots.set(event.installId, list);
-        this.save(event.installId);
-        for (const wake of this.waiters.get(event.installId) ?? []) wake();
-        void this.deliverDue(entry);
-        return true;
-    }
-
-    /** Pull API: events after `cursor` that the plugin has not acked. */
-    async list(entry: PluginEntry, after: number, waitMs: number, limit = 100): Promise<{ events: Array<PluginEvent & { signature?: { timestamp: number; value: string } }>; cursor: string }> {
-        const pick = () => (this.slots.get(entry.record.installId) ?? []).filter((s) => s.seq > after && s.status !== 'delivered').slice(0, limit);
-        let found = pick();
-        if (found.length === 0 && waitMs > 0) {
-            await new Promise<void>((resolve) => {
-                const set = this.waiters.get(entry.record.installId) ?? new Set();
-                const wake = () => { clearTimeout(t); set.delete(wake); resolve(); };
-                const t = setTimeout(wake, waitMs);
-                set.add(wake);
-                this.waiters.set(entry.record.installId, set);
-            });
-            found = pick();
-        }
-        const nowSec = Math.floor(this.now() / 1000);
-        const events = found.map((s) => {
-            if (!entry.secret) return s.event;
-            return { ...s.event, signature: { timestamp: nowSec, value: signEvent(entry.secret, nowSec, s.event.id, JSON.stringify(s.event)) } };
-        });
-        const cursor = found.length > 0 ? found[found.length - 1].seq : after;
-        return { events, cursor: String(cursor) };
-    }
-
-    /** `POST /events/ack { upTo }`: everything up to the cursor counts as delivered. */
-    ack(entry: PluginEntry, upTo: number): number {
-        const list = this.slots.get(entry.record.installId) ?? [];
-        let acked = 0;
-        for (const s of list) {
-            if (s.seq <= upTo && s.status !== 'delivered') {
-                s.status = 'delivered';
-                acked++;
-                this.deps.reportResult(entry.record.installId, s.event.id, 'delivered', Math.max(1, s.attempts));
-            }
-        }
-        this.slots.set(entry.record.installId, list.filter((s) => s.seq > upTo));
-        this.save(entry.record.installId);
-        return acked;
-    }
-
-    pendingCount(installId: string): number { return (this.slots.get(installId) ?? []).filter((s) => s.status === 'pending').length; }
-
-    async tick(): Promise<void> {
-        for (const entry of this.deps.registry.list()) await this.deliverDue(entry);
-    }
-
-    private async deliverDue(entry: PluginEntry): Promise<void> {
-        const installId = entry.record.installId;
-        if (this.delivering.has(installId)) return;
-        const callback = entry.manifest?.callback ? parseLoopbackUrl(entry.manifest.callback.url, true) : null;
-        if (!callback || !entry.secret) return;
+    /** `plugin-events-due { installId }`: wake pullers, and push for a callback plugin. */
+    async onDue(installId: string): Promise<void> {
+        for (const wake of this.waiters.get(installId) ?? []) wake();
+        const entry = this.deps.registry.byInstallId(installId);
+        if (!entry || !this.callbackOf(entry)) return;
+        if (this.delivering.has(installId)) { this.dueAgain.add(installId); return; }
         this.delivering.add(installId);
         try {
-            for (const slot of [...(this.slots.get(installId) ?? [])]) {
-                if (slot.status !== 'pending' || slot.nextAt > this.now()) continue;
-                if (checkInstallState(entry) && !ALWAYS_DELIVER.has(slot.event.type)) continue;
-                await this.attempt(entry, slot, callback);
-            }
+            do {
+                this.dueAgain.delete(installId);
+                const res = await this.deps.serverOp(installId, 'events.pull', { limit: PULL_LIMIT }, `evp_${installId}_${this.now()}`);
+                if (res.kind !== 'ok') return;
+                const slots = this.slots.get(installId) ?? new Map<string, Slot>();
+                for (const event of parseEvents(res.result.events, installId, entry.id)) {
+                    if (!slots.has(event.id)) slots.set(event.id, { event, attempt: Math.max(1, event.attempt ?? 1), firstAttemptAt: null, nextAt: this.now() });
+                }
+                this.slots.set(installId, slots);
+                await this.deliverDue(entry);
+            } while (this.dueAgain.has(installId));
         } finally {
             this.delivering.delete(installId);
         }
     }
 
-    private async attempt(entry: PluginEntry, slot: Slot, callback: { host: '127.0.0.1' | '::1'; port: number; path: string }): Promise<void> {
-        const now = this.now();
-        slot.attempts++;
-        slot.firstAttemptAt ??= now;
-        const event = { ...slot.event, attempt: slot.attempts };
-        const { rawBody, headers } = signedEnvelope(entry.secret!, event, Math.floor(now / 1000));
-        let ok = false;
-        try {
-            const status = await (this.deps.post ?? postCallback)(callback, headers, rawBody);
-            ok = status >= 200 && status < 300;
-        } catch {
-            ok = false;
+    /** Retry timer. */
+    async tick(): Promise<void> {
+        for (const entry of this.deps.registry.list()) {
+            const installId = entry.record.installId;
+            if (this.delivering.has(installId) || !this.slots.get(installId)?.size) continue;
+            this.delivering.add(installId);
+            try { await this.deliverDue(entry); } finally { this.delivering.delete(installId); }
         }
-        const installId = entry.record.installId;
-        if (ok) {
-            slot.status = 'delivered';
-            this.deps.reportResult(installId, slot.event.id, 'delivered', slot.attempts);
-            this.slots.set(installId, (this.slots.get(installId) ?? []).filter((s) => s !== slot));
-        } else {
-            const next = now + nextRetryDelay(slot.attempts);
-            if (next - slot.firstAttemptAt > RETRY_GIVE_UP_MS) {
-                slot.status = 'failed';
-                this.deps.reportResult(installId, slot.event.id, 'failed', slot.attempts);
-            } else {
-                slot.nextAt = next;
-            }
-        }
-        this.save(installId);
     }
 
-    /** `plugin doctor`: one signed `ping` straight to the callback, not queued. */
+    private callbackOf(entry: PluginEntry): CallbackTarget | null {
+        return entry.manifest?.callback && entry.secretKey ? parseLoopbackUrl(entry.manifest.callback.url, true) : null;
+    }
+
+    private async deliverDue(entry: PluginEntry): Promise<void> {
+        const callback = this.callbackOf(entry);
+        const slots = this.slots.get(entry.record.installId);
+        if (!callback || !slots) return;
+        const blocked = checkInstallState(entry) !== null;
+        for (const slot of [...slots.values()]) {
+            if (blocked && !ALWAYS_DELIVER.has(slot.event.type)) { slots.delete(slot.event.id); continue; }
+            if (slot.nextAt > this.now()) continue;
+            await this.attempt(entry, slot, callback, slots);
+        }
+    }
+
+    private async attempt(entry: PluginEntry, slot: Slot, callback: CallbackTarget, slots: Map<string, Slot>): Promise<void> {
+        const now = this.now();
+        slot.firstAttemptAt ??= now;
+        const signed = signedEvent(entry.secretKey!, { ...slot.event, attempt: slot.attempt }, Math.floor(now / 1000));
+        let error: string | undefined;
+        try {
+            const status = await (this.deps.post ?? postCallback)(callback, pushHeaders(signed), signed.rawBody);
+            if (status < 200 || status >= 300) error = `HTTP ${status}`;
+        } catch (e) {
+            error = (e as Error).message || 'unreachable';
+        }
+        const installId = entry.record.installId;
+        if (error === undefined) {
+            slots.delete(slot.event.id);
+            this.report(installId, slot.event.id, 'delivered', slot.attempt);
+            return;
+        }
+        const delay = pluginEventRetryDelayMs(slot.attempt, slot.firstAttemptAt, this.now());
+        if (delay === null) {
+            slots.delete(slot.event.id);
+            this.report(installId, slot.event.id, 'failed', slot.attempt, GAVE_UP);
+            logger.debug(`[PLUGINS] ${entry.id}: gave up on event ${slot.event.id} after ${slot.attempt} attempts`);
+            return;
+        }
+        this.report(installId, slot.event.id, 'failed', slot.attempt, error);
+        slot.attempt++;
+        slot.nextAt = this.now() + delay;
+    }
+
+    pendingCount(installId: string): number { return this.slots.get(installId)?.size ?? 0; }
+
+    /**
+     * `GET /plugin/v1/events`: forward to `events.pull`, sign each event.
+     * `wait` long-polls until a due notice (or the timeout) when nothing is there.
+     */
+    async pull(entry: PluginEntry, after: string | undefined, waitMs: number): Promise<{ kind: 'ok'; events: PulledEvent[]; cursor: string | null } | { kind: 'offline' } | { kind: 'error'; status: number; error: string }> {
+        const installId = entry.record.installId;
+        const once = async () => {
+            const res = await this.deps.serverOp(installId, 'events.pull', { ...(after ? { after } : {}), limit: PULL_LIMIT }, `evq_${installId}_${this.now()}`);
+            if (res.kind !== 'ok') return res;
+            const nowSec = Math.floor(this.now() / 1000);
+            const events = entry.secretKey ? parseEvents(res.result.events, installId, entry.id).map((e) => signedEvent(entry.secretKey!, e, nowSec)) : [];
+            const cursor = typeof res.result.cursor === 'string' ? res.result.cursor : null;
+            return { kind: 'ok' as const, events, cursor };
+        };
+        let result = await once();
+        if (result.kind === 'ok' && result.events.length === 0 && waitMs > 0) {
+            await new Promise<void>((resolve) => {
+                const set = this.waiters.get(installId) ?? new Set();
+                const wake = () => { clearTimeout(t); set.delete(wake); resolve(); };
+                const t = setTimeout(wake, waitMs);
+                set.add(wake);
+                this.waiters.set(installId, set);
+            });
+            result = await once();
+        }
+        return result;
+    }
+
+    /** `plugin doctor`: one signed `ping` straight to the callback, not via the server. */
     async ping(entry: PluginEntry): Promise<{ status: number | null; error?: string }> {
         const callback = entry.manifest?.callback ? parseLoopbackUrl(entry.manifest.callback.url, true) : null;
         if (!callback) return { status: null, error: 'no callback declared' };
-        if (!entry.secret) return { status: null, error: 'no secret yet (not approved)' };
+        if (!entry.secretKey) return { status: null, error: 'no secret yet (not approved)' };
         const now = this.now();
         const event: PluginEvent = { id: `evt_ping_${now.toString(36)}`, type: 'ping', installId: entry.record.installId, pluginId: entry.id, createdAt: now, attempt: 1, data: {} };
-        const { rawBody, headers } = signedEnvelope(entry.secret, event, Math.floor(now / 1000));
+        const signed = signedEvent(entry.secretKey, event, Math.floor(now / 1000));
         try {
-            return { status: await (this.deps.post ?? postCallback)(callback, headers, rawBody) };
+            return { status: await (this.deps.post ?? postCallback)(callback, pushHeaders(signed), signed.rawBody) };
         } catch (error) {
             return { status: null, error: (error as Error).message };
         }
     }
 
-    forget(installId: string): void {
-        this.slots.delete(installId);
-        this.seqs.delete(installId);
-    }
+    forget(installId: string): void { this.slots.delete(installId); }
 }

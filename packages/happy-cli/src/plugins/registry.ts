@@ -6,6 +6,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { PluginManifest, PluginPermission } from './manifest';
 import { PluginStore, effectiveState, isLiveState, type EffectiveInstallState, type InstallRecord } from './store';
+import { readPluginSecretKey } from './signing';
 
 export type PluginEntry = {
     id: string;
@@ -13,7 +14,8 @@ export type PluginEntry = {
     /** The approved manifest; null until the first approval. */
     manifest: PluginManifest | null;
     state: EffectiveInstallState;
-    secret: string | null;
+    /** HMAC key: the 32 decoded secret bytes (r5). */
+    secretKey: Uint8Array | null;
     tokenDigest: Buffer | null;
 };
 
@@ -37,7 +39,7 @@ export class PluginRegistry {
                 record,
                 manifest,
                 state: effectiveState(record),
-                secret: manifest ? this.store.readSecret(id) : null,
+                secretKey: manifest ? readPluginSecretKey(this.store.readSecret(id)) : null,
                 tokenDigest: token && token.length >= 36 ? digest(token) : null,
             });
         }
@@ -79,6 +81,7 @@ const STATE_ERRORS: Record<string, AccessDenied> = {
     rejected: { status: 403, error: 'plugin_rejected', message: 'the owner rejected this plugin' },
     disabled: { status: 403, error: 'plugin_disabled', message: 'this plugin is disabled' },
     disabled_by_operator: { status: 403, error: 'disabled_by_operator', message: 'this plugin was disabled by the service operator' },
+    removed: { status: 403, error: 'plugin_disabled', message: 'this plugin was removed from the account' },
 };
 
 /** May this install use its approval right now? */

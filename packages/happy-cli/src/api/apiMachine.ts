@@ -10,6 +10,10 @@ import { io, Socket } from 'socket.io-client';
 import { type WebPanel, webPanelsSignature } from '@/webPanels/webPanels';
 import { PLUGIN_API_LEVEL } from '@/plugins/manifest';
 import { parsePluginOpAnswer, PLUGIN_OP_TIMEOUT_MS, type PluginServerOpResult } from '@/plugins/serverOp';
+import { PLUGIN_SOCKET_EVENTS, PluginEventsDueSchema, PluginInstallChangedNoticeSchema } from '@slopus/happy-wire';
+
+/** B-974c: what the daemon's plugin runtime does on connect and on the two machine-room notices. */
+export type PluginNoticeHooks = { onConnected: () => void; onEventsDue: (installId: string) => void; onInstallChanged: (installId: string) => void };
 import { logger } from '@/ui/logger'
 import { connectGuarded, socketConnectGuard } from './socketConnectGuard';
 import { summarizeSpawnSessionForLog } from '@/utils/spawnSessionLog';
@@ -240,7 +244,7 @@ export class ApiMachineClient {
     private webPanelsSignatureSent: string | null = null;
     /** B-974c: set once the daemon wires the plugin runtime. */
     private pluginsAvailable = false;
-    private pluginConnectedHandler: (() => void) | null = null;
+    private pluginHooks: PluginNoticeHooks | null = null;
     private rateLimitPushChain: Promise<void> = Promise.resolve();
     private readonly rateLimitPublisher = new RateLimitPublisher({
         getCurrent: () => this.machine.daemonState?.rateLimits,
@@ -678,14 +682,27 @@ export class ApiMachineClient {
      * `api/rpc/RpcHandlerManager.ts` `registerPlainHandler`.
      */
     /**
-     * B-974c: the `plugin-*` machine RPCs (machine-key encrypted, like terminal
-     * payloads) and the capability flag the web reads.
+     * B-974c: the panel RPCs (machine-key encrypted, scoped `${machineId}:plugin-http…`),
+     * the machine-room notices `plugin-events-due` / `plugin-install-changed`
+     * (r4 §5.10), and the capability flag the web reads.
      */
-    setPluginHandlers(handlers: Record<string, (params: unknown) => Promise<unknown>>, onConnected: () => void): void {
+    setPluginHandlers(handlers: Record<string, (params: unknown) => Promise<unknown>>, hooks: PluginNoticeHooks): void {
         for (const [method, handler] of Object.entries(handlers)) this.rpcHandlerManager.registerHandler(method, handler);
         this.pluginsAvailable = true;
-        this.pluginConnectedHandler = onConnected;
-        if (this.socket?.connected) onConnected();
+        this.pluginHooks = hooks;
+        if (this.socket?.connected) hooks.onConnected();
+    }
+
+    private bindPluginNotices(socket: Socket<ServerToDaemonEvents, DaemonToServerEvents>): void {
+        const s = socket as unknown as { on(event: string, fn: (payload: unknown) => void): void };
+        s.on(PLUGIN_SOCKET_EVENTS.eventsDue, (payload) => {
+            const notice = PluginEventsDueSchema.safeParse(payload);
+            if (notice.success) this.pluginHooks?.onEventsDue(notice.data.installId);
+        });
+        s.on(PLUGIN_SOCKET_EVENTS.installChanged, (payload) => {
+            const notice = PluginInstallChangedNoticeSchema.safeParse(payload);
+            if (notice.success) this.pluginHooks?.onInstallChanged(notice.data.installId);
+        });
     }
 
     /**
@@ -698,7 +715,7 @@ export class ApiMachineClient {
         const socket = this.socket as any;
         if (!socket?.connected) return { kind: 'offline' };
         try {
-            const answer = await socket.timeout(PLUGIN_OP_TIMEOUT_MS).emitWithAck('plugin-op', { installId, op, payload, requestId });
+            const answer = await socket.timeout(PLUGIN_OP_TIMEOUT_MS).emitWithAck(PLUGIN_SOCKET_EVENTS.op, { installId, op, payload, requestId });
             return parsePluginOpAnswer(answer);
         } catch {
             return { kind: 'offline' };
@@ -1708,7 +1725,7 @@ export class ApiMachineClient {
 
         if (!rpcAlreadyRegistered) this.rpcHandlerManager.onSocketConnect(socket);
         // B-974c: install sync, queued plugin writes and undelivered events.
-        if (this.pluginConnectedHandler) { try { this.pluginConnectedHandler(); } catch (error) { logger.debug('[API MACHINE] plugin connect handler failed', error); } }
+        if (this.pluginHooks) { try { this.pluginHooks.onConnected(); } catch (error) { logger.debug('[API MACHINE] plugin connect handler failed', error); } }
         this.syncResumeSessionRpcRegistration();
         this.syncRestartSessionRpcRegistration();
         this.startKeepAlive();
@@ -1717,6 +1734,7 @@ export class ApiMachineClient {
     }
 
     private bindControlDataHandlers(socket: Socket<ServerToDaemonEvents, DaemonToServerEvents>) {
+        this.bindPluginNotices(socket);
         // Handle update events from server
         socket.on('update', (data: Update) => {
             // Machine clients should only care about machine updates

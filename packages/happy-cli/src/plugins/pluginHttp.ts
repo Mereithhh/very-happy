@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { parseLoopbackUrl } from './manifest';
 import { checkAccess, type PluginRegistry } from './registry';
-import { signPanelRequest } from './signing';
+import { normalizePluginRequestPath, signPluginRequest } from '@slopus/happy-wire';
 import { authorityOf, loopbackRequest, type LoopbackTarget } from './loopbackHttp';
 
 export const INLINE_BODY_MAX = 256 * 1024;
@@ -42,26 +42,21 @@ const jsonError = (status: number, error: string, message: string, extra: Record
 // ── path ────────────────────────────────────────────────────────────────────
 
 /**
- * §4.6 step 3. `path` must start with one `/`; after percent-decoding there is
- * no `..` segment, no `\`, no NUL / control char and no absolute-URL form.
- * The original (still encoded) path is what gets forwarded.
+ * §4.6 step 3: the wire rule (`normalizePluginRequestPath`: leading `/`, no
+ * `//host` / `scheme:`, no `\\` / NUL / control chars raw or encoded, no `.` /
+ * `..` segment after decoding) plus two local limits: `path` carries no `?` /
+ * `#` (the query has its own field), and neither part carries whitespace or a
+ * fragment. The original (still encoded) path is what gets forwarded.
  */
 export function normalizeForwardPath(path: unknown, query: unknown): { ok: true; pathWithQuery: string } | { ok: false } {
-    if (typeof path !== 'string' || path.length === 0 || path.length > 8192) return { ok: false };
-    if (!path.startsWith('/') || path.startsWith('//')) return { ok: false };
-    if (/[\u0000-\u0020\u007f\\#?]/.test(path)) return { ok: false };
-    let decoded: string;
-    try { decoded = decodeURIComponent(path); } catch { return { ok: false }; }
-    if (/[\u0000-\u001f\u007f\\]/.test(decoded)) return { ok: false };
-    // `/%2F%2Fhost` decodes to a scheme-relative URL; a raw `http:` cannot occur (must start with `/`).
-    if (decoded.startsWith('//') || !decoded.startsWith('/')) return { ok: false };
-    if (decoded.split('/').some((segment) => segment === '..' || segment === '.')) return { ok: false };
+    if (typeof path !== 'string' || /[\s#?]/.test(path)) return { ok: false };
     let q = '';
     if (query !== undefined && query !== null && query !== '') {
-        if (typeof query !== 'string' || query.length > 8192 || /[\u0000-\u0020\u007f#]/.test(query)) return { ok: false };
+        if (typeof query !== 'string' || query.length > 8192 || /[\s#]/.test(query)) return { ok: false };
         q = query.startsWith('?') ? query : `?${query}`;
     }
-    return { ok: true, pathWithQuery: path + q };
+    const normalized = normalizePluginRequestPath(path + q);
+    return normalized === null ? { ok: false } : { ok: true, pathWithQuery: normalized };
 }
 
 // ── headers ────────────────────────────────────────────────────────────────
@@ -265,7 +260,7 @@ export class PluginHttpForwarder {
             'x-vh-timestamp': String(ts),
             'x-vh-viewer': 'owner',
         };
-        if (entry.secret) signature['x-vh-signature'] = signPanelRequest(entry.secret, ts, reqId, method, normalized.pathWithQuery, body);
+        if (entry.secretKey) signature['x-vh-signature'] = signPluginRequest(entry.secretKey, ts, reqId, method, normalized.pathWithQuery, new Uint8Array(body));
         const headers = buildUpstreamHeaders(inbound, { target, pluginId: entry.id, signature });
         if (body.length > 0) headers['content-length'] = String(body.length);
         try {

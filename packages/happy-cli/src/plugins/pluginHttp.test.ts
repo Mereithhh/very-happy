@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PluginHttpForwarder, buildUpstreamHeaders, normalizeForwardPath, rewriteLocation, stripHostCookies, CHUNK_MAX, MAX_CONCURRENT_PER_INSTALL } from './pluginHttp';
 import { assertLoopbackTarget } from './loopbackHttp';
-import { signPanelRequest } from './signing';
+import { verifyPluginRequest } from '@slopus/happy-wire';
 import { installApproved, registryFor, sampleManifest, tempHome } from './testFixtures';
 import type { PluginPermission } from './manifest';
 
@@ -97,10 +97,10 @@ describe('B-974c plugin-http forwarding against a real loopback upstream', () =>
         const port = (server.address() as AddressInfo).port;
         const t = tempHome(); cleanup = t.cleanup;
         const { store, registry } = registryFor(t.home);
-        const m = sampleManifest({ panels: [{ id: 'main', title: 'Main', upstream: `http://127.0.0.1:${port}` }], callback: { url: `http://127.0.0.1:${port}/vh/callback` } });
-        const { secret } = installApproved(store, m, { grants });
+        const m = sampleManifest({ panels: [{ id: 'main', title: 'Main', upstream: `http://127.0.0.1:${port}`, entry: '/' }], callback: { url: `http://127.0.0.1:${port}/vh/callback` } });
+        installApproved(store, m, { grants });
         registry.reload();
-        return { port, store, registry, secret, fwd: new PluginHttpForwarder(registry, { timeoutMs: 2_000 }) };
+        return { port, store, registry, secretKey: registry.get('hello-board')!.secretKey!, fwd: new PluginHttpForwarder(registry, { timeoutMs: 2_000 }) };
     }
 
     afterEach(async () => {
@@ -113,7 +113,7 @@ describe('B-974c plugin-http forwarding against a real loopback upstream', () =>
     const req = (over: Record<string, unknown> = {}) => ({ reqId: 'req_1', installId: 'pi_hello-board', panelId: 'main', method: 'POST', path: '/api/count', query: 'a=1', headers: { host: 'hello-board-abcd1234.p.example.test', 'content-type': 'application/json' }, bodyB64: b64('{"n":1}'), ...over });
 
     it('forwards to the declared port with a verifiable signature', async () => {
-        const { fwd, secret } = await setup();
+        const { fwd, secretKey } = await setup();
         handler = (_q, res) => { res.setHeader('x-plugin', 'yes'); res.setHeader('connection', 'close'); res.end('{"count":1}'); };
         const r = await fwd.handle(req());
         expect(r.status).toBe(200);
@@ -125,7 +125,8 @@ describe('B-974c plugin-http forwarding against a real loopback upstream', () =>
         expect(got.headers['x-vh-install']).toBe('pi_hello-board');
         expect(got.headers['x-vh-viewer']).toBe('owner');
         const ts = Number(got.headers['x-vh-timestamp']);
-        expect(got.headers['x-vh-signature']).toBe(signPanelRequest(secret, ts, 'req_1', 'POST', '/api/count?a=1', Buffer.from('{"n":1}')));
+        expect(verifyPluginRequest({ secret: secretKey, signature: String(got.headers['x-vh-signature']), timestamp: ts, requestId: 'req_1', method: 'POST', pathWithQuery: '/api/count?a=1', body: '{"n":1}', nowSec: ts }).ok).toBe(true);
+        expect(verifyPluginRequest({ secret: secretKey, signature: String(got.headers['x-vh-signature']), timestamp: ts, requestId: 'req_1', method: 'POST', pathWithQuery: '/api/count?a=2', body: '{"n":1}', nowSec: ts }).ok).toBe(false);
     });
 
     it('does not follow redirects; rewrites Location back to the upstream', async () => {

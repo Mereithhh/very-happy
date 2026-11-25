@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalJson, isPrivilegeReduction, manifestHash, parseLoopbackUrl, parsePluginManifest, privilegedHash } from './manifest';
+import { manifestHash, parseLoopbackUrl, parsePluginManifest, privilegedHash } from './manifest';
 import { sampleManifest } from './testFixtures';
 
 describe('B-974c manifest (DESIGN §2.1)', () => {
@@ -11,7 +11,7 @@ describe('B-974c manifest (DESIGN §2.1)', () => {
     it.each([
         ['http://127.0.0.1:4310', true],
         ['http://[::1]:4310', true],
-        ['http://127.0.0.1:4310/', true],
+        ['http://127.0.0.1:4310/', false],
         ['http://localhost:4310', false],
         ['http://127.0.0.2:4310', false],
         ['http://2130706433:4310', false],
@@ -55,7 +55,6 @@ describe('B-974c manifest (DESIGN §2.1)', () => {
     });
 
     it('hashes are independent of key order; privileged hash ignores cosmetic fields', () => {
-        expect(canonicalJson({ b: 1, a: [{ d: 1, c: 2 }] })).toBe('{"a":[{"c":2,"d":1}],"b":1}');
         const m = sampleManifest();
         const reordered = Object.fromEntries(Object.entries(m).reverse()) as typeof m;
         expect(manifestHash(reordered)).toBe(manifestHash(m));
@@ -65,17 +64,15 @@ describe('B-974c manifest (DESIGN §2.1)', () => {
         for (const changed of [
             sampleManifest({ name: 'Hello Bored' }),
             sampleManifest({ icon: 'bot' }),
-            sampleManifest({ panels: [{ id: 'main', title: 'Counter', upstream: 'http://127.0.0.1:4311' }] }),
+            sampleManifest({ panels: [{ id: 'main', title: 'Counter', upstream: 'http://127.0.0.1:4311', entry: '/' }] }),
             sampleManifest({ callback: { url: 'http://127.0.0.1:4310/other' } }),
             sampleManifest({ permissions: ['sidebar', 'panel', 'decisions', 'session.widget', 'sessions.read'] }),
         ]) expect(privilegedHash(changed)).not.toBe(privilegedHash(m));
     });
 
-    it('only a pure narrowing counts as a reduction (§3.3)', () => {
-        const m = sampleManifest();
-        expect(isPrivilegeReduction(m, sampleManifest({ permissions: ['sidebar', 'panel'], sessionWidget: undefined, callback: undefined }))).toBe(true);
-        expect(isPrivilegeReduction(m, sampleManifest({ permissions: [...m.permissions, 'sessions.list'] }))).toBe(false);
-        expect(isPrivilegeReduction(m, sampleManifest({ panels: [{ id: 'main', title: 'x', upstream: 'http://127.0.0.1:4999' }] }))).toBe(false);
-        expect(isPrivilegeReduction(m, sampleManifest({ name: 'Other' }))).toBe(false);
+    it('parses to the wire form: defaults filled, so explicit and omitted defaults hash the same', () => {
+        const explicit = parsePluginManifest(JSON.stringify({ ...sampleManifest(), icon: 'puzzle', minApi: 1 }));
+        const omitted = parsePluginManifest(JSON.stringify({ ...sampleManifest(), icon: undefined, minApi: undefined }));
+        expect(explicit.ok && omitted.ok && manifestHash(explicit.manifest) === manifestHash(omitted.manifest)).toBe(true);
     });
 });

@@ -5,14 +5,25 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { canonicalJson, PLUGIN_API_LEVEL, type PluginPermission } from './manifest';
+import {
+    PLUGIN_API_FEATURES, PLUGIN_LIMITS, pluginCanonicalJson,
+    PluginBadgePutSchema, PluginDecisionDeleteSchema, PluginDecisionListQuerySchema, PluginDecisionPatchSchema, PluginDecisionPostSchema,
+    PluginEventsAckSchema, PluginEventsPullQuerySchema, PluginSessionMessagesQuerySchema, PluginSessionsListQuerySchema, PluginWidgetPutSchema,
+} from '@slopus/happy-wire';
+import { PLUGIN_API_LEVEL, type PluginPermission } from './manifest';
 import { checkAccess, checkInstallState, type AccessDenied, type PluginEntry, type PluginRegistry } from './registry';
 import { OfflineQueue } from './offlineQueue';
 import type { PluginEventHub } from './events';
-import { BadgePutSchema, DecisionDeleteSchema, DecisionPatchSchema, DecisionPostSchema, EventsAckSchema, WidgetPutSchema, zodIssues } from './apiSchemas';
 
-export const PLUGIN_API_FEATURES = ['badge', 'panel', 'decisions', 'decisions.input', 'widget', 'events.pull'] as const;
-export const PLUGIN_API_BODY_MAX = 64 * 1024;
+export { PLUGIN_API_FEATURES };
+export const PLUGIN_API_BODY_MAX = PLUGIN_LIMITS.apiBodyBytes;
+
+function zodIssues(error: z.ZodError): Array<{ path: string; message: string }> {
+    return error.issues.map((i) => ({ path: i.path.map(String).join('.'), message: i.message }));
+}
+
+/** Does the server publish `plugins-v1`? `unknown` until the first answer. */
+export type ServerPluginSupport = 'yes' | 'no' | 'unknown';
 const IDEMPOTENCY_TTL_MS = 10 * 60_000;
 
 export type ServerOpResult =
@@ -22,7 +33,13 @@ export type ServerOpResult =
 export type ServerOp = (installId: string | null, op: string, payload: Record<string, unknown>, requestId: string) => Promise<ServerOpResult>;
 
 export type LocalSessionInfo = { id: string; title: string | null; cwd: string | null; agent: string | null; status: 'running' | 'idle' | 'archived'; updatedAt: number };
-export type LocalSessions = { list(): LocalSessionInfo[]; isLocal(sessionId: string): boolean };
+export type LocalSessionMessage = { id: string; role: 'user' | 'agent'; text: string; createdAt: number };
+export type LocalSessions = {
+    list(): LocalSessionInfo[];
+    isLocal(sessionId: string): boolean;
+    /** Text-only messages, newest `limit` before `before` (a seq cursor), read and decrypted on this machine. */
+    readMessages(sessionId: string, limit: number, before?: string): Promise<{ messages: LocalSessionMessage[]; cursor: string | null }>;
+};
 
 export type PluginApiRequest = {
     method: string;
@@ -53,6 +70,8 @@ export class PluginApi {
         serverOp: ServerOp;
         sessions: LocalSessions;
         machineId: () => string;
+        /** r2 capability gate: `no` → every call 503 `server_too_old`, nothing queued. */
+        serverSupport?: () => ServerPluginSupport;
         now?: () => number;
     }) {
         const r = (method: string, pattern: RegExp, handler: Route['handler']): Route => ({ method, pattern, handler });
@@ -78,6 +97,7 @@ export class PluginApi {
     async handle(req: PluginApiRequest): Promise<PluginApiResponse> {
         const entry = this.deps.registry.authenticate(req.headers.authorization);
         if (!entry) return err(401, 'unauthorized', 'missing or invalid plugin token');
+        if (this.deps.serverSupport?.() === 'no') return err(503, 'server_too_old', 'the server does not support plugins (no plugins-v1); nothing was queued', { queued: false });
         const method = req.method.toUpperCase();
         let matched: { route: Route; params: string[] } | null = null;
         let pathKnown = false;
@@ -96,7 +116,7 @@ export class PluginApi {
             if (typeof idemKey !== 'string' || idemKey.length === 0 || idemKey.length > 128) return err(400, 'invalid_request', 'Idempotency-Key must be 1–128 characters');
             this.sweepIdempotency();
             const cacheKey = `${entry.record.installId}\u0000${idemKey}`;
-            const fingerprint = createHash('sha256').update(`${method} ${req.path}\u0000${canonicalJson(req.body ?? null)}`).digest('hex');
+            const fingerprint = createHash('sha256').update(`${method} ${req.path}\u0000${pluginCanonicalJson(req.body ?? null)}`).digest('hex');
             const hit = this.idempotency.get(cacheKey);
             if (hit) {
                 if (hit.fingerprint !== fingerprint) return err(422, 'invalid_request', 'Idempotency-Key was used with a different request');
@@ -166,7 +186,7 @@ export class PluginApi {
     private async badge(ctx: Ctx): Promise<PluginApiResponse> {
         const d = checkAccess(ctx.entry, { allOf: ['sidebar'] });
         if (d) return denied(d);
-        const body = BadgePutSchema.safeParse(ctx.req.body);
+        const body = PluginBadgePutSchema.safeParse(ctx.req.body);
         if (!body.success) return invalid(body.error);
         return this.write(ctx, 'badge', 'badge.put', body.data);
     }
@@ -181,7 +201,7 @@ export class PluginApi {
         const raw = (ctx.req.body ?? {}) as Record<string, unknown>;
         const d = checkAccess(ctx.entry, this.decisionNeeds(raw?.sessionId, raw?.panelPath));
         if (d) return denied(d);
-        const body = DecisionPostSchema.safeParse(ctx.req.body);
+        const body = PluginDecisionPostSchema.safeParse(ctx.req.body);
         if (!body.success) return invalid(body.error);
         if (body.data.sessionId) { const notLocal = this.localSession(body.data.sessionId); if (notLocal) return notLocal; }
         return this.write(ctx, `decision:${body.data.key}`, 'decision.post', body.data);
@@ -191,7 +211,7 @@ export class PluginApi {
         const raw = (ctx.req.body ?? {}) as Record<string, unknown>;
         const d = checkAccess(ctx.entry, this.decisionNeeds(undefined, raw?.panelPath));
         if (d) return denied(d);
-        const body = DecisionPatchSchema.safeParse(ctx.req.body ?? {});
+        const body = PluginDecisionPatchSchema.safeParse(ctx.req.body ?? {});
         if (!body.success) return invalid(body.error);
         return this.write(ctx, `decision:${key}`, 'decision.patch', { key, ...body.data });
     }
@@ -199,7 +219,7 @@ export class PluginApi {
     private async decisionDelete(ctx: Ctx, key: string): Promise<PluginApiResponse> {
         const d = checkAccess(ctx.entry, { allOf: ['decisions'] });
         if (d) return denied(d);
-        const body = DecisionDeleteSchema.safeParse(ctx.req.body ?? {});
+        const body = PluginDecisionDeleteSchema.safeParse(ctx.req.body ?? {});
         if (!body.success) return invalid(body.error);
         return this.write(ctx, `decision:${key}`, 'decision.delete', { key, ...body.data });
     }
@@ -207,9 +227,9 @@ export class PluginApi {
     private async decisionList(ctx: Ctx): Promise<PluginApiResponse> {
         const d = checkAccess(ctx.entry, { allOf: ['decisions'] });
         if (d) return denied(d);
-        const q = z.object({ state: z.enum(['open', 'all']).default('open'), limit: z.coerce.number().int().min(1).max(200).default(50) }).safeParse(ctx.req.query);
+        const q = PluginDecisionListQuerySchema.safeParse(ctx.req.query);
         if (!q.success) return invalid(q.error);
-        return this.read(ctx, 'decision.list', q.data);
+        return this.read(ctx, 'decision.list', { state: q.data.state ?? 'open', limit: q.data.limit ?? 50 });
     }
 
     private async widgetPut(ctx: Ctx, sessionId: string): Promise<PluginApiResponse> {
@@ -217,7 +237,7 @@ export class PluginApi {
         const d = checkAccess(ctx.entry, { allOf: raw?.panelPath !== undefined ? ['session.widget', 'panel'] : ['session.widget'] });
         if (d) return denied(d);
         if (ctx.entry.manifest?.sessionWidget !== true) return denied({ status: 403, error: 'permission_denied', message: 'the manifest does not declare sessionWidget', permission: 'session.widget' });
-        const body = WidgetPutSchema.safeParse(ctx.req.body);
+        const body = PluginWidgetPutSchema.safeParse(ctx.req.body);
         if (!body.success) return invalid(body.error);
         const notLocal = this.localSession(sessionId);
         if (notLocal) return notLocal;
@@ -240,18 +260,26 @@ export class PluginApi {
         return this.read(ctx, 'widget.get', { sessionId });
     }
 
+    /** r2/r4: a sensitive read is audited on the server first; no `ok:true`, no data. */
+    private async audit(ctx: Ctx, permission: 'sessions.list' | 'sessions.read', sessionIds: string[]): Promise<PluginApiResponse | null> {
+        const audit = await this.deps.serverOp(ctx.entry.record.installId, 'audit.sensitiveRead', { permission, sessionIds }, ctx.requestId);
+        if (audit.kind === 'ok') return null;
+        if (audit.kind === 'offline') return offline(false);
+        return err(503, 'server_unreachable', `the read could not be audited (${audit.error}); no data returned`, { queued: false });
+    }
+
     private async sessionsList(ctx: Ctx): Promise<PluginApiResponse> {
         const d = checkAccess(ctx.entry, { allOf: ['sessions.list'] });
         if (d) return denied(d);
-        const q = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50), cursor: z.string().regex(/^\d{1,6}$/).optional() }).safeParse(ctx.req.query);
+        const q = PluginSessionsListQuerySchema.safeParse(ctx.req.query);
         if (!q.success) return invalid(q.error);
+        if (q.data.cursor !== undefined && !/^\d{1,6}$/.test(q.data.cursor)) return err(400, 'invalid_request', 'bad cursor');
+        const limit = q.data.limit ?? 50;
         const all = this.deps.sessions.list().sort((a, b) => b.updatedAt - a.updatedAt || (a.id < b.id ? -1 : 1));
         const start = q.data.cursor ? Number(q.data.cursor) : 0;
-        const page = all.slice(start, start + q.data.limit);
-        // Every read is audited on the server; no audit, no data.
-        const audit = await this.deps.serverOp(ctx.entry.record.installId, 'sessions.audit', { kind: 'list', sessionIds: page.map((s) => s.id) }, ctx.requestId);
-        if (audit.kind === 'offline') return offline(false);
-        if (audit.kind === 'error') return err(audit.status, audit.error, audit.error, audit.details);
+        const page = all.slice(start, start + limit);
+        const refused = await this.audit(ctx, 'sessions.list', page.map((s) => s.id));
+        if (refused) return refused;
         const next = start + page.length;
         return { status: 200, body: { sessions: page, cursor: next < all.length ? String(next) : null } };
     }
@@ -259,28 +287,38 @@ export class PluginApi {
     private async sessionMessages(ctx: Ctx, sessionId: string): Promise<PluginApiResponse> {
         const d = checkAccess(ctx.entry, { allOf: ['sessions.read'] });
         if (d) return denied(d);
-        const q = z.object({ limit: z.coerce.number().int().min(1).max(50).default(20), before: z.string().max(128).optional() }).safeParse(ctx.req.query);
+        const q = PluginSessionMessagesQuerySchema.safeParse(ctx.req.query);
         if (!q.success) return invalid(q.error);
+        if (q.data.before !== undefined && !/^\d{1,10}$/.test(q.data.before)) return err(400, 'invalid_request', 'bad before cursor');
         const notLocal = this.localSession(sessionId);
         if (notLocal) return notLocal;
-        // The server holds the session content and writes the audit row (server-trusted).
-        return this.read(ctx, 'sessions.messages', { sessionId, ...q.data });
+        const refused = await this.audit(ctx, 'sessions.read', [sessionId]);
+        if (refused) return refused;
+        // Read and decrypted on this machine; the content never goes to the server.
+        try {
+            const page = await this.deps.sessions.readMessages(sessionId, q.data.limit ?? 20, q.data.before);
+            return { status: 200, body: page };
+        } catch {
+            return err(404, 'not_found', 'the session log is not readable on this machine');
+        }
     }
 
     private async eventsList(ctx: Ctx): Promise<PluginApiResponse> {
         const stateDenied = checkInstallState(ctx.entry);
         if (stateDenied) return denied(stateDenied);
-        const q = z.object({ after: z.string().regex(/^\d{1,15}$/).optional(), wait: z.coerce.number().min(0).max(25).default(0) }).safeParse(ctx.req.query);
+        const q = PluginEventsPullQuerySchema.safeParse(ctx.req.query);
         if (!q.success) return invalid(q.error);
-        const result = await this.deps.events.list(ctx.entry, q.data.after ? Number(q.data.after) : 0, q.data.wait * 1000);
-        return { status: 200, body: result };
+        const result = await this.deps.events.pull(ctx.entry, q.data.after, (q.data.wait ?? 0) * 1000);
+        if (result.kind === 'offline') return offline(false);
+        if (result.kind === 'error') return err(result.status, result.error, result.error);
+        return { status: 200, body: { events: result.events, cursor: result.cursor } };
     }
 
     private async eventsAck(ctx: Ctx): Promise<PluginApiResponse> {
         const stateDenied = checkInstallState(ctx.entry);
         if (stateDenied) return denied(stateDenied);
-        const body = EventsAckSchema.safeParse(ctx.req.body);
+        const body = PluginEventsAckSchema.safeParse(ctx.req.body);
         if (!body.success) return invalid(body.error);
-        return { status: 200, body: { acked: this.deps.events.ack(ctx.entry, Number(body.data.upTo)) } };
+        return this.read(ctx, 'events.ack', { upTo: body.data.upTo });
     }
 }

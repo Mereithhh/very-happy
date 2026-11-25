@@ -3,6 +3,7 @@
  * socket) and the CLI's machine-token HTTP calls to `/v1/plugins/*`.
  */
 import axios from 'axios';
+import { PLUGIN_SERVER_FEATURE } from '@slopus/happy-wire';
 import type { ServerOpResult } from './localApi';
 
 export type PluginServerOpResult = ServerOpResult;
@@ -64,5 +65,32 @@ export class PluginServerClient {
 
     remove(installId: string, keepItems: boolean): Promise<unknown> {
         return this.call('DELETE', `/v1/plugins/installs/${encodeURIComponent(installId)}${keepItems ? '?keepItems=1' : ''}`);
+    }
+}
+
+/**
+ * r2 capability gate: does the server publish `plugins-v1` in `/v1/features`?
+ * Accepts `{ features: [...] }` and `{ features: { 'plugins-v1': true } }`.
+ * 404 or absent → `no`; a network failure → `unknown` (treated as offline).
+ */
+export function pluginSupportFromFeatures(status: number, data: unknown): 'yes' | 'no' | 'unknown' {
+    if (status === 404) return 'no';
+    if (status < 200 || status >= 300) return 'unknown';
+    const features = data && typeof data === 'object' ? (data as { features?: unknown }).features : undefined;
+    if (Array.isArray(features)) return features.includes(PLUGIN_SERVER_FEATURE) ? 'yes' : 'no';
+    if (features && typeof features === 'object') return (features as Record<string, unknown>)[PLUGIN_SERVER_FEATURE] === true ? 'yes' : 'no';
+    return 'no';
+}
+
+export async function fetchServerPluginSupport(serverUrl: string, token: string, clientVersion: string): Promise<'yes' | 'no' | 'unknown'> {
+    try {
+        const res = await axios.get(`${serverUrl}/v1/features`, {
+            headers: { Authorization: `Bearer ${token}`, 'X-Happy-Client': `cli-daemon/${clientVersion}` },
+            timeout: 10_000,
+            validateStatus: () => true,
+        });
+        return pluginSupportFromFeatures(res.status, res.data);
+    } catch {
+        return 'unknown';
     }
 }

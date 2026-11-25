@@ -14,9 +14,9 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { PRIVATE_DIRECTORY_MODE, writePrivateFileSync } from '@/utils/secureFiles';
 import { PluginManifestSchema, manifestHash, privilegedHash, type PluginManifest, PLUGIN_PERMISSIONS, type PluginPermission } from './manifest';
-import { createPluginSecret, createPluginToken } from './signing';
+import { createPluginSecretFileText, createPluginToken } from './signing';
 
-export const SERVER_INSTALL_STATES = ['pending', 'enabled', 'update_pending', 'rejected', 'disabled', 'disabled_by_operator'] as const;
+export const SERVER_INSTALL_STATES = ['pending', 'enabled', 'update_pending', 'rejected', 'disabled', 'disabled_by_operator', 'removed'] as const;
 export type ServerInstallState = typeof SERVER_INSTALL_STATES[number];
 /** What the plugin sees: the server state, or `disabled` when turned off on this machine. */
 export type EffectiveInstallState = ServerInstallState;
@@ -130,22 +130,23 @@ export class PluginStore {
         try { const t = readFileSync(this.tokenFile(id), 'utf8').trim(); return t.length > 0 ? t : null; } catch { return null; }
     }
 
+    /** Raw secret file text (decode with `readPluginSecretKey`). */
     readSecret(id: string): string | null {
-        try { const s = readFileSync(this.secretFile(id), 'utf8').trim(); return s.length > 0 ? s : null; } catch { return null; }
+        try { const s = readFileSync(this.secretFile(id), 'utf8'); return s.trim().length > 0 ? s : null; } catch { return null; }
     }
 
     /** Creates token + secret when missing. Callers check approval first. */
     ensureCredentials(id: string): boolean {
         let created = false;
         if (!this.readToken(id)) { writeAtomic(this.tokenFile(id), createPluginToken()); created = true; }
-        if (!this.readSecret(id)) { writeAtomic(this.secretFile(id), createPluginSecret()); created = true; }
+        if (!this.readSecret(id)) { writeAtomic(this.secretFile(id), createPluginSecretFileText()); created = true; }
         return created;
     }
 
     /** `plugin rotate`: both values are replaced; the old ones stop working at the next daemon reload. */
     rotateCredentials(id: string): void {
         writeAtomic(this.tokenFile(id), createPluginToken());
-        writeAtomic(this.secretFile(id), createPluginSecret());
+        writeAtomic(this.secretFile(id), createPluginSecretFileText());
     }
 
     deleteCredentials(id: string): void {

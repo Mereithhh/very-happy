@@ -1,8 +1,11 @@
 /**
- * B-974c: the two HMAC-SHA256 signatures a plugin backend can check
- * (DESIGN §5.5). Draft of the wire helpers (B-974a); same strings.
+ * B-974c: plugin credentials. Signatures, the secret file format and
+ * verification are the wire's (`signPluginEvent`, `signPluginRequest`,
+ * `decodePluginSecret`, r3/r5) so every side computes identical bytes; only
+ * random generation lives here (wire is pure JS without `node:crypto`).
  */
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import { decodePluginSecret, encodePluginSecret } from '@slopus/happy-wire';
 
 export const PLUGIN_TOKEN_PREFIX = 'vhp_';
 
@@ -11,33 +14,13 @@ export function createPluginToken(): string {
     return PLUGIN_TOKEN_PREFIX + randomBytes(32).toString('base64url');
 }
 
-/** 32 random bytes, stored base64url; the HMAC key is the decoded bytes. */
-export function createPluginSecret(): string {
-    return randomBytes(32).toString('base64url');
+/** Secret file text (r5): 32 random bytes, unpadded base64url (43 chars), one trailing newline, no prefix. */
+export function createPluginSecretFileText(): string {
+    return `${encodePluginSecret(new Uint8Array(randomBytes(32)))}\n`;
 }
 
-export function secretKeyBytes(secret: string): Buffer {
-    return Buffer.from(secret.trim(), 'base64url');
-}
-
-const hmacHex = (secret: string, message: string | Buffer) => createHmac('sha256', secretKeyBytes(secret)).update(message).digest('hex');
-
-/** Event push / pull: `v1=hex(HMAC(secret, "v1:" + ts + ":" + eventId + ":" + rawBody))`. */
-export function signEvent(secret: string, timestampSec: number, eventId: string, rawBody: string): string {
-    return `v1=${hmacHex(secret, Buffer.concat([Buffer.from(`v1:${timestampSec}:${eventId}:`, 'utf8'), Buffer.from(rawBody, 'utf8')]))}`;
-}
-
-/** Panel forwarding: `v1=hex(HMAC(secret, "v1:" + ts + ":" + reqId + ":" + METHOD + ":" + pathWithQuery + ":" + sha256hex(body)))`. */
-export function signPanelRequest(secret: string, timestampSec: number, reqId: string, method: string, pathWithQuery: string, body: Buffer): string {
-    const bodyHash = createHash('sha256').update(body).digest('hex');
-    return `v1=${hmacHex(secret, `v1:${timestampSec}:${reqId}:${method.toUpperCase()}:${pathWithQuery}:${bodyHash}`)}`;
-}
-
-/** Reference verifier (what a plugin does, §5.5): constant time, ±300 s. */
-export function verifyEventSignature(secret: string, header: string | undefined, timestampSec: number, eventId: string, rawBody: string, nowSec = Math.floor(Date.now() / 1000)): boolean {
-    if (typeof header !== 'string' || !Number.isFinite(timestampSec)) return false;
-    if (Math.abs(nowSec - timestampSec) > 300) return false;
-    const expected = Buffer.from(signEvent(secret, timestampSec, eventId, rawBody), 'utf8');
-    const got = Buffer.from(header, 'utf8');
-    return got.length === expected.length && timingSafeEqual(got, expected);
+/** The HMAC key: the 32 decoded bytes, never the file text. Null when the file is malformed. */
+export function readPluginSecretKey(fileText: string | null): Uint8Array | null {
+    if (fileText === null) return null;
+    try { return decodePluginSecret(fileText); } catch { return null; }
 }

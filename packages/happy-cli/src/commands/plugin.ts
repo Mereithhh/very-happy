@@ -10,7 +10,8 @@ import { PluginStore, effectiveState } from '@/plugins/store';
 import { PluginServerClient } from '@/plugins/serverOp';
 import { parseLoopbackUrl, SENSITIVE_PLUGIN_PERMISSIONS } from '@/plugins/manifest';
 import { loopbackRequest } from '@/plugins/loopbackHttp';
-import { signEvent, verifyEventSignature } from '@/plugins/signing';
+import { readPluginSecretKey } from '@/plugins/signing';
+import { signPluginEvent, verifyPluginEvent } from '@slopus/happy-wire';
 import { pingDaemonPlugin, reloadDaemonPlugins } from '@/daemon/controlClient';
 import {
     PluginCliError, addPlugin, disablePlugin, enablePlugin, pluginEnv, readManifestSource, removePlugin, rotatePlugin, shellQuote, updatePlugin,
@@ -326,11 +327,17 @@ async function doctor(id: string): Promise<void> {
             line(false, `panel ${panel.id}`, `${panel.upstream} unreachable (${(error as Error).message})`);
         }
     }
-    const secret = s.readSecret(id);
-    if (secret) {
-        const ts = Math.floor(Date.now() / 1000);
-        const sig = signEvent(secret, ts, 'evt_selftest', '{}');
-        line(verifyEventSignature(secret, sig, ts, 'evt_selftest', '{}') && !verifyEventSignature(secret, sig, ts, 'evt_selftest', '{ }'), 'hmac', 'sign/verify self-test');
+    const secretText = s.readSecret(id);
+    if (secretText) {
+        const key = readPluginSecretKey(secretText);
+        if (!key) line(false, 'hmac', 'secret file is not 43 base64url characters (run "very-happy plugin rotate")');
+        else {
+            const ts = Math.floor(Date.now() / 1000);
+            const sig = signPluginEvent(key, ts, 'evt_selftest', '{}');
+            const ok = verifyPluginEvent({ secret: key, signature: sig, timestamp: ts, eventId: 'evt_selftest', rawBody: '{}', nowSec: ts }).ok
+                && !verifyPluginEvent({ secret: key, signature: sig, timestamp: ts, eventId: 'evt_selftest', rawBody: '{ }', nowSec: ts }).ok;
+            line(ok, 'hmac', 'sign/verify self-test with the decoded 32-byte key');
+        }
     }
     if (manifest.callback) {
         const ping = await pingDaemonPlugin(id);
