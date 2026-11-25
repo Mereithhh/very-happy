@@ -200,8 +200,8 @@ describe('examples/plugins/hello-board/vh-plugin.json (docs/plugin-api-v1.md §1
         expect(doc).toContain(HELLO_PRIVILEGED_HASH);
         expect(doc).toContain(HELLO_PRIVILEGED_CANONICAL);
         // Signature vectors (pinned against node:crypto in pluginCrypto.test.ts).
-        for (const v of ['vhs_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'v1=26293e76e58b6d272a3f57797bdf36caacac9a6b83682bb89157ff6a40191748',
-            'v1=a729e176808c5ea4371e5a960690f469103473763da445b1a9f19cc6cf86702e', 'v1=80a3a21bab1f04934a5e204d24f482d695dfb437dfcc44f60767eb2a6b8092dc']) expect(doc).toContain(v);
+        for (const v of ['AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE', '0101010101010101010101010101010101010101010101010101010101010101', 'v1=020f2dc559ea6540094c4ad2adfc0cc55408f104ca8b96166a1738525874c737',
+            'v1=60cf37275780ee4c721da0b4724d2fb8f872b474066d1b20bad20cb325708362', 'v1=44002e33ed4e7748d5813ea71d5e87e0bc28a38d6ea67022b3ae179d89891433']) expect(doc).toContain(v);
     });
 });
 

@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { createDedupe, verifyEvent, verifyRequest } from './verify.mjs';
+import { createDedupe, decodeSecret, verifyEvent, verifyRequest } from './verify.mjs';
 
 const PORT = Number(process.env.HELLO_PORT ?? 4310);
 const SESSION_ID = process.env.HELLO_SESSION_ID || null;
@@ -17,7 +17,7 @@ const DIR = join(process.env.HAPPY_HOME_DIR ?? join(homedir(), '.happy'), 'plugi
 const readText = (file) => { try { return readFileSync(file, 'utf8').trim(); } catch { return null; } };
 const apiBase = () => process.env.VH_PLUGIN_API ?? (() => { try { return JSON.parse(readFileSync(join(DIR, 'runtime.json'), 'utf8')).api; } catch { return null; } })();
 const token = () => readText(process.env.VH_PLUGIN_TOKEN_FILE ?? join(DIR, 'token'));
-const secret = () => readText(process.env.VH_PLUGIN_SECRET_FILE ?? join(DIR, 'secret'));
+const signingKey = () => { const t = readText(process.env.VH_PLUGIN_SECRET_FILE ?? join(DIR, 'secret')); try { return t ? decodeSecret(t) : null; } catch { return null; } };
 
 let count = 0;
 let label = 'Hello';
@@ -87,7 +87,7 @@ async function pullLoop() {
         const r = await vh('GET', `/events?wait=25${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`);
         if (r.status !== 200) { await new Promise(f => setTimeout(f, 5000)); continue; }
         for (const { rawBody, timestamp, signature, event } of r.body.events) {
-            const ok = verifyEvent({ secret: secret(), rawBody, headers: { 'x-vh-timestamp': String(timestamp), 'x-vh-event-id': event.id, 'x-vh-signature': signature } });
+            const ok = verifyEvent({ key: signingKey(), rawBody, headers: { 'x-vh-timestamp': String(timestamp), 'x-vh-event-id': event.id, 'x-vh-signature': signature } });
             if (ok && firstTime(event.id)) await handleEvent(event);
         }
         if (r.body.cursor && r.body.cursor !== cursor) { cursor = r.body.cursor; await vh('POST', '/events/ack', { upTo: cursor }); }
@@ -133,7 +133,7 @@ createServer((req, res) => {
 
         if (req.method === 'POST' && path === '/vh/callback') {
             // Never trust "it came from loopback": any local process can reach this port.
-            if (!verifyEvent({ secret: secret() ?? '', headers: req.headers, rawBody: raw })) return send(res, 401, { error: 'bad signature' });
+            if (!verifyEvent({ key: signingKey(), headers: req.headers, rawBody: raw })) return send(res, 401, { error: 'bad signature' });
             const event = JSON.parse(raw.toString('utf8'));
             if (firstTime(event.id)) await handleEvent(event);
             return send(res, 200, { ok: true });
@@ -141,7 +141,7 @@ createServer((req, res) => {
 
         // Writes must come through Very Happy (signed), unless explicitly running without it.
         if (req.method !== 'GET' && req.method !== 'HEAD' && !INSECURE_LOCAL) {
-            const ok = verifyRequest({ secret: secret() ?? '', method: req.method, pathWithQuery: req.url, headers: req.headers, body: raw });
+            const ok = verifyRequest({ key: signingKey(), method: req.method, pathWithQuery: req.url, headers: req.headers, body: raw });
             if (!ok) return send(res, 401, { error: 'unsigned request' });
         }
         if (req.method === 'GET' && path === '/') return send(res, 200, PAGE, 'text/html; charset=utf-8');

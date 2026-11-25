@@ -38,7 +38,8 @@ segments, no `//`, no encoded `/`, `\` or NUL).
 
 **Paths** (`entry`, `panelPath`): start with `/`, at most 512, no `//` prefix,
 no `.` / `..` segments after percent-decoding, no backslash or control
-characters, valid percent-encoding.
+characters, valid percent-encoding. A `?query` and a `#fragment` are allowed;
+the fragment is passed to the panel's URL as is.
 
 Unknown top-level fields are ignored (`plugin add` prints a warning).
 
@@ -79,8 +80,8 @@ After approval the daemon writes `~/.happy/plugins/<id>/` (directory 0700):
 
 | File | Content |
 |---|---|
-| `token` (0600) | Plugin token, `vhp_` + 32 random bytes base64url. |
-| `secret` (0600) | Signing secret (a text string). The HMAC key is the **UTF-8 bytes of this string** as stored (trim a trailing newline). |
+| `token` (0600) | Plugin token, `vhp_` + 32 random bytes base64url. Trim whitespace and send it as is in `Bearer`. |
+| `secret` (0600) | 32 random bytes as unpadded base64url: exactly 43 characters, maybe followed by a newline, no prefix. Trim surrounding whitespace and base64url-decode it; **the 32 decoded bytes are the HMAC key**. Never use the text itself as the key. |
 | `manifest.json` | The approved manifest. |
 | `runtime.json` | `{ "api": "http://127.0.0.1:<daemonPort>/plugin/v1", "installId", "state" }`, refreshed on every daemon start. |
 
@@ -287,19 +288,20 @@ what a push would have sent, so the same verifier works.
 
 ## 7. Signatures
 
-`secret` is the string from the `secret` file; the HMAC key is its UTF-8 bytes.
+`key` is the 32 bytes decoded from the `secret` file (§2): trim, base64url-decode,
+check the length is 32.
 
 **Event** (push and pull):
 
 ```
-X-VH-Signature = "v1=" + hex(HMAC-SHA256(secret, "v1:" + timestamp + ":" + eventId + ":" + rawBody))
+X-VH-Signature = "v1=" + hex(HMAC-SHA256(key, "v1:" + timestamp + ":" + eventId + ":" + rawBody))
 ```
 
 **Proxied panel request.** The daemon adds `X-VH-Install`, `X-VH-Request-Id`,
 `X-VH-Timestamp`, `X-VH-Viewer: owner` and
 
 ```
-X-VH-Signature = "v1=" + hex(HMAC-SHA256(secret,
+X-VH-Signature = "v1=" + hex(HMAC-SHA256(key,
     "v1:" + timestamp + ":" + requestId + ":" + METHOD + ":" + pathWithQuery + ":" + hex(sha256(body))))
 ```
 
@@ -311,7 +313,8 @@ these cannot be forged by a page.
 ### 7.1 Test vectors
 
 ```
-secret     = vhs_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+secret file = AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE        (43 characters, then a newline)
+key (hex)   = 0101010101010101010101010101010101010101010101010101010101010101
 timestamp  = 1795577286
 ```
 
@@ -320,7 +323,7 @@ Event:
 ```
 eventId    = evt_01JTESTVECTOR0000000000000
 rawBody    = {"id":"evt_01JTESTVECTOR0000000000000","type":"decision.responded","installId":"pi_test","pluginId":"hello-board","createdAt":1795577286598,"attempt":1,"data":{"itemId":"it_1","key":"count:5","action":"choose","choice":"continue","respondedAt":1795577286000,"actor":"owner"}}
-signature  = v1=26293e76e58b6d272a3f57797bdf36caacac9a6b83682bb89157ff6a40191748
+signature  = v1=020f2dc559ea6540094c4ad2adfc0cc55408f104ca8b96166a1738525874c737
 ```
 
 Panel request with a body:
@@ -331,7 +334,7 @@ method     = POST
 path       = /api/count?x=1
 body       = {"delta":1}
 sha256     = 2c5f28bf1e8d3e071e067f175a8b6f728081245b9b8313a9cce44a5aeff3f246
-signature  = v1=a729e176808c5ea4371e5a960690f469103473763da445b1a9f19cc6cf86702e
+signature  = v1=60cf37275780ee4c721da0b4724d2fb8f872b474066d1b20bad20cb325708362
 ```
 
 Panel request without a body:
@@ -340,7 +343,7 @@ Panel request without a body:
 requestId  = req_01JTEST
 method     = GET
 path       = /
-signature  = v1=80a3a21bab1f04934a5e204d24f482d695dfb437dfcc44f60767eb2a6b8092dc
+signature  = v1=44002e33ed4e7748d5813ea71d5e87e0bc28a38d6ea67022b3ae179d89891433
 ```
 
 These values are locked by the wire tests (`pluginCrypto.test.ts`) and the
@@ -350,11 +353,16 @@ example's `verify.test.mjs`.
 
 ```js
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
-export function verifyEvent(secret, headers, rawBody, nowSec = Math.floor(Date.now() / 1000)) {
+const t = readFileSync(process.env.VH_PLUGIN_SECRET_FILE, 'utf8').trim();
+const key = Buffer.from(t, 'base64url');            // the HMAC key is these 32 bytes, not the text
+if (!/^[A-Za-z0-9_-]{43}$/.test(t) || key.length !== 32) throw new Error('bad secret file');
+
+export function verifyEvent(key, headers, rawBody, nowSec = Math.floor(Date.now() / 1000)) {
   const ts = headers['x-vh-timestamp'], id = headers['x-vh-event-id'], sig = headers['x-vh-signature'] ?? '';
   if (!/^\d{1,12}$/.test(ts ?? '') || !id || Math.abs(nowSec - Number(ts)) > 300) return false;
-  const want = 'v1=' + createHmac('sha256', secret).update(`v1:${ts}:${id}:`).update(rawBody).digest('hex');
+  const want = 'v1=' + createHmac('sha256', key).update(`v1:${ts}:${id}:`).update(rawBody).digest('hex');
   const a = Buffer.from(want), b = Buffer.from(sig);
   return a.length === b.length && timingSafeEqual(a, b);
 }
