@@ -28,7 +28,7 @@ export function topLevelCommands(mainSource: string): string[] {
     return [...new Set([...mainSource.matchAll(/subcommand === '([a-z][a-z-]*)'/g)].map((match) => match[1]))].sort();
 }
 /** Aliases that dispatch to the same handler; documenting either spelling covers both. */
-const ALIASES: Record<string, string> = { accounts: 'account', issues: 'issue', session: 'sessions' };
+const ALIASES: Record<string, string> = { accounts: 'account', issues: 'issue', session: 'sessions', plugins: 'plugin' };
 /** Not a capability (prints "Bye!"). Anything else added to main.ts must be documented. */
 const HIDDEN = new Set(['bye']);
 
