@@ -35,3 +35,19 @@ describe('collectPiModelOptions (B-370: Settings → Agents model list for pi)',
         expect(options.map((o) => o.key)).toEqual(['default', 'zai/glm-5.3', 'llm-hub/claude-fable-5-1']);
     });
 });
+
+describe('collectPiModelOptions with machine tables (B-978)', () => {
+    it('leads with the machines’ reported `pi --list-models` table, before session catalogs', () => {
+        const options = collectPiModelOptions(
+            [piSession(1, ['zai/glm-5.3'])],
+            [],
+            [{ models: [{ code: 'fakehub/fake-large', value: 'fakehub/fake-large' }] }],
+        );
+        expect(options.map((o) => o.key)).toEqual(['default', 'fakehub/fake-large', 'zai/glm-5.3']);
+    });
+
+    it('without a machine table keeps the old session-only list (old daemons)', () => {
+        const options = collectPiModelOptions([piSession(1, ['zai/glm-5.3'])], [], []);
+        expect(options.map((o) => o.key)).toEqual(['default', 'zai/glm-5.3']);
+    });
+});

@@ -75,6 +75,7 @@ import {
 import { layoutModelPicker } from '@/screens/session/modelPickerLayout';
 import { autoEffortName, effortLevelName, localizeModelDescriptions, localizeModelNames, namedEffortOptions } from '@/screens/session/runSetupCopy';
 import { collectPiModelOptions } from '@/sync/piModelOptions';
+import { piCatalogFromMachine, readPiModelTable } from '@/sync/piModelTable';
 import { settingsCodexEffort } from '@/sync/settingsEffort';
 import { collectRecentCatalogs, runnableFromCatalogs } from '@/sync/launcherModels';
 import { machineLabel } from '@/utils/machineUtils';
@@ -1239,10 +1240,6 @@ function AgentDefaults() {
   // hardcodable registry) — see sync/piModelOptions.ts.
   const allSessions = useAllSessions();
   const piModelOverride = getAgentDefaultOverrideValue(overrides, 'pi', 'modelMode');
-  const piModelOptions = useMemo(
-    () => collectPiModelOptions(allSessions, [piModelOverride]),
-    [allSessions, piModelOverride],
-  );
 
   const translate = useCallback((k: SimpleTranslationKey) => t(k), []);
   const latestTable = useLatestModelTable();
@@ -1250,6 +1247,19 @@ function AgentDefaults() {
   // so the account value no longer flips with whichever machine started the
   // newest session.
   const allMachines = useAllMachines({ includeOffline: true });
+  // B-978: every machine's reported pi model table (`pi --list-models`), so the
+  // default is pickable on a machine that never ran a pi session.
+  const piMachineTables = useMemo(
+    () => allMachines.flatMap((machine) => {
+      const table = readPiModelTable(machine?.daemonState);
+      return table ? [table] : [];
+    }),
+    [allMachines],
+  );
+  const piModelOptions = useMemo(
+    () => collectPiModelOptions(allSessions, [piModelOverride], piMachineTables),
+    [allSessions, piModelOverride, piMachineTables],
+  );
   const machineList = useMemo(
     () => allMachines.map((machine) => ({ id: machine.id, label: machineLabel(machine) })).sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id)),
     [allMachines],
@@ -1313,7 +1323,12 @@ function AgentDefaults() {
           const savedEffort = getAgentDefaultOverrideValue(overrides, agent, 'effortLevel');
           // B-975b: Codex levels come from the machines' reported catalogs, as in the composer.
           const codexEffort = agent === 'codex' ? settingsCodexEffort({ modelMode: resolved.modelMode, catalogs, table: latestTable, saved: savedEffort }) : null;
-          const effortOptions = namedEffortOptions(codexEffort?.levels ?? getEffortLevelsForModel(agent, effectiveModel), t);
+          // B-978: pi's thinking levels come from the machines' tables (pi-acp
+          // publishes them only after session/new), so a draft can pick one too.
+          const piEffortCatalog = agent === 'pi'
+            ? piCatalogFromMachine(piMachineTables[0] ?? null, 'pi') as unknown as Parameters<typeof getEffortLevelsForModel>[2]
+            : null;
+          const effortOptions = namedEffortOptions(codexEffort?.levels ?? getEffortLevelsForModel(agent, effectiveModel, piEffortCatalog), t);
           // B-849a: the newest per family stays on top, older versions/aliases fold away.
           const overrideModel = getAgentDefaultOverrideValue(overrides, agent, 'modelMode');
           // QA26 P2-7: Settings has no 1M switch — everything off the top list (1M twins too) folds under 更多模型.

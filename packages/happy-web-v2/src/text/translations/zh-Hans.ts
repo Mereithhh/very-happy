@@ -3897,6 +3897,14 @@ export const zhHans: TranslationStructure = {
                 models: '这两个模型都需要 Anthropic 兼容网关，比如填了自定义 Base URL 的 API 账号。Claude 订阅账号和走 Anthropic 官方地址的 API 账号不显示；不知道用的是哪个账号时照常列出，并附上这条说明。默认模型不变。',
                 tools: 'deepseek-v4.1-flash 可以带完整工具集使用。',
             },
+            nov26a: {
+                title: '新建 pi 会话时可以选择模型',
+                summary: '以前新建 pi 会话只能用它自己配置的模型。现在和 Codex、DeepSeek Harness 会话一样，可以选这台电脑上的 pi 报出的模型，也能选思考档位。',
+                models: '会话开始前，模型列表来自你选的那台机器上的 pi，所以从没用过 pi 会话的电脑也能选。选中的模型就是会话启动时用的模型，重启或恢复会话后保持不变。',
+                thinking: '模型支持思考档位时才会显示档位，选中的档位从会话的下一条消息开始生效。不支持思考的模型不显示档位，和会话里一致。',
+                settings: '设置 → Agents 里 pi 的默认模型列表换成同一份，包含每台机器报出的模型。',
+                upgrade: '需要 CLI 0.2.232。旧版 CLI 下选择器仍然只显示「机器默认」，pi 会话行为不变。',
+            },
             nov25a: {
                 title: 'DeepSeek Harness：权限请求写明要执行什么，自动执行立即生效',
                 summary: 'DeepSeek Harness（dsh）会话请求权限时，会写出工具名和要运行的命令或文件，不再只显示「Unknown tool」和空的 {}。切到自动执行也会立即生效。',

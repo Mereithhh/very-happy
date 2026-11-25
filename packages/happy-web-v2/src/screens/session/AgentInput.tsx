@@ -47,6 +47,7 @@ import {
     codexModelGate,
 } from '@/components/modelModeOptions';
 import { checkCustomModelName, recentCustomModelsStore, useRecentCustomModels } from '@/sync/customModelInput';
+import { piDraftThoughtLevels } from '@/sync/piModelTable';
 import { machineAgentUpdateHref, readAgentVersions } from '@/app/agentVersions';
 import { isImeGuardedEvent, useImeGuard } from '@/utils/ime';
 import { insertComposerNewline, insertComposerText, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
@@ -538,9 +539,14 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     const isCodex = normalizeAgentKey(flavor) === 'codex';
     // B-975: a Codex draft judges levels by the machine's own catalog; one that
     // cannot tell its model yet gives no verdict (the landing re-checks).
-    const draftCatalog = isCodex && !session && launcherCatalogs[0]?.models?.length
+    // B-978: a pi draft does the same — its models and thinking levels come from
+    // the machine's `pi --list-models` table before any pi session exists.
+    const piDraftCatalog = !session && isPiAgent(flavor) && launcherCatalogs[0]?.models?.length
+        ? { ...launcherCatalogs[0], thoughtLevels: piDraftThoughtLevels(pending?.launcher?.piTable ?? null, modelKey ?? 'default') } as unknown as typeof metadata
+        : null;
+    const draftCatalog = piDraftCatalog ?? (isCodex && !session && launcherCatalogs[0]?.models?.length
         ? { models: launcherCatalogs[0].models, defaultModelCode: launcherContext?.configuredModel ?? undefined } as unknown as typeof metadata
-        : metadata;
+        : metadata);
     const listedEfforts = getEffortLevelsForModel(flavor, modelKey ?? 'default', draftCatalog);
     const accountEffort = getAgentDefaultOverride(agentDefaultOverrides, flavor).effortLevel;
     const runSettings = { agentDefaultOverrides, claudeLongContextOptOut: longContextOptOut };

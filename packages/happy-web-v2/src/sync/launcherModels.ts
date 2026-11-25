@@ -79,7 +79,12 @@ export function launcherMachineContext(
     };
 }
 
-export type LauncherModelSource = { context: LauncherMachineContext | null; catalogs: Metadata[] };
+export type LauncherModelSource = {
+    context: LauncherMachineContext | null;
+    catalogs: Metadata[];
+    /** B-978: the machine's reported pi model table (`daemonState.piModels`), with its thinking flags. */
+    piTable?: import('./piModelTable').PiModelTable | null;
+};
 
 /**
  * QA26 P2-7: the model keys these catalogs can run (catalogRunnableKeys: plus

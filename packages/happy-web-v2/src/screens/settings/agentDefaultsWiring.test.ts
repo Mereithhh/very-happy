@@ -14,15 +14,21 @@ describe('Settings → Agents renders pi as its own row', () => {
         expect(settings).toContain('{agentKeys.map((agent) => {');
         expect(settings).toContain("import { collectPiModelOptions } from '@/sync/piModelOptions';");
         expect(settings).toContain("const modelOptions = localizeModelDescriptions(agent, localizeModelNames(agent, agent === 'pi' ? piModelOptions : getLauncherModelModes(agent, catalogs, translate, latestTable), t)");
-        expect(settings).toContain('collectPiModelOptions(allSessions, [piModelOverride])');
+        // B-978: the machines' reported `pi --list-models` tables join the list.
+        expect(settings).toContain('collectPiModelOptions(allSessions, [piModelOverride], piMachineTables)');
+        expect(settings).toContain('const table = readPiModelTable(machine?.daemonState);');
     });
 });
 
 describe('B-975b: Settings → Codex effort', () => {
     it('lists settingsCodexEffort levels from the machine catalogs and selects the saved one', () => {
         expect(settings).toContain("settingsCodexEffort({ modelMode: resolved.modelMode, catalogs, table: latestTable, saved: savedEffort })");
-        expect(settings).toContain('namedEffortOptions(codexEffort?.levels ?? getEffortLevelsForModel(agent, effectiveModel), t)');
+        expect(settings).toContain('namedEffortOptions(codexEffort?.levels ?? getEffortLevelsForModel(agent, effectiveModel, piEffortCatalog), t)');
         expect(settings).toContain("value={savedEffort ?? '__code_default__'}");
+    });
+
+    it('B-978: pi levels come from the machines’ thinking-capable models', () => {
+        expect(settings).toContain("piCatalogFromMachine(piMachineTables[0] ?? null, 'pi')");
     });
 });
 

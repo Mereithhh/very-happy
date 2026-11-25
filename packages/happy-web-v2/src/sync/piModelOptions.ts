@@ -29,9 +29,23 @@ export function collectPiModelOptions(
     sessions: readonly PiModelSource[],
     /** Keys that must stay pickable even if no session published them (the saved override). */
     keep: readonly (string | null | undefined)[] = [],
+    /**
+     * B-978: machine tables the daemons report (`daemonState.piModels`, one per
+     * machine). They come first — a machine's own `pi --list-models` is the
+     * freshest truth, and it exists before that machine ever ran a pi session —
+     * then the session-published registries as the fallback for old daemons.
+     */
+    machineTables: ReadonlyArray<{ models: ReadonlyArray<{ code: string; value: string }> }> = [],
 ): ModelMode[] {
     const out: ModelMode[] = [...getPiModelModes()];
     const seen = new Set(out.map((option) => option.key));
+    for (const table of machineTables) {
+        for (const option of mapMetadataOptions(table.models as Array<{ code: string; value: string }>)) {
+            if (seen.has(option.key)) continue;
+            seen.add(option.key);
+            out.push(option);
+        }
+    }
     const ordered = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
     for (const session of ordered) {
         if (!isPiAgent(session.metadata?.flavor)) continue;

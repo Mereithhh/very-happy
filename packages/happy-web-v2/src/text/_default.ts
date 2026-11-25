@@ -3669,6 +3669,14 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov26a: {
+                title: 'Starting a pi session lets you pick its model',
+                summary: 'A new pi session could only start on the model pi itself was configured with. It now offers the models this computer\'s pi reports, plus its thinking levels, the same way a Codex or DeepSeek Harness session does.',
+                models: 'Before the session starts, the model list comes from pi on the machine you picked, so it works on a computer that has never run a pi session. The model you choose is what the session starts on, and restarting or restoring the session keeps it.',
+                thinking: 'Thinking levels are offered for a model that supports them; picking one applies to the session\'s next message. A model without thinking shows no levels, as inside the session.',
+                settings: 'Settings → Agents now offers the same list as the default pi model, including the models every machine reports.',
+                upgrade: 'Needs CLI 0.2.232. On an older CLI the picker keeps showing only the machine default, and pi sessions behave as before.',
+            },
             nov25j: {
                 title: 'The 「new release notes」 prompt stays until you look',
                 summary: 'Opening the app from a notification or a link, or starting to type right away, shows a prompt instead of the release notes. It used to disappear after 10 seconds, often before anyone saw it. Now it stays until you open the notes or close it.',

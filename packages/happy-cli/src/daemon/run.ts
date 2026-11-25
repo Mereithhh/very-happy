@@ -40,6 +40,7 @@ import { sendUserMessage } from '@/commands/sessionMessage';
 import { sanitizeSpawnPermissionMode } from './spawnPermissionMode';
 import { publishedRelaunchPermissionMode } from './relaunchPermissionMode';
 import { resumePrecheck, resumeStartsFreshConversation, sanitizeResumeModel } from './resumePrecheck';
+import { detectPiModels } from './piModels';
 import { decideRestart, recordRestartAttempt, restartBudget, type RestartBudget } from './restartBreaker';
 import type { SpawnGate } from './assistantSpawn';
 import { startDaemonControlServer } from './controlServer';
@@ -1464,7 +1465,8 @@ export async function startDaemon(): Promise<void> {
           { startedBy: 'daemon', claudeStartingMode: 'remote', freshConversation },
         );
 
-        const model = sanitizeResumeModel(options?.model);
+        // B-978: pi model ids are `provider/id`; the Claude-oriented sanitizer drops the slash.
+        const model = sanitizeResumeModel(options?.model) ?? (metadata.flavor === 'acp' ? sanitizeSpawnModel(options?.model) : null);
         if (model) launch.args.push('--model', model);
         else if (options?.model !== undefined) logger.debug(`[DAEMON RUN] resume: ignoring invalid model ${JSON.stringify(options.model)}`);
         // B-696: a daemon-initiated wake has no client to supply the mode —
@@ -1689,7 +1691,8 @@ export async function startDaemon(): Promise<void> {
           return { type: 'error', errorMessage: `restart-precheck:${precheck.ok ? 'unknown' : precheck.reason}: ${precheck.ok ? '' : precheck.detail}` };
         }
 
-        const model = sanitizeResumeModel(options?.model);
+        // B-978: see resumeSessionImpl — keep pi's `provider/id` model on a restart.
+        const model = sanitizeResumeModel(options?.model) ?? (metadata.flavor === 'acp' ? sanitizeSpawnModel(options?.model) : null);
         if (model) args.push('--model', model);
         // B-794: a local restart (`very-happy session provider`) keeps the
         // mode the last wrapper published, like the B-707 resume path.
@@ -2640,7 +2643,9 @@ export async function startDaemon(): Promise<void> {
     const stopAgentVersionChecks = startAgentVersionChecks(
       snapshot => {
         latestAgentVersions = snapshot;
-        return apiMachine.updateDaemonState(state => ({ ...state, status: state?.status ?? 'running', agentVersions: snapshot }))
+        // B-978: the pi model table rides the same schedule (startup, every 6h, after an install).
+        return detectPiModels()
+          .then(piModels => apiMachine.updateDaemonState(state => ({ ...state, status: state?.status ?? 'running', agentVersions: snapshot, ...(piModels ? { piModels } : {}) })))
           .finally(() => { void agentAutoUpdater?.tick(); });
       },
       error => logger.debug('[DAEMON RUN] Agent version check failed', error),

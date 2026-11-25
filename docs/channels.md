@@ -259,7 +259,14 @@ with the account content key, which `dataKey` CLI credentials do not hold.
   or working (`set-permission-mode` RPC). What is written there is also
   published as `metadata.permissionMode`, so the Web shows the effective value.
   Enforcement is provided by the CLI's official pi runtime extension, which
-  re-reads the mode file before each tool call. `default` asks for non-read-only
+  re-reads the mode file before each tool call. B-978: the daemon also probes
+  `pi --list-models` (startup, every 6h, after a harness install) and publishes
+  the table as `daemonState.piModels` (`{checkedAt, daemonPid, models:[{code,
+  value, thinking}]}`, ids in pi-acp's `provider/id` form), so the new-session
+  picker and Settings → Agents offer a machine's pi models before any pi session
+  exists; `thinking: true` is what lets a draft offer its thinking levels. An
+  older daemon never writes the field and the picker shows only the machine
+  default; a failed probe publishes nothing and keeps the last good table. `default` asks for non-read-only
   tools; `plan` blocks writes; `acceptEdits` permits edit/write but still asks for
   shell and other mutations; `bypassPermissions` is honored only when explicitly
   selected. User-installed extensions may enforce additional rules. The runtime

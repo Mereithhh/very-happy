@@ -333,6 +333,12 @@ export const RateLimitsStateSchema = z.object({
 export const DaemonStateSchema = z.object({
   agentVersions: AgentVersionsSchema.optional(),
   agentVersionEpoch: z.number().optional(),
+  /** B-978: the machine's pi model table (`pi --list-models`), readable without a session. Old Webs ignore it. */
+  piModels: z.object({
+    checkedAt: z.number(),
+    daemonPid: z.number(),
+    models: z.array(z.object({ code: z.string(), value: z.string(), thinking: z.boolean() })),
+  }).optional(),
   status: z.union([
     z.enum(['running', 'shutting-down']),
     z.string() // Forward compatibility
