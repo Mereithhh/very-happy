@@ -1,0 +1,15 @@
+{
+  "schema": "vh-plugin/v1",
+  "id": "hello-board",
+  "name": "Hello Board",
+  "version": "0.1.0",
+  "description": "Demo of all four extension points: a counter panel, a sidebar badge, decision cards and a session widget.",
+  "publisher": { "name": "Example" },
+  "icon": "kanban",
+  "minApi": 1,
+  "permissions": ["sidebar", "panel", "decisions", "session.widget"],
+  "sidebar": { "title": "Hello", "panel": "main" },
+  "panels": [{ "id": "main", "title": "Counter", "upstream": "http://127.0.0.1:4310", "entry": "/" }],
+  "callback": { "url": "http://127.0.0.1:4310/vh/callback" },
+  "sessionWidget": true
+}

@@ -14,6 +14,9 @@ computer, phone, or tablet. Teams adds coordinated parallel work to that same hu
   tasks, inspect member conversations, and review results.
 - [Automations](automations.md): schedule or trigger agent sessions and scripts
   on one machine, and decide on failed, expired or waiting runs from the board.
+- [Web plugins](plugins.md): let a program on your computer add a sidebar
+  badge, a full-page panel, decision cards and session widgets, each approved
+  per permission ([API v1](plugin-api-v1.md), [example](../examples/plugins/hello-board/)).
 - [Session sharing](session-sharing.md): let another account on your server
   watch a conversation live, send messages into it under their own name, or
   operate it (terminal, files, approvals — a time-limited, audited handover of
