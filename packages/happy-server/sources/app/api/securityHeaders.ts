@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { pluginHostConfig } from '@/app/plugins/pluginConfig';
 
 /**
  * B-825: Content-Security-Policy and the other browser security headers of the
@@ -41,6 +42,12 @@ const GOOGLE_GSI = 'https://accounts.google.com';
 const LOOPBACK_HTTP = ['http://localhost:*', 'http://127.0.0.1:*'];
 /** Voice (web-v2 assistant/asrStream.ts, ttsStream.ts). */
 const ELEVENLABS = ['https://api.elevenlabs.io', 'wss://api.elevenlabs.io'];
+
+/** B-974 `frame-src` entry for the per-install plugin origins, when `VH_PLUGIN_HOST` is set. */
+export function pluginFrameSources(env: NodeJS.ProcessEnv = process.env): string[] {
+    const config = pluginHostConfig(env);
+    return config ? [`${config.scheme}://*.${config.host}`] : [];
+}
 
 export function parseCspMode(value: string | undefined): CspMode {
     const mode = value?.trim().toLowerCase();
@@ -105,8 +112,9 @@ export function contentSecurityPolicy(ctx: CspContext): string {
         ['img-src', ["'self'", 'data:', 'blob:', 'https:', ...LOOPBACK_HTTP]],
         ['media-src', ["'self'", 'data:', 'blob:', 'https:', ...LOOPBACK_HTTP]],
         ['connect-src', ["'self'", 'https:', 'wss:', 'blob:', 'data:', ...new Set(plainServer)]],
-        // Machine panels and the browser preview frame user URLs, some on http://localhost.
-        ['frame-src', ["'self'", 'https:', 'http:', 'blob:']],
+        // Machine panels and the browser preview frame user URLs, some on http://localhost. B-974: plugin panels come
+        // from `*.<VH_PLUGIN_HOST>`, named explicitly so the policy keeps them when the generic sources narrow.
+        ['frame-src', ["'self'", 'https:', 'http:', 'blob:', ...pluginFrameSources()]],
         ['worker-src', ["'self'", 'blob:']],
         ['manifest-src', ["'self'"]],
         // The PDF preview (an iframe on a blob: URL, which inherits this policy) still

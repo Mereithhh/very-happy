@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { contentSecurityPolicy, htmlSecurityHeaders, inlineScriptHashes, parseCspMode, reportOnlyContentSecurityPolicy } from './securityHeaders';
+import { contentSecurityPolicy, htmlSecurityHeaders, inlineScriptHashes, parseCspMode, pluginFrameSources, reportOnlyContentSecurityPolicy } from './securityHeaders';
 
 const sha = (text: string) => `'sha256-${createHash('sha256').update(text).digest('base64')}'`;
 const THEME = "(function(){document.documentElement.dataset.theme='dark'})()";
@@ -100,5 +100,21 @@ describe('B-825 CSP', () => {
         expect(parseCspMode('Report-Only')).toBe('report-only');
         expect(parseCspMode('off')).toBe('off');
         expect(parseCspMode('nonsense')).toBe('enforce');
+    });
+});
+
+describe('B-974 plugin panels in the main document CSP', () => {
+    it('frame-src names *.<VH_PLUGIN_HOST> when configured, nothing otherwise', () => {
+        expect(pluginFrameSources({ VH_PLUGIN_HOST: 'p.example.com' })).toEqual(['https://*.p.example.com']);
+        expect(pluginFrameSources({ VH_PLUGIN_HOST: 'p.localhost:3005', VH_PLUGIN_HOST_SCHEME: 'http' })).toEqual(['http://*.p.localhost:3005']);
+        expect(pluginFrameSources({})).toEqual([]);
+        const previous = process.env.VH_PLUGIN_HOST;
+        process.env.VH_PLUGIN_HOST = 'p.example.com';
+        try {
+            const frameSrc = contentSecurityPolicy({ html: '' }).split('; ').find(d => d.startsWith('frame-src '));
+            expect(frameSrc).toBe("frame-src 'self' https: http: blob: https://*.p.example.com");
+        } finally {
+            if (previous === undefined) delete process.env.VH_PLUGIN_HOST; else process.env.VH_PLUGIN_HOST = previous;
+        }
     });
 });
