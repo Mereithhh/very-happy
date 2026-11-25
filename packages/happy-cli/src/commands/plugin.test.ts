@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { decisionPostBody, listLines, parsePluginArgs, SERVER_NO_PLUGINS } from './plugin';
 
@@ -38,5 +39,13 @@ describe('B-974h P3-2: plugin list says when the server has no plugin support', 
             const lines = listLines([], true, support).map(strip);
             expect(lines).toEqual(['No plugins installed. Add one with "very-happy plugin add <manifest>".']);
         }
+    });
+});
+
+describe('B-974h P3-13: docs compatibility table', () => {
+    it('says an old CLI passes `plugin` to Claude as a prompt', () => {
+        const doc = readFileSync(new URL('../../../../docs/plugins.md', import.meta.url), 'utf8');
+        const row = doc.split('\n').find((l) => l.startsWith('| New server, old CLI |'));
+        expect(row).toContain('passed to Claude as a prompt');
     });
 });

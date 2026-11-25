@@ -134,7 +134,8 @@ export async function disablePlugin(store: PluginStore, server: PluginServerApi,
 
 /** What `plugin enable` found on the server. */
 export type EnableServerOutcome =
-    | { kind: 'enabled' }            // the machine-set disable was lifted (or the install was not disabled there)
+    | { kind: 'enabled' }            // the machine-set disable was lifted
+    | { kind: 'not_disabled' }       // 409: nothing to lift there (also how an operator block answers)
     | { kind: 'requires_owner' }     // disabled in the account, by the operator, or by another machine: the web app only
     | { kind: 'not_sent'; error: string }; // unreachable / server_too_old / not signed in — only the local state changed
 
@@ -158,7 +159,7 @@ export async function enablePlugin(store: PluginStore, server: PluginServerApi, 
         await server.enable(current.installId);
     } catch (error) {
         if (error instanceof PluginServerError && (error.code === 'enable_requires_owner' || error.code === 'disabled_by_operator')) return { record: next, server: { kind: 'requires_owner' } };
-        if (error instanceof PluginServerError && error.code === 'not_disabled') return { record: next, server: { kind: 'enabled' } };
+        if (error instanceof PluginServerError && error.code === 'not_disabled') return { record: next, server: { kind: 'not_disabled' } };
         return { record: next, server: { kind: 'not_sent', error: (error as Error).message } };
     }
     // Lifted on the server: show it as enabled now; the daemon's next install.sync is authoritative.

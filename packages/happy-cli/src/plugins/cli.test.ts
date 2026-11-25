@@ -263,7 +263,9 @@ describe('B-974h plugin enable (P2-2): local first, then the machine-token /enab
 
     it('409 not_disabled means nothing to lift; an unreachable server only changes local state', async () => {
         const store = await installed();
-        expect((await enablePlugin(store, mockServer({ enable: async () => { throw new PluginServerError('not_disabled', 'x', 409); } }), 'hello-board')).server).toEqual({ kind: 'enabled' });
+        expect((await enablePlugin(store, mockServer({ enable: async () => { throw new PluginServerError('not_disabled', 'x', 409); } }), 'hello-board')).server).toEqual({ kind: 'not_disabled' });
+        const stale = enableMessages('hello-board', { ...store.readInstall('hello-board')!, state: 'disabled' }, { kind: 'not_disabled' }, 'https://w.test');
+        expect(stale.some((l) => l.warn && l.text.includes('last saw it as disabled'))).toBe(true);
         const r = await enablePlugin(store, mockServer({ enable: async () => { throw new Error('offline'); } }), 'hello-board');
         expect(r.server).toEqual({ kind: 'not_sent', error: 'offline' });
         expect(enableMessages('hello-board', r.record, r.server, 'https://w.test').some((l) => l.warn && l.text.includes('not told'))).toBe(true);
