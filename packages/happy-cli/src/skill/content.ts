@@ -202,7 +202,7 @@ Notify only when the user needs to act or asked to be told; do not notify for ro
     {
         id: 'panels',
         title: 'Web panels',
-        summary: 'embed a machine-local web page as a panel; install and manage Web plugins (`very-happy plugin`)',
+        summary: 'embed a machine-local web page as a panel (direct link, not a plugin)',
         body: () => `# Web panels
 
 A machine declares panels in \`webPanels\` of its settings.json (\`[{ "id", "title", "url", "embed"? }]\`); the Web shows them for that machine.
@@ -213,18 +213,52 @@ A machine declares panels in \`webPanels\` of its settings.json (\`[{ "id", "tit
 
 \`webPanels\` is never written remotely or by an agent on its own: suggest the JSON and let the user add it.
 
-## Web plugins
+For a page forwarded by the daemon, or for badges, cards and session widgets, see \`very-happy skill plugins\`.`,
+    },
+    {
+        id: 'plugins',
+        title: 'Web plugins',
+        summary: 'write, install and manage a Web plugin (`very-happy plugin`): sidebar badge, full-page panel, decision cards, session widget',
+        body: () => `# Web plugins
 
-A plugin is a local service plus a \`vh-plugin/v1\` manifest; the owner approves the install and every permission on the Web. Its panel is forwarded by the daemon to a declared loopback port, and it reports badges, decision cards and session widgets through the daemon's \`/plugin/v1\` API.
+A plugin is a program on this machine plus a \`vh-plugin/v1\` manifest. It can add a sidebar entry with a badge, a full-page panel (forwarded by the daemon to a declared loopback port), decision cards and a session widget. It reports through the daemon's \`/plugin/v1\` API with its own token.
 
-- \`very-happy plugin add <file|http://127.0.0.1:PORT/...>\`: register it (pending until approved; local file or loopback URL only).
-- \`very-happy plugin list\` / \`very-happy plugin show <id>\`: state, grants, pending changes, review link.
-- \`very-happy plugin update <id>\`, \`enable\` / \`disable <id>\`, \`remove <id>\`, \`rotate <id>\` (new token and secret).
-- \`very-happy plugin env <id> [--shell]\`: \`VH_PLUGIN_API\`, token and secret file paths for the plugin process.
-- \`very-happy plugin doctor <id>\`: upstream and callback reachability, file permissions, HMAC self-test.
-- \`very-happy plugin badge <id> <count|clear>\` and \`very-happy plugin decision <id> post|close …\` for script plugins.
+## Is it available
+- \`very-happy plugin list --json\`: \`serverSupport\` is \`yes\` when the server's \`/v1/features\` lists \`plugins-v1\` for this account, \`no\` when it does not (server too old, or not switched on for the account), \`unknown\` when it could not be asked. \`no\`: tell the user; do not retry.
+- \`server_too_old\` from \`very-happy plugin add\` means the same. An old CLI without the command passes \`plugin …\` to Claude as a prompt, so check \`very-happy --version\` first (0.2.230 added it; \`serverSupport\`, \`--multiline\` and lifting this machine's own disable on the server need 0.2.231).
 
-An agent does not approve plugins or widen their permissions: that happens on the Web.`,
+## Write one
+1. Read https://github.com/Mereithhh/very-happy/blob/main/docs/plugins.md (concepts, security boundary) and https://github.com/Mereithhh/very-happy/blob/main/docs/plugin-api-v1.md (manifest, endpoints, signatures, limits).
+2. Copy https://github.com/Mereithhh/very-happy/tree/main/examples/plugins/hello-board: zero-dependency Node, all four extension points, plus \`verify.mjs\` (signature check and event dedupe).
+3. Rules that are easy to miss:
+   - Read \`api\` and \`state\` from \`~/.happy/plugins/<id>/runtime.json\` (\`HAPPY_HOME_DIR\` moves \`~/.happy\`) before each call; do not cache them. Call the API only while \`state\` is \`enabled\` or \`update_pending\` (the latter runs under the previously approved grants). In any other state (\`pending\`, \`rejected\`, \`disabled\`, \`disabled_by_operator\`, \`removed\`) go idle.
+   - Anything local can reach 127.0.0.1: accept callbacks and panel writes only with a valid \`X-VH-Signature\`, a timestamp within 300 s and, for events, an unseen id. The HMAC key is the 32 bytes decoded from \`secret\`, not its text.
+   - \`upstream\` and \`callback.url\` are \`http://127.0.0.1:<port>\` or \`http://[::1]:<port>\` (not \`localhost\`). No WebSocket or SSE in panels; poll.
+
+## Install and operate
+- \`very-happy plugin add <file|http://127.0.0.1:PORT/...>\`: register (pending until approved); prints the review link. Give it to the user.
+- \`very-happy plugin list [--json]\` / \`very-happy plugin show <id> [--json]\`: state, grants, pending changes, review link.
+- \`very-happy plugin update <id> [--manifest <file|url>]\`: new permissions, addresses, name or icon need approval again; until then the approved version keeps running.
+- \`very-happy plugin env <id> [--shell]\`: \`VH_PLUGIN_API\`, token and secret file paths. \`very-happy plugin rotate <id>\`: new token and secret.
+- \`very-happy plugin doctor <id>\`: state, file permissions, upstream, callback and signature self-test.
+- \`very-happy plugin badge <id> <count|clear> [--tone attention] [--label <text>]\`.
+- \`very-happy plugin decision <id> post --key K --title T [--option id=label]... [--input [--multiline] | --notice] [--body-file F]\`: 2–4 options make a choice card, \`--input\` a text box (\`--multiline\`: a multi-line one, implies \`--input\`), otherwise a notice. The same key updates the card. \`very-happy plugin decision <id> close --key K [--outcome done|dropped|superseded]\`.
+- \`very-happy plugin remove <id> [--keep-items]\`: deletes credentials and the install.
+
+## Disable and enable
+- \`very-happy plugin disable <id> [--reason <text>]\` works offline: this machine refuses the plugin at once, then tells the server, which records it as disabled by this machine.
+- \`very-happy plugin enable <id>\` clears the local disable, then asks the server to lift it. The server lifts only a disable set by a machine, on an install of this machine. One the owner set on the Web answers \`enable_requires_owner\`: the owner re-enables it in **Settings → Plugins**. \`disabled_by_operator\` can only be lifted by the server operator. If the server cannot be reached, only the local disable is cleared and the command says so.
+
+## A machine signed in with old credentials
+Signs: the panel says the machine is signed in the old way (\`502 machine_unsupported\`), sessions show **Plugin unavailable**, or widget writes answer \`403 session_not_on_machine\` for a session that does run here. Badges and cards still work. Upgrading the CLI does not fix it. Give the user these steps, in this order; do not run the re-login yourself (it stops the daemon and registers a new machine; the old one stays offline with its history):
+1. \`very-happy plugin remove <id>\`
+2. \`very-happy auth login --force\`
+3. \`very-happy daemon start\`
+4. \`very-happy plugin add <manifest>\`, then the user approves it again on the Web.
+If the old install is still listed, the user removes it in **Settings → Plugins**.
+
+## Approval
+An agent never approves an install, an update or a permission for the user, and never widens grants: not through the Web (including a browser the user left signed in), not through the API, not by editing \`~/.happy/plugins/\`. Hand over the review link and wait. \`sessions.list\` and \`sessions.read\` are sensitive; request them only if the plugin needs them.`,
     },
     {
         id: 'settings',
