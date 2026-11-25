@@ -40,7 +40,7 @@ import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadSessionEffortLevels, saveSessionEffortLevels, loadUnreadSessionIds, saveUnreadSessionIds } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadSessionEffortLevels, saveSessionEffortLevels, loadSessionContextModes, saveSessionContextModes, loadUnreadSessionIds, saveUnreadSessionIds } from "./persistence";
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
@@ -261,6 +261,8 @@ interface StorageState {
     markYoloAutoApproved: (sessionId: string, requestId: string) => void;
     updateSessionModelMode: (sessionId: string, mode: string | null) => void;
     updateSessionEffortLevel: (sessionId: string, level: string | null) => void;
+    /** B-977: the Codex 「上下文」 for this session ('standard' | 'extended'); null = clear. */
+    updateSessionContextMode: (sessionId: string, mode: string | null) => void;
     resetSessionAgentOverrides: (sessionId: string) => void;
     // Optimistically flip a session's active state locally (e.g. archive UX) so
     // it leaves the active-sessions group immediately. The next server sync
@@ -417,6 +419,7 @@ export const storage = create<StorageState>()((set, get) => {
     })();
     let sessionModelModes = loadSessionModelModes();
     let sessionEffortLevels = loadSessionEffortLevels();
+    let sessionContextModes = loadSessionContextModes();
     return {
         settings,
         settingsVersion: version,
@@ -480,6 +483,8 @@ export const storage = create<StorageState>()((set, get) => {
             const savedPermissionModes = sessionPermissionModes;
             const savedModelModes = isInitialLoad ? sessionModelModes : {};
             const savedEffortLevels = isInitialLoad ? sessionEffortLevels : {};
+            // B-977: the Codex 「上下文」 this device picked, kept like the effort level.
+            const savedContextModes = isInitialLoad ? sessionContextModes : {};
 
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
@@ -554,6 +559,7 @@ export const storage = create<StorageState>()((set, get) => {
                 const resolvedModelMode = state.sessions[session.id]?.modelMode ?? savedModelModes[session.id] ?? session.modelMode ?? null;
                 const existingEffortLevel = state.sessions[session.id]?.effortLevel ?? null;
                 const resolvedEffortLevel = existingEffortLevel ?? savedEffortLevels[session.id] ?? session.effortLevel ?? null;
+                const resolvedContextMode = state.sessions[session.id]?.contextMode ?? savedContextModes[session.id] ?? session.contextMode ?? null;
 
                 // Track when the agent started thinking so the status bar can show
                 // an "elapsed" counter. We stamp it on the false→true edge and keep
@@ -576,6 +582,7 @@ export const storage = create<StorageState>()((set, get) => {
                     permissionMode: resolvedPermissionMode,
                     modelMode: resolvedModelMode,
                     effortLevel: resolvedEffortLevel,
+                    contextMode: resolvedContextMode,
                     thinkingStartedAt,
                 };
             });
@@ -1305,6 +1312,20 @@ export const storage = create<StorageState>()((set, get) => {
                 sessions: updatedSessions
             };
         }),
+        updateSessionContextMode: (sessionId: string, mode: string | null) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: { ...session, contextMode: mode },
+            };
+            const allModes: Record<string, string> = {};
+            Object.entries(updatedSessions).forEach(([id, sess]) => {
+                if (sess.contextMode) allModes[id] = sess.contextMode;
+            });
+            saveSessionContextModes(allModes);
+            return { ...state, sessions: updatedSessions };
+        }),
         resetSessionAgentOverrides: (sessionId: string) => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
@@ -1508,6 +1529,10 @@ export const storage = create<StorageState>()((set, get) => {
             const effortLevels = loadSessionEffortLevels();
             delete effortLevels[sessionId];
             saveSessionEffortLevels(effortLevels);
+
+            const contextModes = loadSessionContextModes();
+            delete contextModes[sessionId];
+            saveSessionContextModes(contextModes);
 
             // B-312: a deleted session must not leave a persisted red dot behind
             let unreadSessionIds = state.unreadSessionIds;

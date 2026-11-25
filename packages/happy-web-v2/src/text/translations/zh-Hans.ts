@@ -1286,6 +1286,13 @@ export const zhHans: TranslationStructure = {
                 unconfirmedOther: '· 未确认',
             },
             effortLabel: '思考强度',
+            // B-977：Codex 上下文窗口（标准＝Codex 自带默认，扩展＝模型目录上限）。
+            contextLabel: '上下文',
+            contextDefaultHint: ({ value }: { value: string }) => `新会话默认：${value}。想用较小窗口选「标准」。`,
+            contextStandard: ({ window }: { window: string }) => `标准 · ${window}`,
+            contextExtended: ({ window }: { window: string }) => `扩展 · 约 ${window}`,
+            contextStandardDescription: 'Codex 对这个模型的默认窗口，想用较小窗口就选它，用到 90% 自动压缩',
+            contextExtendedDescription: '这个模型的最大窗口，新会话默认用它，用到 90% 自动压缩',
             sessionSettings: '会话设置',
             sessionSettingsTitle: '会话设置',
             sessionSettingsDescription: 'Claude 运行中可即时切换权限；其他更改会应用到下一条消息。',
@@ -3897,6 +3904,12 @@ export const zhHans: TranslationStructure = {
                 summary: 'Claude 会话的模型列表里新增 Kimi K3.1 Pro 和 DeepSeek V4.1 Flash，不用再手动填自定义模型。',
                 models: '这两个模型都需要 Anthropic 兼容网关，比如填了自定义 Base URL 的 API 账号。Claude 订阅账号和走 Anthropic 官方地址的 API 账号不显示；不知道用的是哪个账号时照常列出，并附上这条说明。默认模型不变。',
                 tools: 'deepseek-v4.1-flash 可以带完整工具集使用。',
+            },
+            nov26b: {
+                title: 'Codex 会话可以用满模型的上下文窗口',
+                summary: 'Codex 起新线程时按自己的保守默认给窗口——多数 gpt-6 / gpt-5.6 是 25.8 万 token，sol 系 47.5 万——离模型上限还差很远。新建的 Codex 会话默认用扩展窗口（约 82.8 万，模型支持时）。模型菜单里新增「上下文」：标准保留 Codex 默认，扩展取这个模型真正接受的最大窗口（约 82.8 万），两种都在窗口的 90% 自动压缩。',
+                picker: '在 Codex 会话的模型菜单里选，或在「设置 → Agent → Codex」设为新会话默认。新会话默认扩展（可在设置里改默认），已有会话保持原档位，想回到较小窗口选「标准」。只有机器报告能扩的模型才显示这一行；运行中的会话切换时会重载同一个线程换成新窗口，历史保留。',
+                meter: '上下文用量条按会话实际运行的窗口显示。需要 CLI 0.2.232。',
             },
             nov26a: {
                 title: '新建 pi 会话时可以选择模型',

@@ -8,18 +8,21 @@ import { getEffortLevelsForModel } from '@/components/modelModeOptions';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 import { EFFORT_PICK_AUTO, recordsRunIntent, sessionRunIntents, withRunPicks } from './runPicks';
 import { readEffortIntent } from '@slopus/happy-wire';
+import { codexContextOptions, resolveCodexContextMode } from './codexContextMode';
 
 export type MessageModeMeta = {
     permissionMode?: PermissionModeKey;
     model?: string | null;
     effort?: string | null;
+    /** B-977: Codex context window ('standard' | 'extended'); the wrapper applies it from the next turn. */
+    codexContext?: string;
     /** B-849b: the choice behind `model` / `effort`, recorded by the wrapper as the session's intent. */
     modelIntent?: string;
     effortIntent?: string;
 };
 
 export function resolveMessageModeMeta(
-    sessionIn: Pick<Session, 'permissionMode' | 'modelMode' | 'metadata' | 'effortLevel'> & { id?: string },
+    sessionIn: Pick<Session, 'permissionMode' | 'modelMode' | 'metadata' | 'effortLevel'> & { id?: string; contextMode?: string | null },
     settings?: Pick<Settings, 'agentDefaultOverrides'> & Partial<Pick<Settings, 'claudeLongContextOptOut'>>,
     latestTable: LatestModelTable | null = getLatestModelTable(),
 ): MessageModeMeta {
@@ -122,6 +125,16 @@ export function resolveMessageModeMeta(
         meta.effort = null;
     }
     if (meta.effort !== undefined) meta.effortIntent = meta.effort ?? EFFORT_PICK_AUTO;
+
+    // B-977: Codex 「上下文」 — sent whenever the session has a choice to state
+    // (the wrapper's report, a pick, or the account default), so a mode picked
+    // on another device is never left behind. A model with one window sends
+    // nothing.
+    if (normalizeAgentKey(session.metadata?.flavor) === 'codex') {
+        const model = modelMode && modelMode !== 'default' ? modelMode : session.metadata?.currentModelCode;
+        const choices = codexContextOptions(session.metadata, model);
+        if (choices) meta.codexContext = resolveCodexContextMode(session.metadata, session.contextMode, agentOverrides.contextMode);
+    }
 
     return meta;
 }

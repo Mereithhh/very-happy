@@ -3,6 +3,7 @@ import type { ModeOption } from '@/components/modelModeOptions';
 import type { SimpleTranslationKey, t as translateFn } from '@/text';
 import { normalizeAgentKey } from '@/sync/agentDefaults';
 import { LONG_CONTEXT_SUFFIX, modelFamilyOf } from './modelPickerLayout';
+import { formatContextWindow, type CodexContextOption } from '@/sync/codexContextMode';
 
 type Translate = typeof translateFn;
 
@@ -32,6 +33,18 @@ export function effortLevelName(key: string, fallback: string, translate: Transl
 
 export function namedEffortOptions(options: readonly ModeOption[], translate: Translate): ModeOption[] {
     return options.map((option) => ({ ...option, name: effortLevelName(option.key, option.name, translate) }));
+}
+
+/**
+ * B-977: Codex 「上下文」 stops — the window each mode really runs, never
+ * "1M" (Codex clamps to the catalog maximum: 872k × 95% ≈ 83 万).
+ */
+export function namedContextOptions(options: readonly CodexContextOption[], translate: Translate): ModeOption[] {
+    return options.map((option) => ({
+        key: option.key,
+        name: translate(option.key === 'extended' ? 'session.chat.contextExtended' : 'session.chat.contextStandard', { window: formatContextWindow(option.window) }),
+        description: translate(option.key === 'extended' ? 'session.chat.contextExtendedDescription' : 'session.chat.contextStandardDescription'),
+    }));
 }
 
 /**

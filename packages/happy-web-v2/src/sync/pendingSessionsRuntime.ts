@@ -150,6 +150,7 @@ export const pendingSessions = createPendingSessionStore({
     writePermissionMode: (id, mode) => storage.getState().updateSessionPermissionMode(id, mode),
     writeModelMode: (id, mode) => storage.getState().updateSessionModelMode(id, mode),
     writeEffortLevel: (id, level) => storage.getState().updateSessionEffortLevel(id, level),
+    writeContextMode: (id, mode) => storage.getState().updateSessionContextMode(id, mode),
     restoreText(id, text, composerId) {
         if (composerId && restoreToComposer(composerId, text)) return;
         if (restoreToComposer(id, text)) return;

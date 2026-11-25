@@ -1,4 +1,4 @@
-import { AGENT_PROFILE_SESSION_CAPABILITY, ATTACHMENT_REUSE_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_CONTEXT_CAPABILITY, CODEX_GOAL_CAPABILITY, CODEX_REWIND_CAPABILITY, parseCodexGoalCommand, CODEX_LIVE_PERMISSION_CAPABILITY, CODEX_STEER_CAPABILITY, ISSUE_SESSION_CAPABILITY, readCodexContextUsage, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, TURN_FAILURE_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort, type TurnFailure } from '@slopus/happy-wire';
+import { AGENT_PROFILE_SESSION_CAPABILITY, ATTACHMENT_REUSE_CAPABILITY, CODEX_BTW_CAPABILITY, CODEX_COMPACT_CAPABILITY, CODEX_CONTEXT_CAPABILITY, CODEX_CONTEXT_DEFAULT_MODE, CODEX_CONTEXT_MODE_CAPABILITY, readCodexContextMode, CODEX_GOAL_CAPABILITY, CODEX_REWIND_CAPABILITY, parseCodexGoalCommand, CODEX_LIVE_PERMISSION_CAPABILITY, CODEX_STEER_CAPABILITY, ISSUE_SESSION_CAPABILITY, readCodexContextUsage, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, RUN_INTENT_CAPABILITY, TURN_FAILURE_CAPABILITY, EFFORT_INTENT_AUTO, readEffortIntent, restoredEffort, type TurnFailure } from '@slopus/happy-wire';
 import { isSessionPeerPrompt } from '@/claude/nonUserPrompt';
 import { codexTurnFailure } from './codexTurnFailure';
 import { issueSessionMetadata } from '@/issues/sessionMetadata';
@@ -55,6 +55,8 @@ import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { settleTurnEffort, unsupportedEffortReason } from './effortSupport';
+import { CodexContextModeController } from './codexContextMode';
+import { readCodexModelWindows } from './codexModelWindows';
 import { codexModelFacts, resolveCodexTurnModel } from './turnModel';
 import { describeCodexFailure, describeCodexRetry, describeThrownTurnError, processLossMessage } from './codexFailureText';
 import { crashLoopNotice, isCrashLoopBlocked, readCodexResumeCrash, recordCodexCrash } from './codexCrashLoop';
@@ -200,6 +202,9 @@ export async function runCodex(opts: {
     metadata.capabilities = [...metadata.capabilities, CODEX_GOAL_CAPABILITY];
     // B-963: context occupancy is mirrored in agentState.codexContextUsage.
     metadata.capabilities = [...metadata.capabilities, CODEX_CONTEXT_CAPABILITY];
+    // B-977: 「上下文」 standard / extended (meta.codexContext → metadata.codexContextMode).
+    metadata.capabilities = [...metadata.capabilities, CODEX_CONTEXT_MODE_CAPABILITY];
+    metadata.codexContextMode = CODEX_CONTEXT_DEFAULT_MODE;
     // B-961: conversation-rewind (thread/revert).
     metadata.capabilities = [...metadata.capabilities, CODEX_REWIND_CAPABILITY];
     // B-961b: edit / retry re-sends a prompt's attachments by reference.
@@ -290,6 +295,9 @@ export async function runCodex(opts: {
     // instead of restarting the thread at medium under an xhigh label. The
     // thread itself keeps its model across a resume.
     const resumedEffort = reconnectSeeded && response ? restoredEffort(response.metadata, { useReportedLevel: true }) : undefined;
+    // B-977: so is its 「上下文」 — Codex does not persist it with the thread.
+    const resumedContextMode = reconnectSeeded && response ? readCodexContextMode(response.metadata?.codexContextMode) : null;
+    const resumedThreadModel = reconnectSeeded && response ? response.metadata?.currentModelCode : undefined;
 
     // B-850b: this session's account (agentProfiles/codexAccount.ts). Resolved
     // before the app-server exists; an unbound session keeps today's env. A
@@ -426,6 +434,23 @@ export async function runCodex(opts: {
     // Use shared PermissionMode type from api/types for cross-agent compatibility
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
     let currentModel: string | undefined = DEFAULT_CODEX_MODEL;
+    // B-977: standard / extended context window; config goes out on every thread start / resume / fork.
+    const contextModes = new CodexContextModeController(resumedContextMode ?? (reconnectSeeded && response ? 'standard' : CODEX_CONTEXT_DEFAULT_MODE), (fields) => {
+        session.updateMetadata((metadata) => ({ ...metadata, ...fields }));
+    });
+    // Before a turn: the config for the model it runs; a loaded thread reloads when it differs.
+    const applyContextConfig = async (model: string | null | undefined) => {
+        const config = contextModes.configFor(model);
+        if (!client.hasActiveThread()) {
+            client.setThreadContextConfig(config);
+            return;
+        }
+        try {
+            if (await client.applyThreadContextConfig(config)) logger.debug(`[Codex] Thread reloaded for context mode ${contextModes.current}`);
+        } catch (error) {
+            logger.debug('[Codex] Context mode reload failed; the thread keeps its window', safeCodexErrorMetadata(error));
+        }
+    };
     let currentEffort: ReasoningEffort | undefined = resumedEffort !== undefined ? (resumedEffort ?? undefined) as ReasoningEffort | undefined : DEFAULT_CODEX_EFFORT;
     // B-849b: the RPC set 「本机配置」; the next turn without a model resets to it.
     let pendingModelReset = false;
@@ -598,6 +623,8 @@ export async function runCodex(opts: {
 
             // B-849b: the choice this message carried becomes the session's intent.
             recordRunIntents(session, effortRefused ? withoutEffort(message.meta) : message.meta);
+            // B-977: 「上下文」 for this and later turns (applied before the next turn starts).
+            if (contextModes.pick((message.meta as Record<string, unknown> | undefined)?.codexContext)) logger.debug(`[Codex] Context mode → ${contextModes.current}`);
 
             let messageAppendSystemPrompt = currentAppendSystemPrompt;
             if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
@@ -1382,6 +1409,10 @@ export async function runCodex(opts: {
         } catch (error) {
             logger.debug('[Codex] Model discovery unavailable; using compatibility fallback', safeCodexErrorMetadata(error));
         }
+        // B-977: window sizes are only in Codex's catalog dump (model/list has none).
+        contextModes.setCatalog(await readCodexModelWindows(client.codexProcessEnv()));
+        // A resumed / imported thread loads with the session's 「上下文」.
+        client.setThreadContextConfig(contextModes.configFor((accountSwitched ? machineDefaultModel : undefined) ?? resumedThreadModel ?? machineDefaultModel));
 
         // B-850b: an unusable account refuses every turn, and its thread may be
         // recorded on a provider only that account defines — resume when the
@@ -1653,6 +1684,7 @@ export async function runCodex(opts: {
                         ensureThread: async () => {
                             const policy = resolveCodexExecutionPolicy(message.mode.permissionMode, client.sandboxEnabled);
                             const turnModel = resolveCodexTurnModel(message.mode, machineDefaultModel);
+                            await applyContextConfig(turnModel ?? machineDefaultModel);
                             const startedThread = await client.startThread({
                                 model: turnModel ?? (codexAccount.profile && !codexAccount.unavailable ? machineDefaultModel : undefined),
                                 cwd: process.cwd(),
@@ -1708,6 +1740,10 @@ export async function runCodex(opts: {
                 if (turnEffort.refusal) {
                     throw new Error(turnEffort.refusal);
                 }
+
+                // B-977: 「上下文」 for the model this turn runs (a new thread starts with it;
+                // a loaded one is reloaded — same id and history — when it changed).
+                await applyContextConfig(turnModel ?? client.threadModel ?? machineDefaultModel);
 
                 // Start thread on first turn (thread persists across mode changes)
                 if (!client.hasActiveThread()) {

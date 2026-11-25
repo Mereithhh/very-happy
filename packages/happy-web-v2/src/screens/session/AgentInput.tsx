@@ -71,7 +71,7 @@ import {
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
 import { LONG_CONTEXT_SUFFIX, layoutModelPicker, longContextLocked, longContextRowPick, withLongContextTwins } from './modelPickerLayout';
-import { autoEffortName, effortLevelName, localizeModelDescriptions, localizeModelNames, namedEffortOptions } from './runSetupCopy';
+import { autoEffortName, effortLevelName, localizeModelDescriptions, localizeModelNames, namedContextOptions, namedEffortOptions } from './runSetupCopy';
 import { useNavigate } from 'react-router-dom';
 import { useLatestModelTable } from '@/sync/latestModels';
 import { claudeMachineConfigEntry, customModelsBesideFollow, followEntryModel, followLatestState, followLatestDescriptionKey, launcherReportsRunFacts, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
@@ -81,6 +81,7 @@ import { apiSocket } from '@/sync/apiSocket';
 import { forkCatalogSource, type LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
 import { codexEffortDowngrade, resolveMessageModeMeta } from '@/sync/messageMeta';
+import { codexContextOptions, resolveCodexContextMode } from '@/sync/codexContextMode';
 import { deriveCodexRunningModel, deriveRunningModelSubtitle, runningModelForTrigger, selectDisplayedModelKey, withSelectedModelEntry } from './modelDisplay';
 import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
 import {
@@ -221,6 +222,8 @@ export interface PendingComposer {
     permissionMode: string | null;
     modelMode?: string | null;
     effortLevel?: string | null;
+    /** B-977: Codex 「上下文」 picked on the pending page. */
+    contextMode?: string | null;
     onMode: (field: AgentDefaultField, value: string | null) => void;
     /** A pending id has no session to carry `draft`. */
     initialDraft: string;
@@ -617,6 +620,18 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
             codexDraftAuto ? EFFORT_DEFAULT_KEY : undefined,
             isCodex && !session ? CODEX_WRAPPER_START_EFFORT : undefined,
         ]);
+    // B-977: Codex 「上下文」 — only for a model the wrapper reports as able to run larger.
+    // The wrapper's report is what the session runs; a local pick is pending until then.
+    const contextModelId = isCodex ? (modelKey && modelKey !== 'default' ? modelKey : metadata?.currentModelCode ?? launcherContext?.configuredModel) : undefined;
+    const contextChoices = isCodex
+        ? codexContextOptions(isCodex && !session ? draftCatalog : metadata, contextModelId)
+        : null;
+    const contextOptions = contextChoices ? namedContextOptions(contextChoices, t) : [];
+    const contextKey = contextOptions.length === 0 ? null
+        : resolveCodexContextMode(metadata, pending ? pending.contextMode : runSession?.contextMode, getAgentDefaultOverride(agentDefaultOverrides, flavor).contextMode);
+    const setContext = (key: string) => {
+        setMode('updateSessionContextMode', 'contextMode', key);
+    };
     // B-975: a level this model cannot run is said before the send, with the levels it can.
     const effortDowngrade = !isCodex || efforts.length === 0 ? null
         : session ? codexEffortDowngrade(session, runSettings, latestTable)
@@ -1623,7 +1638,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     };
 
     const setMode = (
-        fn: 'updateSessionModelMode' | 'updateSessionPermissionMode' | 'updateSessionEffortLevel',
+        fn: 'updateSessionModelMode' | 'updateSessionPermissionMode' | 'updateSessionEffortLevel' | 'updateSessionContextMode',
         field: AgentDefaultField,
         key: string | null,
     ) => {
@@ -2030,6 +2045,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                         pickRow={apiModelOptions ? undefined : pickModelRow}
                         onLongContextToggle={apiModelOptions ? undefined : rememberLongContext}
                         effort={{ label: t('session.chat.effortLabel'), options: effortOptions, value: selectedEffortKey, onChange: setEffort }}
+                        context={contextOptions.length > 0 ? { label: t('session.chat.contextLabel'), options: contextOptions, value: contextKey, onChange: setContext, ...(!session ? { hint: t('session.chat.contextDefaultHint', { value: contextOptions.find((o) => o.key === contextKey)?.name ?? '' }) } : {}) } : undefined}
                         longContextLabel={t('session.chat.modelPicker.longContext')}
                         longContextLockedHint={t('session.chat.modelPicker.longContextLockedHint')}
                         longContextHint={longContextRefused ? t('session.chat.modelPicker.longContextRefusedHint') : t('session.chat.modelPicker.longContextHint')}

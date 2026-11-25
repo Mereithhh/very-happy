@@ -13,6 +13,8 @@ export const MessageMetaSchema = z.object({
   modelIntent: z.string().optional(),
   /** B-849b: the picker choice behind `effort` ('default' = auto | level). */
   effortIntent: z.string().optional(),
+  /** B-977: Codex context window for this message on ('standard' | 'extended'); plain string (AGENTS #14). */
+  codexContext: z.string().optional(),
   /** Omitted/queue waits for the current turn; steer targets the live turn. */
   delivery: z.enum(['queue', 'steer']).optional(),
   displayText: z.string().optional(),

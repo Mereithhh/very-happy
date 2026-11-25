@@ -51,6 +51,31 @@ describe('ModelEffortMenu maximum indicator', () => {
         expect(host.querySelector('.effort-energy')).toBeNull();
     });
 
+    it('B-977: a Codex 「上下文」 row sits under the effort stops, and only when given', () => {
+        const onContext = vi.fn();
+        const layout = { primary: models, more: [], longContext: null, selectedInMore: false };
+        const context = { label: 'Context', options: [{ key: 'standard', name: 'Standard · 25.8 万' }, { key: 'extended', name: 'Extended · ~82.8 万' }], value: 'standard', onChange: onContext };
+        act(() => root.render(<ModelEffortMenu label="Run setup" modelLabel="Model" options={models} layout={layout} value="model-a" onChange={vi.fn()}
+            effort={{ label: 'Thinking', options: levels, value: 'xhigh', onChange: vi.fn() }} context={context} />));
+        act(() => host.querySelector<HTMLButtonElement>('.me-trigger')!.click());
+        const panel = document.querySelector('.me-panel')!;
+        const row = panel.querySelector('.effort-seg--context')!;
+        expect(row.querySelector('.effort-seg-label')?.textContent).toBe('Context');
+        const stops = [...row.querySelectorAll<HTMLButtonElement>('[role="radio"]')];
+        expect(stops.map((el) => el.textContent)).toEqual(['Standard · 25.8 万', 'Extended · ~82.8 万']);
+        expect(stops[0].getAttribute('aria-checked')).toBe('true');
+        act(() => stops[1].click());
+        expect(onContext).toHaveBeenCalledExactlyOnceWith('extended');
+        // A new session says which window it defaults to.
+        act(() => root.render(<ModelEffortMenu label="Run setup" modelLabel="Model" options={models} layout={layout} value="model-a" onChange={vi.fn()}
+            effort={{ label: 'Thinking', options: levels, value: 'xhigh', onChange: vi.fn() }} context={{ ...context, value: 'extended', hint: '新会话默认：扩展 · 约 82.8 万。想用较小窗口选「标准」。' }} />));
+        expect(document.querySelector('.effort-seg--context .effort-seg-hint')?.textContent).toBe('新会话默认：扩展 · 约 82.8 万。想用较小窗口选「标准」。');
+        // No context prop (Claude, or a Codex model with one window): no row.
+        act(() => root.render(<ModelEffortMenu label="Run setup" modelLabel="Model" options={models} layout={layout} value="model-a" onChange={vi.fn()}
+            effort={{ label: 'Thinking', options: levels, value: 'xhigh', onChange: vi.fn() }} />));
+        expect(document.querySelector('.effort-seg--context')).toBeNull();
+    });
+
     it('opens ONE flat panel: model rows, more models, 1M switch, named effort stops, footer — no nested picker', () => {
         const onModelChange = vi.fn();
         const onEffortChange = vi.fn();

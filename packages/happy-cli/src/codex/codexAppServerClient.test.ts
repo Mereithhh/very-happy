@@ -629,6 +629,52 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('B-977: the context config rides thread/start, resume, fork and side threads; a change reloads the loaded thread', async () => {
+        const requests: MockRpcMessage[] = [];
+        const thread = (id: string) => ({ thread: { id, path: '/t' }, model: 'gpt-6.2-astra', modelProvider: 'openai', cwd: '/', approvalPolicy: 'never', sandbox: { type: 'readOnly' }, reasoningEffort: null });
+        mockSpawn.mockImplementation(() => createMockProcess({
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.id == null) return;
+                const reply = (result: unknown) => setTimeout(() => pushJsonLine(stdout, { id: msg.id, result }), 0);
+                if (msg.method === 'thread/start' || msg.method === 'thread/resume') reply(thread('thread-ctx'));
+                if (msg.method === 'thread/fork') reply(thread('thread-fork'));
+                if (msg.method === 'thread/unsubscribe') reply({ status: 'unsubscribed' });
+            },
+        }));
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const extended = { model_context_window: 872000, model_auto_compact_token_limit: 784800 };
+        client.setThreadContextConfig(extended);
+        await client.connect();
+        await client.startThread({ cwd: '/' });
+        await client.resumeThread({ threadId: 'thread-ctx' });
+        await client.forkThread({ threadId: 'thread-ctx' });
+        await client.openSideThread({ sourceThreadId: 'thread-ctx', cwd: '/', developerInstructions: 'x' });
+        const sent = (method: string) => requests.filter((m) => m.method === method);
+        expect(sent('thread/start')[0].params.config).toEqual(extended);
+        expect(sent('thread/resume')[0].params.config).toEqual(extended);
+        expect(sent('thread/fork')[0].params.config).toEqual(extended);
+        expect(sent('thread/fork')[1].params.config).toEqual({ ...extended, 'features.hooks': false });
+
+        // Same config: nothing to reload.
+        await client.resumeThread({ threadId: 'thread-ctx' });
+        const before = requests.length;
+        await expect(client.applyThreadContextConfig({ ...extended })).resolves.toBe(false);
+        expect(requests.length).toBe(before);
+
+        // Back to standard: unload, then resume the same thread with the standard keys.
+        const standard = { model_context_window: 272000, model_auto_compact_token_limit: 244800 };
+        await expect(client.applyThreadContextConfig(standard)).resolves.toBe(true);
+        const tail = requests.slice(before).filter((m) => m.method?.startsWith('thread/'));
+        expect(tail.map((m) => m.method)).toEqual(['thread/unsubscribe', 'thread/resume']);
+        expect(tail[0].params).toEqual({ threadId: 'thread-ctx' });
+        expect(tail[1].params.threadId).toBe('thread-ctx');
+        expect(tail[1].params.config).toEqual(standard);
+        expect(client.threadContextConfig).toEqual(standard);
+        await client.disconnect();
+    });
+
     it('B-850b: without an account, threads keep modelProvider null and config = mcp_servers only', async () => {
         const requests: MockRpcMessage[] = [];
         mockSpawn.mockImplementation(() => createMockProcess({

@@ -401,6 +401,7 @@ export function SessionDetailScreen() {
         permissionMode: pending.permissionMode,
         modelMode: pending.modelMode,
         effortLevel: pending.effortLevel,
+        contextMode: pending.contextMode,
         onMode: (field, value) => pendingSessions.setMode(pending.pendingId, field, value),
         initialDraft: pendingInitialDraft,
         isGone: () => !pendingSessions.get(pending.pendingId),
