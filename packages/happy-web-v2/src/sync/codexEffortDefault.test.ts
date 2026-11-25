@@ -31,6 +31,9 @@ describe('B-975: a fresh Codex session takes the account effort, not the wrapper
     });
     it('a session that ran, or was set to a level, keeps it', () => {
         expect(send(born({ codexThreadId: 't' })).effort).toBe('medium');
+        // `/clear` drops the thread id; the running model stays reported.
+        expect(send(born({ currentModelCode: 'gpt-6-sol' })).effort).toBe('medium');
+        expect(send(born({}, { effortLevel: 'medium' })).effort).toBe('medium');
         expect(send(born({ currentThoughtLevelCode: 'high' })).effort).toBe('high');
         expect(send(born({ effortIntent: 'medium' })).effort).toBe('medium');
         expect(send(born({}, { effortLevel: 'low' })).effort).toBe('low');

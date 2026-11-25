@@ -1368,6 +1368,8 @@ export const zhHans: TranslationStructure = {
             effortAuto: ({ level }: { level: string }) => `自动（${level}）`,
             effortAutoPlain: '自动',
             effortAutoHint: '不指定档位，由 Claude Code 按模型和这台机器的设置决定',
+            effortConfirmTitle: '这个模型不支持所选的推理强度',
+            effortConfirmSend: ({ level }: { level: string }) => `按「${level}」发送`,
             effortThisModel: '当前模型',
             effortUnsupported: ({ model, level, actual, options }: { model: string; level: string; actual: string; options: string }) => `${model} 不支持「${level}」，这条消息会按「${actual}」执行。可选：${options}`,
             effortAutoHintCodex: '不指定档位，新的 Codex 会话从「中」开始',
@@ -3828,7 +3830,7 @@ export const zhHans: TranslationStructure = {
                 title: '新建 Codex 会话会保持你设的推理强度',
                 summary: '把 Codex 默认推理强度设成「极限」后，新会话先显示「极限」，第一条消息发出后却变成「中」，也按「中」执行。现在会按你设的档位执行，选择器也保持不变。',
                 fresh: '新会话立即生效，不用升级 CLI。已经跑过的会话保持原来的档位；之前被改成「中」的，在那个会话里重新选一次即可。',
-                unsupported: '模型不支持所选档位时，发送前会在输入框上方说明：这条会按哪一档执行，有哪些档位可选。',
+                unsupported: '模型不支持所选档位时，发送前会在输入框上方说明会按哪一档执行、有哪些档位可选，你确认后才发出。',
             },
             nov25h: {
                 title: '插件命令：enable 能撤销 disable，报错更清楚',

@@ -10,7 +10,11 @@ describe('effort downgrade wiring (B-975)', () => {
         expect(src).toContain('data-testid="effort-unsupported">{effortNotice}</div>');
         expect(src).toContain('session ? codexEffortDowngrade(session, runSettings, latestTable)');
         expect(src).toMatch(/codexSendEffort,\n\s+pending \? pending\.effortLevel/);
-        expect(src).toContain("if (effortDowngrade) pending.onMode('effortLevel', effortDowngrade.actual);");
+        // Nothing leaves before a yes — draft and session alike.
+        expect(src).toContain('if (!(await confirmEffort()) || draftRef.current !== draft) return;');
+        expect(src).toContain('if (compactCommand === null && (!(await confirmEffort()) || (!request && draftRef.current !== draft))) { request?.onResult(false); return; }');
+        expect(src).toContain("if (ok) setMode('updateSessionEffortLevel', 'effortLevel', actual ?? (pending ? null : EFFORT_PICK_AUTO));");
+        expect(src).toContain('modeMeta: resolveMessageModeMeta(storage.getState().sessions[sessionId] ?? session, storage.getState().settings),');
     });
     it('a landing session re-checks before its first message', () => {
         const src = read('../../sync/pendingSessionsRuntime.ts');

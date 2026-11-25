@@ -117,12 +117,13 @@ export const CODEX_WRAPPER_START_EFFORT = 'medium';
 
 /**
  * B-975: a Codex wrapper reports its start level at birth, before any turn. No
- * thread yet means nothing ran and nobody chose it, so it must not stand in for
+ * thread and no running model (reported from the first thread on, kept through
+ * `/clear`, which drops the thread id) means nothing ran and nobody chose it, so it must not stand in for
  * the account default (it was sent as an explicit pick and recorded as the
  * session's intent). Any other level was set by someone and stays.
  */
 function isCodexBirthLevel(metadata: IntentMetadata): boolean {
-    return !metadata?.codexThreadId && metadata?.currentThoughtLevelCode === CODEX_WRAPPER_START_EFFORT;
+    return !metadata?.codexThreadId && !metadata?.currentModelCode && metadata?.currentThoughtLevelCode === CODEX_WRAPPER_START_EFFORT;
 }
 
 function fallbackPick(field: RunPickField, metadata: IntentMetadata): string | undefined {

@@ -1161,6 +1161,8 @@ export const en = {
             effortAuto: ({ level }: { level: string }) => `Auto (${level})`,
             effortAutoPlain: 'Auto',
             effortAutoHint: 'Send no level: Claude Code picks it per model and per this machine\'s settings',
+            effortConfirmTitle: 'This model does not support the chosen effort',
+            effortConfirmSend: ({ level }: { level: string }) => `Send at “${level}”`,
             effortThisModel: 'This model',
             effortUnsupported: ({ model, level, actual, options }: { model: string; level: string; actual: string; options: string }) => `${model} does not support “${level}”. This message will run at “${actual}”. Available: ${options}`,
             effortAutoHintCodex: 'Send no level: a new Codex session starts at medium',
@@ -3671,7 +3673,7 @@ export const en = {
                 title: 'A new Codex session keeps the effort you set',
                 summary: 'With a default Codex effort such as Max, a new session showed it, then switched to Medium and ran the first message at Medium. It now runs, and keeps showing, the level you set.',
                 fresh: 'Applies to new sessions on every CLI version; no update needed. Sessions that already ran keep the level they run. To raise one that was set to Medium this way, pick the level again in that session.',
-                unsupported: 'If the model cannot run that level, the composer says so before you send: which level the message will run at, and which levels are available.',
+                unsupported: 'If the model cannot run that level, the composer says which level the message would run at and which are available, and sends only after you confirm.',
             },
             nov25h: {
                 title: 'Plugin commands: enable undoes disable, clearer errors',

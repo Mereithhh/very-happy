@@ -977,6 +977,23 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
      * composer. Edited drafts still ride along (B-642). `onResult` reports
      * whether the message was accepted (sent or queued); not called = refused.
      */
+    // B-975: never sent at another level than the one chosen without a yes; a yes
+    // is the choice, so it is asked once per session. Cancel keeps the draft.
+    const effortConfirmRef = useRef(false);
+    const confirmEffort = async (): Promise<boolean> => {
+        if (!effortDowngrade || !effortNotice) return true;
+        if (effortConfirmRef.current) return false;
+        effortConfirmRef.current = true;
+        try {
+            const actual = effortDowngrade.actual;
+            const ok = await Modal.confirm(t('session.chat.effortConfirmTitle'), effortNotice, { confirmText: t('session.chat.effortConfirmSend', { level: actual ? effortLevelName(actual, actual, t) : t('session.chat.effortAutoPlain') }) });
+            if (ok) setMode('updateSessionEffortLevel', 'effortLevel', actual ?? (pending ? null : EFFORT_PICK_AUTO));
+            return ok;
+        } finally {
+            effortConfirmRef.current = false;
+        }
+    };
+
     const doSend = async (delivery: 'queue' | 'steer' = 'queue', request?: { text: string; onResult: (accepted: boolean) => void }) => {
         const draft = request ? request.text : draftRef.current;
         const value = draft.trim();
@@ -1001,9 +1018,8 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                 toast.show(t('pendingSession.attachmentsLater'), 'info');
                 return;
             }
+            if (!(await confirmEffort()) || draftRef.current !== draft) return;
             const files = sendFiles ? take() : [];
-            // B-975: the notice named the level this goes out at — that is the choice being sent.
-            if (effortDowngrade) pending.onMode('effortLevel', effortDowngrade.actual);
             if (!pending.onSend(value, files)) {
                 if (files.length > 0) restore(files);
                 toast.show(pending.blockedHint ?? t('pendingSession.notAccepted'), 'info');
@@ -1051,6 +1067,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
             toast.show(t('session.chat.goalUnsupported'), 'info');
             return;
         }
+        if (compactCommand === null && (!(await confirmEffort()) || (!request && draftRef.current !== draft))) { request?.onResult(false); return; }
         // Captured BEFORE the async send: did the textarea own focus (⇒ the
         // soft keyboard was up) when the user hit send? On iOS, tapping a
         // button does NOT move focus off the textarea, so this stays true for
@@ -1099,7 +1116,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                 id: randomUUID(),
                 text: sendValue,
                 createdAt,
-                modeMeta: resolveMessageModeMeta(session, storage.getState().settings),
+                modeMeta: resolveMessageModeMeta(storage.getState().sessions[sessionId] ?? session, storage.getState().settings),
                 attachments: takenAttachments,
             });
             let serverSubmit: Promise<'queued' | 'unsupported'> | null = null;
