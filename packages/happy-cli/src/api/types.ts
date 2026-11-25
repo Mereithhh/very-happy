@@ -547,6 +547,15 @@ export const DaemonStateSchema = z.object({
    * (`webPanels`), normalized by webPanels/webPanels.ts. Read-only mirror —
    * nothing on the web/server side can write the local declaration.
    */
+  /**
+   * B-974c capability flag: this daemon serves `/plugin/v1` at feature level
+   * `pluginApi` and answers the `plugin-*` machine RPCs (same trust rule).
+   */
+  plugins: z.object({
+    pluginApi: z.number(),
+    rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+  }).optional(),
   webPanels: z.object({
     panels: z.array(z.object({
       id: z.string(),

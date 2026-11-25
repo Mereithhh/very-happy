@@ -416,12 +416,12 @@ function requirePersisted(sessionId: string): PersistedSession {
  * The newest `limit` messages of a session, decrypted, in ascending seq order.
  * Undecryptable entries come back with `body: null`.
  */
-export async function readSessionLog(sessionId: string, persisted: PersistedSession, limit: number): Promise<LogEntry[]> {
+export async function readSessionLog(sessionId: string, persisted: PersistedSession, limit: number, beforeSeq = 2147483647): Promise<LogEntry[]> {
     const token = await bearerToken()
     const response = await axios.get(
         `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(sessionId)}/messages`,
         {
-            params: { before_seq: 2147483647, limit },
+            params: { before_seq: beforeSeq, limit },
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'X-Happy-Client': `${SESSION_OPS_CLIENT}/${configuration.currentCliVersion}`,

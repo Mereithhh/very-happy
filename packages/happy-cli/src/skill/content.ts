@@ -202,7 +202,7 @@ Notify only when the user needs to act or asked to be told; do not notify for ro
     {
         id: 'panels',
         title: 'Web panels',
-        summary: 'embed a machine-local web page (desktop, dashboard) as a panel in the Web',
+        summary: 'embed a machine-local web page as a panel; install and manage Web plugins (`very-happy plugin`)',
         body: () => `# Web panels
 
 A machine declares panels in \`webPanels\` of its settings.json (\`[{ "id", "title", "url", "embed"? }]\`); the Web shows them for that machine.
@@ -211,7 +211,20 @@ A machine declares panels in \`webPanels\` of its settings.json (\`[{ "id", "tit
 - \`very-happy panels check\`: fetch each URL from this machine; reports whether it is reachable and embeddable.
 - \`very-happy attention "<reason>" --panel <id>\` points a person at a panel.
 
-\`webPanels\` is never written remotely or by an agent on its own: suggest the JSON and let the user add it.`,
+\`webPanels\` is never written remotely or by an agent on its own: suggest the JSON and let the user add it.
+
+## Web plugins
+
+A plugin is a local service plus a \`vh-plugin/v1\` manifest; the owner approves the install and every permission on the Web. Its panel is forwarded by the daemon to a declared loopback port, and it reports badges, decision cards and session widgets through the daemon's \`/plugin/v1\` API.
+
+- \`very-happy plugin add <file|http://127.0.0.1:PORT/...>\`: register it (pending until approved; local file or loopback URL only).
+- \`very-happy plugin list\` / \`very-happy plugin show <id>\`: state, grants, pending changes, review link.
+- \`very-happy plugin update <id>\`, \`enable\` / \`disable <id>\`, \`remove <id>\`, \`rotate <id>\` (new token and secret).
+- \`very-happy plugin env <id> [--shell]\`: \`VH_PLUGIN_API\`, token and secret file paths for the plugin process.
+- \`very-happy plugin doctor <id>\`: upstream and callback reachability, file permissions, HMAC self-test.
+- \`very-happy plugin badge <id> <count|clear>\` and \`very-happy plugin decision <id> post|close …\` for script plugins.
+
+An agent does not approve plugins or widen their permissions: that happens on the Web.`,
     },
     {
         id: 'settings',

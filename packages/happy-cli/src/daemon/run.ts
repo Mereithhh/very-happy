@@ -69,6 +69,9 @@ import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { startWebPanelsSync } from '@/webPanels/webPanelsSync';
 import { readSettings, updateSettings, readCredentials, rewriteCredentialsForRelay } from '@/persistence';
 import { applyServerMigration } from './serverMigration';
+import { PluginRuntime, pluginRpcHandlers, trackedPluginSessions } from '@/plugins/runtime';
+import { fetchServerPluginSupport } from '@/plugins/serverOp';
+import { readSessionLog } from '@/sessions/sessionOps';
 import { describeMachineIdentityConflict, detectMachineIdentityConflict } from './machineIdentityConflict';
 import { decideHandover, type HandoverPreflight } from './handoverPreflight';
 import { serialTask } from '@/update/serialTask';
@@ -2150,6 +2153,24 @@ export async function startDaemon(): Promise<void> {
     // late-bind so /terminal-hook requests during startup are dropped safely.
     let mirrorManagerRef: MirrorManager | null = null;
     const controlToken = createDaemonControlToken();
+    // B-974c: Web plugins — `/plugin/v1` on this port; server ops late-bind to the machine client.
+    const pluginRuntime = new PluginRuntime({
+      home: configuration.happyHomeDir,
+      machineId: () => machineId,
+      serverOp: (installId, op, payload, requestId) => apiMachineRef ? apiMachineRef.pluginOp(installId, op, payload, requestId) : Promise.resolve({ kind: 'offline' as const }),
+      sessions: trackedPluginSessions({
+        machineId,
+        children: getCurrentChildren,
+        isTurnActive: (sessionId) => turnActivity.activeSessions().includes(sessionId),
+        // §5.7: read and decrypted here with this machine's session key; the server only audits.
+        readLog: async (sessionId, limit, beforeSeq) => {
+          const persisted = readPersistedSessions()[sessionId];
+          if (!persisted) throw new Error('no local key for this session');
+          return readSessionLog(sessionId, persisted, limit, beforeSeq);
+        },
+      }),
+      probeServerSupport: () => fetchServerPluginSupport(configuration.serverUrl, credentials.token, configuration.currentCliVersion),
+    });
     const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
       controlToken,
       getChildren: getCurrentChildren,
@@ -2223,8 +2244,17 @@ export async function startDaemon(): Promise<void> {
       setTerminalTitle: (terminalId: string, title: string, ifAbsent: boolean) => {
         if (!apiMachineRef) return 'starting';
         return apiMachineRef.setTerminalTitle(terminalId, title, ifAbsent);
-      }
+      },
+      plugins: {
+        handleApi: (req) => pluginRuntime.handleApi(req),
+        reload: () => { pluginRuntime.reload(); void pluginRuntime.onConnected(); return pluginRuntime.describe(); },
+        ping: async (pluginId) => {
+          const entry = pluginRuntime.registry.get(pluginId);
+          return entry ? pluginRuntime.events.ping(entry) : { status: null, error: 'unknown plugin' };
+        },
+      },
     });
+    pluginRuntime.start(controlPort);
 
     // Write initial daemon state (no lock needed for state file)
     const daemonClaudeCredentials = resolveClaudeCredentialReadiness();
@@ -2461,6 +2491,13 @@ export async function startDaemon(): Promise<void> {
       readRaw: async () => (await readSettings()).webPanels,
       publish: (panels) => apiMachine.setWebPanels(panels),
       logProblems: (problems) => logger.warn(`[DAEMON RUN] settings.json webPanels: skipped ${problems.length} entr${problems.length === 1 ? 'y' : 'ies'}: ${problems.map((p) => `#${p.index}${p.id ? ` (${p.id})` : ''} ${p.reason}`).join('; ')}`),
+    });
+
+    // B-974c: plugin RPCs + install sync / queue replay on every connect.
+    apiMachine.setPluginHandlers(pluginRpcHandlers(pluginRuntime), {
+      onConnected: () => { void pluginRuntime.onConnected(); },
+      onEventsDue: (installId) => { void pluginRuntime.onEventsDue(installId); },
+      onInstallChanged: (installId) => { void pluginRuntime.onInstallChanged(installId); },
     });
 
     // Connect to server
@@ -2742,6 +2779,7 @@ export async function startDaemon(): Promise<void> {
         // `very-happy daemon start` reads our still-present daemon.state.json, sees
         // isDaemonRunningCurrentlyInstalledHappyVersion() === true, and exits —
         // leaving nothing running once we also exit.
+        pluginRuntime.stop();
         apiMachine.shutdown();
         await stopControlServer();
         await cleanupDaemonState(process.pid);
@@ -3002,6 +3040,7 @@ export async function startDaemon(): Promise<void> {
       stopAccountWatch();
       accountService.dispose();
 
+      pluginRuntime.stop();
       apiMachine.shutdown();
       await stopControlServer();
       await cleanupDaemonState(process.pid);

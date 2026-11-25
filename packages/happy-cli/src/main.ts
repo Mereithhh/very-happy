@@ -701,6 +701,16 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'plugin' || subcommand === 'plugins') {
+    // B-974c: Web plugins installed on this machine.
+    try {
+      const { handlePluginCommand } = await import('./commands/plugin');
+      await handlePluginCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    }
+    return;
   } else if (subcommand === 'panels' || subcommand === 'attention') {
     // B-510: machine web panels + ask a person to step in.
     try {
@@ -1020,6 +1030,7 @@ ${chalk.bold('Usage:')}
                             sessions or scripts with tracked runs (auto --help)
   very-happy sandbox           Configure and manage OS-level sandboxing
   very-happy notify            Send push notification
+  very-happy plugin            Web plugins on this machine (plugin add|list|show|doctor…)
   very-happy panels            Web panels declared in settings.json (panels list|check)
   very-happy attention         Ask a person to step in (attention "<reason>" [--panel id])
   very-happy mcp               Stdio MCP server exposing copy_to_clipboard for a

@@ -646,3 +646,19 @@ export async function setMachineSettingViaDaemon(key: string, value: unknown): P
   const error = typeof result?.error === 'string' ? result.error : 'unknown';
   return /HTTP 404|Not Found/i.test(error) ? 'no-daemon' : error;
 }
+
+/** B-974c: tell a running daemon that plugin state on disk changed. `null` = no daemon. */
+export async function reloadDaemonPlugins(): Promise<Array<{ id: string; installId: string; state: string; grants: string[]; queued: number; pendingEvents: number }> | null> {
+  const state = await readDaemonState();
+  if (!state?.httpPort) return null;
+  try { process.kill(state.pid, 0); } catch { return null; }
+  const result = await daemonPost('/plugins/reload', {});
+  return Array.isArray(result?.plugins) ? result.plugins : null;
+}
+
+/** B-974c: `plugin doctor` — a signed `ping` from the daemon to the plugin's callback. */
+export async function pingDaemonPlugin(id: string): Promise<{ status: number | null; error?: string }> {
+  const result = await daemonPost('/plugins/ping', { id });
+  if (typeof result?.error === 'string' && result.status === undefined) return { status: null, error: result.error };
+  return { status: typeof result?.status === 'number' ? result.status : null, ...(typeof result?.error === 'string' ? { error: result.error } : {}) };
+}
