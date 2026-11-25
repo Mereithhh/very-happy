@@ -130,6 +130,69 @@ export function noteChangelogAutoShown(): void {
   autoShown = true;
 }
 
+/**
+ * B-976: ids this page load has already put in front of the person (pager or
+ * bar). An unread entry outside this set — it arrived later — still has to
+ * surface, without a reload and without opening the pager a second time.
+ */
+let surfaced = new Set<string>();
+export function noteChangelogSurfaced(): void {
+  for (const release of currentPendingChangelog()) surfaced.add(release.id);
+}
+export function hasUnsurfacedChangelog(): boolean {
+  return currentPendingChangelog().some((release) => !surfaced.has(release.id));
+}
+
+// --- the 「有 N 条更新说明」 bar (B-976) ---------------------------------------
+
+/**
+ * B-976: held back (deep link, early typing), the notes leave a bar that stays
+ * until they are read — B-842's 10-second toast ran out unseen. `wanted` once
+ * this visit decided on a hint; `dismissed` by its ✕ for this visit only (a
+ * long stay in the background counts as a new visit, see ChangelogNotice).
+ * Module state: the notice remounts on every route-gate switch (B-950).
+ */
+export interface ChangelogHint {
+  wanted: boolean;
+  dismissed: boolean;
+}
+
+const NO_HINT: ChangelogHint = { wanted: false, dismissed: false };
+let hint = NO_HINT;
+const hintListeners = new Set<() => void>();
+
+function setHint(next: ChangelogHint): void {
+  if (next.wanted === hint.wanted && next.dismissed === hint.dismissed) return;
+  hint = next;
+  for (const l of hintListeners) l();
+}
+
+export function showChangelogHint(): void {
+  setHint({ ...hint, wanted: true });
+}
+
+export function dismissChangelogHint(): void {
+  setHint({ ...hint, dismissed: true });
+}
+
+/** A new visit without a reload (back after a long time in the background): a closed bar may come back. */
+export function reviveChangelogHint(): void {
+  setHint({ ...hint, dismissed: false });
+}
+
+export function changelogHint(): ChangelogHint {
+  return hint;
+}
+
+function subscribeHint(listener: () => void) {
+  hintListeners.add(listener);
+  return () => { hintListeners.delete(listener); };
+}
+
+export function useChangelogHint(): ChangelogHint {
+  return useSyncExternalStore(subscribeHint, changelogHint, changelogHint);
+}
+
 // --- "open the notes now" requests (the sidebar entry) -----------------------
 
 const openListeners = new Set<() => void>();
@@ -159,6 +222,9 @@ export function resetChangelogReadStoreForTest(): void {
   openPending = false;
   visit = NO_VISIT;
   autoShown = false;
+  hint = NO_HINT;
+  surfaced = new Set();
   for (const l of listeners) l();
   for (const l of visitListeners) l();
+  for (const l of hintListeners) l();
 }

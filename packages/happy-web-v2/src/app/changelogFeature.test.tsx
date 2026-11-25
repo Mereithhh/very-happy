@@ -27,6 +27,8 @@ import { resetChangelogReadStoreForTest } from './changelogReadStore';
 import { resetOverlayQueueForTest } from './overlayQueue';
 import { setEnteredByDeepLinkForTest } from './entryKind';
 import { ChangelogNotice } from './ChangelogNotice';
+import { ChangelogHintSlot } from './ChangelogHintSlot';
+import { setChangelogHintSlotVisibilityForTest } from './changelogHintSlots';
 import { MajorUpdateEntry } from './MajorUpdateEntry';
 import { ServerFeaturesSync } from './ServerFeaturesSync';
 import { ChangelogScreen } from '@/screens/changelog/ChangelogScreen';
@@ -152,6 +154,36 @@ describe('in the app', () => {
     expect(host.textContent).not.toMatch(PLUGIN_NOTES);
     expect(host.textContent).toContain(below.titleKey);
     expect(localStorage.getItem('vh.changelog.seen')).toBe(below.id);
+  });
+
+  it('B-976: switch off on a deep link — the hidden entry raises no 「有 N 条更新说明」 bar; switched on, it does', async () => {
+    setEnteredByDeepLinkForTest(true);
+    reply(200, { features: [] });
+    setChangelogHintSlotVisibilityForTest(() => true);
+    const Slot = () => createElement(ChangelogHintSlot, { kind: 'session' });
+    await mount(ServerFeaturesSync, Slot, ChangelogNotice, MajorUpdateEntry);
+    const bar = () => document.querySelector('[data-testid="changelog-hint"]');
+    expect(bar()).toBeNull();
+    expect(entry()).toBeNull();
+    act(() => setServerFeatures(['plugins-v1']));
+    expect(bar()?.textContent).toContain(`changelog.hint:{"count":${gatedCount}}`);
+    expect(card()).toBeNull();
+  });
+
+  it('B-976: an entry that arrives after the notes were shown and read surfaces as the bar on the next return to the page, no reload', async () => {
+    localStorage.setItem('vh.changelog.seen', CHANGELOG_RELEASES[lastGated + 2].id);
+    resetChangelogReadStoreForTest();
+    setChangelogHintSlotVisibilityForTest(() => true);
+    const Slot = () => createElement(ChangelogHintSlot, { kind: 'session' });
+    await mount(Slot, ChangelogNotice);
+    act(() => (document.querySelector('.wn-done') as HTMLButtonElement).click());
+    const bar = () => document.querySelector('[data-testid="changelog-hint"]');
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(bar()).toBeNull(); // everything visible was read
+    act(() => setServerFeatures(['plugins-v1']));
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(bar()?.textContent).toContain(`changelog.hint:{"count":${gatedCount}}`);
+    expect(card()).toBeNull();
   });
 
   it('a failed request reads as off, and is asked again on resume', async () => {

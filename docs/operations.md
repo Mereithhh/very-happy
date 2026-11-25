@@ -493,6 +493,61 @@ disks are small (`dmit-la` 20 GB, `hw-sg` 40 GB shared with other services). Pos
 health checks require both the configured relay id and the exact commit SHA in
 `version`; a healthy old pod is not accepted as a successful rollout.
 
+### Plugin panel wildcard subdomains
+
+Plugin panels run on one subdomain per install under `*.p.veryhappy.dev`
+(`VH_PLUGIN_HOST`, see [`plugins.md`](plugins.md#self-hosting)). Four pieces
+make that work:
+
+| Piece | Where | Notes |
+| --- | --- | --- |
+| DNS | Wildcard `A` record `*.p` in the `veryhappy.dev` zone | DNS only: it points straight at vh-sg, not at CloudFront or a proxy, so Caddy terminates TLS itself |
+| Certificate | Issued by lego (DNS-01) into `/var/lib/lego`; Caddy reads the copies `/etc/caddy/certs/p.veryhappy.dev.{crt,key}` (key `root:caddy` 0640) | The DNS API credential is host-only, in `/etc/lego/cloudflare.env` (root 0600). Never print it or put it in git |
+| Renewal | `vh-plugin-cert-renew.timer` runs `vh-plugin-cert-renew.service` daily (units in `/etc/systemd/system/`); after a renewal the deploy hook `/usr/local/sbin/vh-plugin-cert-deploy.sh` runs | The hook copies the certificate, takes `/opt/happy/release/deploy.lock` so it never races a deployment, validates, and reloads Caddy. The reload reconnects WebSockets once |
+| Site block | `ops/production/Caddyfile.blue-green` | Imports the same `active-upstream.caddy` as the main site, so it follows blue-green switches; `/_vh/*` is 404 here too |
+
+**The repository owns the Caddyfile. Do not edit `/etc/caddy/Caddyfile` by
+hand:** the next `switch` replaces it with the repo copy and any block that
+exists only on the host is lost (this block was lost that way on 2026-11-25).
+Change `ops/production/Caddyfile.blue-green` through a PR instead. After an
+emergency host edit, land the same change before the next deployment and compare
+`sha256sum` of both files. If an edit was overwritten, the previous copy is in
+`/opt/happy/release/caddyfile-backups/`.
+
+The site block names the certificate files, so they must exist on the host
+before this Caddyfile is installed: on a new host, issue the certificate and run
+the hook's copy step first. Otherwise `caddy validate` fails and the deployment
+stops before any candidate work (exit 7 on a `switch` that has to install the
+file), leaving the old configuration live.
+
+Check:
+
+```bash
+systemctl list-timers vh-plugin-cert-renew.timer
+journalctl -t vh-plugin-cert -n 20          # installs and reloads by the hook
+openssl x509 -in /etc/caddy/certs/p.veryhappy.dev.crt -noout -enddate
+caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile
+curl -sS -o /dev/null -w '%{http_code}\n' https://x1.p.veryhappy.dev/_vh/release/ready   # 404, TLS ok
+```
+
+Roll back in this order. Panels stop at step 1; badges, cards and widgets do not
+use the subdomain.
+
+1. Unset `VH_PLUGIN_HOST` in `/opt/happy/.env`; it takes effect when the server
+   container is recreated (the deployment in step 2).
+2. Revert the site block in `ops/production/Caddyfile.blue-green` by PR and
+   deploy with `switch`; verify the main site (`/health`) and that
+   `/etc/caddy/Caddyfile` equals the repo copy. If it cannot wait for a
+   deployment: hold `deploy.lock`, back up the host file, remove only this block,
+   `caddy validate`, `systemctl reload caddy` (never restart), and still land the
+   revert before the next deployment, or that deployment brings the block back.
+3. Stop renewal: `systemctl disable --now vh-plugin-cert-renew.timer`.
+4. Delete the `*.p` DNS record and no other record.
+5. Only after step 2 is live, optionally remove `/etc/caddy/certs`, `/etc/lego`,
+   `/var/lib/lego`, the hook and the units. Removing the certificate while the
+   block is still configured makes every later `caddy validate` and reload fail,
+   which also blocks deployments.
+
 ### Web cache safety
 
 Web V2 ships inside the complete server image and changes atomically with the
