@@ -411,6 +411,43 @@ describe('B-842 / B-976 every unread release has a way in: the bar', () => {
     }
   });
 
+  it('B-976: the pager closed unread (Esc on the last page); back after a long time without a reload — the bar, not after a short switch', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      minorOnly();
+      mount();
+      expect(title()).toBe('changelog.releases.small.title');
+      press('Escape');
+      expect(card()).toBeNull();
+      hidePage();
+      showPage(60_000);
+      expect(bar()).toBeNull();
+      hidePage();
+      showPage(31 * 60_000);
+      expect(bar()).not.toBeNull();
+      expect(card()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('B-976: returning to the page while the notes are open changes nothing — no bar behind the pager', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      minorOnly();
+      mount();
+      expect(card()).not.toBeNull();
+      hidePage();
+      showPage(31 * 60_000);
+      expect(card()).not.toBeNull();
+      expect(bar()).toBeNull();
+      act(() => store.markChangelogReleasesRead([])); // a read-state change while open must not raise it either
+      expect(bar()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('B-950: list → session → list (the notice remounts under the other route gate) keeps one bar', () => {
     minorOnly();
     entry.setEnteredByDeepLinkForTest(true);

@@ -130,6 +130,19 @@ export function noteChangelogAutoShown(): void {
   autoShown = true;
 }
 
+/**
+ * B-976: ids this page load has already put in front of the person (pager or
+ * bar). An unread entry outside this set — it arrived later — still has to
+ * surface, without a reload and without opening the pager a second time.
+ */
+let surfaced = new Set<string>();
+export function noteChangelogSurfaced(): void {
+  for (const release of currentPendingChangelog()) surfaced.add(release.id);
+}
+export function hasUnsurfacedChangelog(): boolean {
+  return currentPendingChangelog().some((release) => !surfaced.has(release.id));
+}
+
 // --- the 「有 N 条更新说明」 bar (B-976) ---------------------------------------
 
 /**
@@ -210,6 +223,7 @@ export function resetChangelogReadStoreForTest(): void {
   visit = NO_VISIT;
   autoShown = false;
   hint = NO_HINT;
+  surfaced = new Set();
   for (const l of listeners) l();
   for (const l of visitListeners) l();
   for (const l of hintListeners) l();

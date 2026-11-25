@@ -170,6 +170,22 @@ describe('in the app', () => {
     expect(card()).toBeNull();
   });
 
+  it('B-976: an entry that arrives after the notes were shown and read surfaces as the bar on the next return to the page, no reload', async () => {
+    localStorage.setItem('vh.changelog.seen', CHANGELOG_RELEASES[lastGated + 2].id);
+    resetChangelogReadStoreForTest();
+    setChangelogHintSlotVisibilityForTest(() => true);
+    const Slot = () => createElement(ChangelogHintSlot, { kind: 'session' });
+    await mount(Slot, ChangelogNotice);
+    act(() => (document.querySelector('.wn-done') as HTMLButtonElement).click());
+    const bar = () => document.querySelector('[data-testid="changelog-hint"]');
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(bar()).toBeNull(); // everything visible was read
+    act(() => setServerFeatures(['plugins-v1']));
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(bar()?.textContent).toContain(`changelog.hint:{"count":${gatedCount}}`);
+    expect(card()).toBeNull();
+  });
+
   it('a failed request reads as off, and is asked again on resume', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
     await mount(ServerFeaturesSync, MajorUpdateEntry);

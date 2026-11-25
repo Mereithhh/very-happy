@@ -11,7 +11,7 @@ import {
   changelogCliTarget,
 } from './changelogRelease';
 import { changelogAutoAction, changelogPages, pageReleaseIds, pendingChangelogCliTarget, type ChangelogPage } from './changelogPager';
-import { changelogAutoShownThisVisit, changelogReadState, currentPendingChangelog, markChangelogReleasesRead, noteChangelogAutoShown, noteChangelogClosed, noteChangelogOpened, onChangelogOpenRequest, reviveChangelogHint, showChangelogHint, usePendingChangelog } from './changelogReadStore';
+import { changelogAutoShownThisVisit, changelogReadState, currentPendingChangelog, hasUnsurfacedChangelog, markChangelogReleasesRead, noteChangelogAutoShown, noteChangelogClosed, noteChangelogOpened, noteChangelogSurfaced, onChangelogOpenRequest, reviveChangelogHint, showChangelogHint, usePendingChangelog } from './changelogReadStore';
 import { enteredByDeepLink } from './entryKind';
 import { userHasInteracted } from './afterFirstScreen';
 import './changelogNotice.css';
@@ -63,6 +63,7 @@ export function ChangelogNotice() {
     setPendingCliTarget(pendingChangelogCliTarget(changelogReadState()));
     setIndex(0);
     setOpen(true);
+    noteChangelogSurfaced();
   }, []);
   // B-823: mounted after the first screen now — if the person is already
   // typing or tapping, the notes do not grab focus mid-sentence. B-842 / B-976:
@@ -78,18 +79,28 @@ export function ChangelogNotice() {
   const latest = useRef({ auto, open });
   latest.current = { auto, open };
   const redecide = useCallback(() => {
-    if (pageHidden() || latest.current.auto !== 'none' || latest.current.open) return;
-    const next = decideAuto();
-    if (next !== 'none') setAuto(next);
+    if (pageHidden() || latest.current.open) return;
+    const next = latest.current.auto === 'none' ? decideAuto() : 'none';
+    if (next !== 'none') { setAuto(next); return; }
+    // Already surfaced once in this load: an entry that arrived since gets the bar, never a second pager.
+    if (changelogAutoShownThisVisit() && hasUnsurfacedChangelog()) {
+      noteChangelogSurfaced();
+      reviveChangelogHint();
+      showChangelogHint();
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // B-974g: `/v1/features` answers after mount; an entry it brings in surfaces like any other.
   useEffect(() => { if (pendingCount > 0) redecide(); }, [pendingCount, redecide]);
   // B-976: back in front (tab switch, PWA resume without a reload) — decide now; after a
-  // long time away it is a new visit, so a bar closed with ✕ may come back.
+  // long time away it is a new visit, so whatever is still unread shows the bar
+  // again (closed with ✕, or the pager closed unread).
   useEffect(() => {
     const onVisibility = () => {
       if (pageHidden()) { hiddenSince ??= Date.now(); return; }
-      if (hiddenSince !== null && Date.now() - hiddenSince >= CHANGELOG_HINT_NEW_VISIT_MS) reviveChangelogHint();
+      if (hiddenSince !== null && Date.now() - hiddenSince >= CHANGELOG_HINT_NEW_VISIT_MS) {
+        reviveChangelogHint();
+        if (changelogAutoShownThisVisit() && !latest.current.open) showChangelogHint();
+      }
       hiddenSince = null;
       redecide();
     };
@@ -100,7 +111,7 @@ export function ChangelogNotice() {
   const heldAbove = useOverlayHeldAbove(OVERLAY_PRIORITY.notice);
   useEffect(() => {
     if (auto === 'open') { noteChangelogAutoShown(); start(); }
-    if (auto === 'hint') { noteChangelogAutoShown(); showChangelogHint(); }
+    if (auto === 'hint') { noteChangelogAutoShown(); noteChangelogSurfaced(); showChangelogHint(); }
   }, [auto, start]);
   useEffect(() => onChangelogOpenRequest(start), [start]);
   // B-857: open → closed (by any way out) lets the feedback card queue after
