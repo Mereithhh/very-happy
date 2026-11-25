@@ -36,6 +36,7 @@ computer, phone, or tablet. Teams adds coordinated parallel work to that same hu
 
 - [Self-hosting](deployment.md)
 - [Configuration](configuration.md)
+- [Turning on Web plugins](plugins.md#self-hosting)
 - [Architecture and data flow](architecture.md)
 - [Security and privacy model](security.md)
 - [Accounts and quotas](accounts-and-quotas.md)

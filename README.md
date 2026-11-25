@@ -464,6 +464,10 @@ structured parity with Claude.
   machine's own settings.json and open it from the session workspace or machine
   page; agents call `request_human` to get a person, and the push opens the panel
   ([setup](docs/configuration.md#machine-web-panels-and-needs-you-b-510)).
+- [Web plugins](docs/plugins.md) (rolling out): a program on your computer adds a
+  sidebar badge, a full-page panel, decision cards and session widgets; you
+  approve every permission on the Web
+  ([API](docs/plugin-api-v1.md), [example](examples/plugins/hello-board/)).
 - A Claude-powered coordinator with text entry, session awareness, and dispatch
   on its selected machine; voice entry is available when a compatible voice
   service is configured.

@@ -92,7 +92,7 @@ describe('B-917 very-happy skill coverage (CI guard against a stale skill)', () 
     it('maps every area exactly once and links todos to the official todo skill', () => {
         const ids = SKILL_AREAS.map((area) => area.id);
         expect(new Set(ids).size).toBe(ids.length);
-        for (const id of ['sessions', 'terminals', 'projects', 'teams', 'automations', 'issues-todos', 'accounts-models', 'machines-daemon', 'sharing', 'notifications-attention', 'panels', 'settings']) expect(ids).toContain(id);
+        for (const id of ['sessions', 'terminals', 'projects', 'teams', 'automations', 'issues-todos', 'accounts-models', 'machines-daemon', 'sharing', 'notifications-attention', 'panels', 'plugins', 'settings']) expect(ids).toContain(id);
         for (const id of ids) expect(renderSkill()).toContain(`| \`${id}\` |`);
         expect(renderReference('issues-todos')).toContain('`very-happy todo skill`');
         expect(renderReference('nope')).toBeNull();
@@ -113,6 +113,20 @@ describe('B-917 very-happy skill coverage (CI guard against a stale skill)', () 
             for (const flag of span[2].match(/--[a-z][a-z-]*/g) ?? []) if (flag !== '--help' && !help.includes(flag)) problems.push(`${span[1]} ${flag}`);
         }
         expect(problems).toEqual([]);
+    });
+
+    it('B-974i: the plugins page covers what a plugin author and operator need, with real commands and flags', () => {
+        const page = renderReference('plugins')!;
+        expect(renderReference('plugin')).toBe(page);
+        for (const text of ['docs/plugins.md', 'docs/plugin-api-v1.md', 'examples/plugins/hello-board', '`/v1/features`', '`plugins-v1`', 'runtime.json', '`update_pending`',
+            '`enable_requires_owner`', '`disabled_by_operator`', '--multiline', 'very-happy auth login --force', 'An agent never approves']) expect(page).toContain(text);
+        for (const path of ['docs/plugins.md', 'docs/plugin-api-v1.md', 'examples/plugins/hello-board']) expect(statSync(join(SRC, '../../..', path))).toBeTruthy();
+        const source = readFileSync(join(SRC, 'commands/plugin.ts'), 'utf8');
+        // `--multiline` is added to the CLI by B-974h (#1017), which ships in the same release.
+        const flags = new Set([...page.matchAll(/very-happy plugin [^`]*/g)].flatMap((m) => m[0].match(/--[a-z][a-z-]*/g) ?? []).filter((flag) => flag !== '--multiline'));
+        expect([...flags].filter((flag) => !source.includes(flag))).toEqual([]);
+        const commands = new Set([...page.matchAll(/very-happy plugin ([a-z]+)/g)].map((m) => m[1]));
+        expect([...commands].filter((command) => !source.includes(`case '${command}'`))).toEqual([]);
     });
 
     it('documents the projectId argument wherever the MCP schema takes it, and where project ids come from', async () => {
