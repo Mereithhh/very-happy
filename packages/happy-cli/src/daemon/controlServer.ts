@@ -16,6 +16,7 @@ import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/regist
 import { SPAWN_AGENTS } from '@/utils/spawnAgents';
 import type { AssistantReportEvent } from './assistantReport';
 import { isAuthorizedDaemonControlRequest } from './controlAuth';
+import { isPluginApiRoute, registerPluginRoutes, type PluginControlHooks } from '@/plugins/daemonRoutes';
 import { checkPreviewPath } from '@/claude/utils/previewPath';
 import type { BackgroundTaskInfo } from '@/claude/backgroundTasks';
 import { BACKGROUND_TASKS_MAX, BACKGROUND_TASK_DESCRIPTION_MAX } from '@/claude/backgroundTasks';
@@ -138,7 +139,8 @@ export function startDaemonControlServer({
   getIdleRestartStatus,
   requestOwnerRestart,
   getAgentProfiles,
-  setMachineSetting
+  setMachineSetting,
+  plugins
 }: {
   /** Fresh per-process bearer token persisted in the private daemon state. */
   controlToken: string;
@@ -223,6 +225,11 @@ export function startDaemonControlServer({
   requestOwnerRestart?: (body: { sessionId: string; when: 'idle' | 'now' }) => Promise<OwnerRestartReply>;
   /** B-920: `very-happy settings set --scope machine` (validated against the wire schema here and in the daemon). Absent → 404, the CLI writes the file under the lock. */
   setMachineSetting?: (key: string, value: unknown) => Promise<void>;
+  /**
+   * B-974c: `/plugin/v1/*` (plugin-token auth, NOT the control token) and the
+   * CLI's `/plugins/*` control routes. Absent → the routes do not exist (404).
+   */
+  plugins?: PluginControlHooks;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
     const app = fastify({
@@ -238,6 +245,10 @@ export function startDaemonControlServer({
     // browser coerced into talking to localhost) can reach this port. Apply one
     // fail-closed gate before every control route, including lifecycle hooks.
     app.addHook('onRequest', async (request, reply) => {
+      // B-974c: only the matched `/plugin/v1/*` route skips the control token;
+      // it authenticates the plugin token itself. Judged on the ROUTE fastify
+      // matched, never on the raw URL.
+      if (isPluginApiRoute(request.routeOptions?.url)) return;
       if (!isAuthorizedDaemonControlRequest(request.headers.authorization, controlToken)) {
         await reply
           .code(401)
@@ -878,6 +889,8 @@ export function startDaemonControlServer({
         },
       },
     }, async () => ({ sessions: listPeers ? listPeers() : [] }));
+
+    if (plugins) registerPluginRoutes(app, plugins);
 
     // Stop daemon
     typed.post('/stop', {

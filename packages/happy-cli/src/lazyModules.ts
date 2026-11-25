@@ -29,6 +29,7 @@ export const LAZY_MODULES: ReadonlyArray<readonly [name: string, load: () => Pro
     ['commands/installTerminalHooks', () => import('@/commands/installTerminalHooks')],
     ['commands/mcp', () => import('@/commands/mcp')],
     ['commands/panels', () => import('@/commands/panels')],
+    ['commands/plugin', () => import('@/commands/plugin')],
     ['commands/piTerminal', () => import('@/commands/piTerminal')],
     ['commands/sandbox', () => import('@/commands/sandbox')],
     ['commands/send', () => import('@/commands/send')],

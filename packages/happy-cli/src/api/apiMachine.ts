@@ -8,6 +8,8 @@ import type { AutoRestartSessionStatus } from '@/update/autoRestartPolicy';
 import type { AgentAutoUpdateStatus } from '@/harness/agentAutoUpdate';
 import { io, Socket } from 'socket.io-client';
 import { type WebPanel, webPanelsSignature } from '@/webPanels/webPanels';
+import { PLUGIN_API_LEVEL } from '@/plugins/manifest';
+import { parsePluginOpAnswer, PLUGIN_OP_TIMEOUT_MS, type PluginServerOpResult } from '@/plugins/serverOp';
 import { logger } from '@/ui/logger'
 import { connectGuarded, socketConnectGuard } from './socketConnectGuard';
 import { summarizeSpawnSessionForLog } from '@/utils/spawnSessionLog';
@@ -236,6 +238,9 @@ export class ApiMachineClient {
     /** B-510: last normalized `webPanels` (null = never set → field not written). */
     private webPanels: WebPanel[] | null = null;
     private webPanelsSignatureSent: string | null = null;
+    /** B-974c: set once the daemon wires the plugin runtime. */
+    private pluginsAvailable = false;
+    private pluginConnectedHandler: (() => void) | null = null;
     private rateLimitPushChain: Promise<void> = Promise.resolve();
     private readonly rateLimitPublisher = new RateLimitPublisher({
         getCurrent: () => this.machine.daemonState?.rateLimits,
@@ -672,6 +677,34 @@ export class ApiMachineClient {
      * on purpose (no shared key with the caller); see
      * `api/rpc/RpcHandlerManager.ts` `registerPlainHandler`.
      */
+    /**
+     * B-974c: the `plugin-*` machine RPCs (machine-key encrypted, like terminal
+     * payloads) and the capability flag the web reads.
+     */
+    setPluginHandlers(handlers: Record<string, (params: unknown) => Promise<unknown>>, onConnected: () => void): void {
+        for (const [method, handler] of Object.entries(handlers)) this.rpcHandlerManager.registerHandler(method, handler);
+        this.pluginsAvailable = true;
+        this.pluginConnectedHandler = onConnected;
+        if (this.socket?.connected) onConnected();
+    }
+
+    /**
+     * B-974c: one plugin operation over the authenticated machine socket
+     * (`plugin-op`). The server checks install ↔ machine, state and grants.
+     * Not connected, or no ack within 10 s (an older server ignores the
+     * event), counts as offline.
+     */
+    async pluginOp(installId: string | null, op: string, payload: Record<string, unknown>, requestId: string): Promise<PluginServerOpResult> {
+        const socket = this.socket as any;
+        if (!socket?.connected) return { kind: 'offline' };
+        try {
+            const answer = await socket.timeout(PLUGIN_OP_TIMEOUT_MS).emitWithAck('plugin-op', { installId, op, payload, requestId });
+            return parsePluginOpAnswer(answer);
+        } catch {
+            return { kind: 'offline' };
+        }
+    }
+
     setRemoteSessionOpsHandlers(handlers: Record<string, (params: unknown) => Promise<unknown>>) {
         for (const [method, handler] of Object.entries(handlers)) {
             this.rpcHandlerManager.registerPlainHandler(method, handler);
@@ -1649,6 +1682,8 @@ export class ApiMachineClient {
                     mainAgentSafety: { rpcAvailable: true, detectedAt: now },
                     // B-924 capability flag: the main agent's default automations (same restamp discipline).
                     mainAgentAutomations: { rpcAvailable: true, detectedAt: now },
+                    // B-974c capability flag: `/plugin/v1` + `plugin-*` RPCs (same restamp discipline).
+                    ...(this.pluginsAvailable ? { plugins: { pluginApi: PLUGIN_API_LEVEL, rpcAvailable: true, detectedAt: now } } : {}),
                     // B-084: closed records survive daemon restarts (persisted
                     // in closed-terminals.json), so the connect snapshot ships
                     // them too — not just the incremental pushes.
@@ -1672,6 +1707,8 @@ export class ApiMachineClient {
             this.webTerminal.startListTracking((terminals) => this.pushTerminalList(terminals));
 
         if (!rpcAlreadyRegistered) this.rpcHandlerManager.onSocketConnect(socket);
+        // B-974c: install sync, queued plugin writes and undelivered events.
+        if (this.pluginConnectedHandler) { try { this.pluginConnectedHandler(); } catch (error) { logger.debug('[API MACHINE] plugin connect handler failed', error); } }
         this.syncResumeSessionRpcRegistration();
         this.syncRestartSessionRpcRegistration();
         this.startKeepAlive();
