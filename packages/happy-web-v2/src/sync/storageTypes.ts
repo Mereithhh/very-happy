@@ -320,6 +320,8 @@ export interface Session {
     oversizeSkipped?: number,
     metadata: Metadata | null,
     metadataVersion: number,
+    /** B-974e: no per-session data key (legacy CLI credentials); plugin widgets are refused on it. */
+    legacyKey?: boolean,
     agentState: AgentState | null,
     agentStateVersion: number,
     thinking: boolean,
@@ -425,4 +427,7 @@ export interface Machine {
     metadataVersion: number;
     daemonState: any | null;  // Dynamic daemon state (runtime info)
     daemonStateVersion: number;
+    /** B-974e: registered without a data key (CLI signed in with legacy credentials).
+     *  The server cannot open it, so plugin panels on it answer `machine_unsupported`. */
+    legacyKey?: boolean;
 }

@@ -84,10 +84,28 @@ when that is set; directory 0700, every file 0600). The files a plugin reads:
 | `token` | Written on approval. Plugin token, `vhp_` + 32 random bytes base64url. Trim whitespace and send it as is in `Bearer`. |
 | `secret` | Written on approval. | 32 random bytes as unpadded base64url: exactly 43 characters, maybe followed by a newline, no prefix. Trim surrounding whitespace and base64url-decode it; **the 32 decoded bytes are the HMAC key**. Never use the text itself as the key. |
 | `manifest.json` | The approved manifest. |
-| `runtime.json` | `{ "api": "http://127.0.0.1:<daemonPort>/plugin/v1", "installId", "state" }`, rewritten whenever the daemon (re)loads its plugins, from `add` on (so it also exists while the install is pending). `state` is the effective state, e.g. `disabled` after a local `plugin disable`. |
+| `runtime.json` | `{ "api": "http://127.0.0.1:<daemonPort>/plugin/v1", "installId", "state" }`, rewritten whenever the daemon (re)loads its plugins, from `add` on (so it also exists while the install is pending). `state` is the effective state; see below. |
 
 Other files in the directory (`install.json`, `pending.json`, `queue.json`)
 belong to the daemon; do not read or edit them.
+
+`state` in `runtime.json` is one of `PLUGIN_INSTALL_STATES` in
+`packages/happy-wire`:
+
+| `state` | Calls to `/plugin/v1` |
+|---|---|
+| `enabled` | Allowed. |
+| `update_pending` | Allowed, under the **previously approved** manifest and grants. Permissions added by the pending update take effect only after it is approved. |
+| `pending` | Refused, `403 plugin_pending`. |
+| `rejected` | Refused, `403 plugin_rejected`. |
+| `disabled`, `removed` | Refused, `403 plugin_disabled`. |
+| `disabled_by_operator` | Refused, `403 disabled_by_operator`. |
+
+Only `enabled` and `update_pending` are active (`isPluginInstallActive`). In
+any other state the plugin should go idle and stop sending; the state can
+change at any time (approval, `plugin disable`, a change on the web), so
+re-read `runtime.json` before each call instead of caching it.
+`GET /plugin/v1/info` answers in every state.
 
 `very-happy plugin env <id> --shell` prints `VH_PLUGIN_API`,
 `VH_PLUGIN_TOKEN_FILE` and `VH_PLUGIN_SECRET_FILE` (empty `VH_PLUGIN_API` until

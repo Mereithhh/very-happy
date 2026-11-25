@@ -33,6 +33,7 @@ export type DecodedSession<T extends EncryptedSessionRow> = Omit<T, 'metadata' |
     agentState: AgentState | null;
     thinking: boolean;
     thinkingAt: number;
+    legacyKey: boolean;
 };
 
 export type SessionCrypto = Pick<Encryption, 'decryptEncryptionKey' | 'initializeSessions' | 'getSessionEncryption'>;
@@ -91,6 +92,7 @@ export async function decodeSessionRows<T extends EncryptedSessionRow>(
             ...session,
             thinking: false,
             thinkingAt: 0,
+            legacyKey: !session.dataEncryptionKey,
             metadata,
             agentState,
         });

@@ -3498,6 +3498,17 @@ export const zhHans: TranslationStructure = {
             sent: '已发给插件',
             confirm: '确认',
         },
+        legacy: {
+            title: ({ machine }: { machine: string }) => `${machine} 用的是旧版登录方式，插件在这台机器上打不开。`,
+            why: '插件面板和会话芯片要由服务器经这台机器转发，这需要一把加密密钥，只有新版登录才会生成。',
+            how: '在那台电脑上按顺序执行：',
+            stepRemove: '移除这台机器上的插件',
+            stepLogin: '重新登录（电脑会作为一台新机器加入）',
+            stepDaemon: '启动 daemon',
+            stepAdd: '重新添加插件，再回到这里批准',
+            note: '插件绑定在机器上，所以要重新添加。旧的那条如果还在「设置 → 插件」里，可以在那里移除。',
+            chip: '插件不可用',
+        },
     },
     // B-916a: Settings → Main agent (the page body uses assistant/mainAgentCopy.ts)
     settingsMainAgent: {
@@ -3817,6 +3828,7 @@ export const zhHans: TranslationStructure = {
                 decisions: '插件可以在「需要我决策」里放卡片：2–4 个按钮、一个输入框，或者只有「知道了」。每张卡都带去不掉的「插件 · 名字 · 机器」标记，链接点开前会先确认。',
                 widget: '插件可以在自己机器的会话头显示一枚状态芯片，最多带两个动作。',
                 stop: '在插件页面或面板顶栏可以停用、移除、撤销单项权限或静音，立即生效。',
+                legacy: '用旧版 CLI 登录的机器跑不了插件。现在它的面板和会话芯片会直接说明，并列出修复命令：用 very-happy auth login --force 重新登录，再重新添加插件。',
             },
             nov25f: {
                 title: '团队消息不再反复报「Missing body」',
