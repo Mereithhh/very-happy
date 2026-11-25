@@ -172,7 +172,7 @@ export const PUBLIC_DOCS_ZH_HANS: Record<string, PublicDocTranslation> = {
       { heading: '部署形态', blocks: ['在 HTTPS 后部署 happy-server 并持久化 /data。服务启动前，Docker 镜像默认迁移内置 PGlite，或显式配置的外部 Postgres。暴露服务前请设置明确的注册策略与账户上限。', null, '先用 bootstrap code 注册第一个运营账户，然后以 SIGNUP_MODE=closed 且不带 SIGNUP_INVITE_CODES 重新创建容器。普通 docker restart 会保留旧环境。邀请码不会自动消费。完成 HTTPS 与代理信任配置前，只在 loopback 上监听。', '打开完整部署与环境指南 ↗'] },
       { heading: 'Loopback 评估', blocks: ['本地评估请使用上面的 Docker 形态并绑定 127.0.0.1。不要安装上游维护的 happy-server-self-host 包：它提供的是另一个产品构建。very-happy-server workspace 包刻意保持 private，因为其 Prisma 构建工具不是已批准的公共生产依赖面。'] },
       { heading: '连接 CLI', blocks: [null, '每个中继使用独立 HAPPY_HOME_DIR，并确保启动 daemon 的环境同时包含三个变量。令牌和机器 ID 都只属于对应中继；只有在明确替换现有 home 时才使用 auth login --force。生产环境请使用 HTTPS。'] },
-      { heading: '生产运维', blocks: ['备份持久卷、固定版本、检查服务健康，并在升级前演练回滚。只配置你实际运营的登录 provider；在真实邮箱验证码或 Google 登录成功前，绝不要关闭密码登录。'] },
+      { heading: '生产运维', blocks: ['备份持久卷、固定版本、检查服务健康，并在升级前演练回滚。只配置你实际运营的登录 provider；在真实邮箱验证码或 Google 登录成功前，绝不要关闭密码登录。', '插件默认关闭，用 VH_PLUGINS_ENABLED、VH_PLUGIN_HOST 和 VH_OWNER_BOARD_ENABLED 打开。', '打开插件功能'] },
     ],
   },
   configuration: {
@@ -180,7 +180,7 @@ export const PUBLIC_DOCS_ZH_HANS: Record<string, PublicDocTranslation> = {
     sections: [
       { heading: '客户端端点', blocks: [['Cloud 用户不需要端点变量；两个客户端 URL 默认都是 https://veryhappy.dev。', 'HAPPY_SERVER_URL 选择 CLI 使用的 API 与 socket 中继。', 'HAPPY_WEBAPP_URL 选择机器授权时打开的浏览器 origin。', 'HAPPY_HOME_DIR 选择机器本地凭据、设置、日志与 daemon 状态。', 'VH_SERVER_URL 选择 Web V2 的 Vite 开发代理目标。'], null, 'daemon 在启动时继承环境。默认情况下，provider 凭据与 Agent 命令必须对 daemon OS 用户及其 PATH 可见。显式运行 very-happy connect 是例外：它会把选中的 OAuth 凭据上传到可信中继。', 'OpenClaw 会读取 OPENCLAW_GATEWAY_URL 与 OPENCLAW_GATEWAY_TOKEN 或 OPENCLAW_GATEWAY_PASSWORD，也可以查询已配置的本地 openclaw 命令。配对后的设备身份以私有权限保存在机器的 $HAPPY_HOME_DIR/openclaw 下。'] },
       { heading: 'Claude 凭据', blocks: ['结构化 Claude 使用内置 Agent SDK，但仍需要 provider 账户。推荐在 daemon 启动环境中配置 ANTHROPIC_API_KEY、Amazon Bedrock、Google Vertex AI 或 Microsoft Foundry。Very Happy 不代理 Claude.ai 登录。', ['Claude API：ANTHROPIC_API_KEY。', 'Bedrock：标准 AWS 凭据，加 CLAUDE_CODE_USE_BEDROCK=true。', 'Vertex AI：标准 Google Cloud 凭据，加 CLAUDE_CODE_USE_VERTEX=true。', 'Foundry：标准 Azure 凭据，加 CLAUDE_CODE_USE_FOUNDRY=true。', '可能检测到现有 apiKeyHelper、CLAUDE_CODE_OAUTH_TOKEN 或本地 Claude 凭据文件；仍须遵守 Anthropic 当前政策。不会检查 OS keychain 凭据。'], null, 'Doctor 只打印来源类别。如果当前进程能看到来源而 daemon status 看不到，请修复服务管理器 secret/环境并重启。如果来源存在但会话被拒绝，请以 daemon OS 用户身份检查 provider 账户、区域、模型权限与计费。', '打开 provider 与服务管理器详情 ↗'] },
-      { heading: '机器网页面板', blocks: ['机器可以在自己的 ~/.happy/settings.json 里声明需要人看的本地网页：远程桌面（noVNC）、浏览器 dashboard、dev server 等。它们可以从工作区的 + 菜单、机器页或 /machine/<machineId>/panel/<id> 打开，显示在会话旁边。agent 需要人处理验证码、扫码、OAuth 页面时，可以发「需要你介入」通知，点开直达对应面板。需要 CLI 0.2.179。', null, '只有这个文件能声明面板，网页和服务端都不能添加。不经过任何代理：浏览器直接加载该地址，所以你的设备必须能访问它。不允许被嵌入的站点设 embed: false，可以用 very-happy panels check 检查。'] },
+      { heading: '机器网页面板', blocks: ['机器可以在自己的 ~/.happy/settings.json 里声明需要人看的本地网页：远程桌面（noVNC）、浏览器 dashboard、dev server 等。它们可以从工作区的 + 菜单、机器页或 /machine/<machineId>/panel/<id> 打开，显示在会话旁边。agent 需要人处理验证码、扫码、OAuth 页面时，可以发「需要你介入」通知，点开直达对应面板。需要 CLI 0.2.179。', null, '只有这个文件能声明面板，网页和服务端都不能添加。不经过任何代理：浏览器直接加载该地址，所以你的设备必须能访问它。不允许被嵌入的站点设 embed: false，可以用 very-happy panels check 检查。', '插件是另一套：页面经 daemon 转发，权限逐项批准，你的设备不需要能直接访问那个地址。', '了解插件'] },
       { heading: '账户策略', blocks: ['服务端控制邮箱验证码、密码与 Google 注册、邀请要求、全局账户容量和限流。SIGNUP_MODE 默认 closed；开放注册必须显式配置。公共中继的 SIGNUP_MAX_ACCOUNTS 应设置为较小且经过审核的容量。', ['HANDY_MASTER_SECRET 保护服务端保存的账户恢复材料与服务 secret。', 'SIGNUP_MODE / SIGNUP_MAX_ACCOUNTS / SIGNUP_INVITE_CODES 控制注册。', '机器、会话、消息、附件、artifact 与 KV 限制约束持久化数据。', 'SOCKET_MAX_PAYLOAD_BYTES、RPC 限制与 TERMINAL_RELAY_* token bucket 约束实时中继流量。']] },
       { heading: '运维与指标', blocks: ['只有 METRICS_ENABLED=true 时才启用指标，默认绑定 127.0.0.1。仅可为受保护的抓取网络设置 METRICS_HOST；不要把 9090 端口暴露到互联网。完整配置参考还包含数据库、S3、Redis、代理信任和 Google OAuth 设置。', '打开所有服务端与 CLI 变量 ↗'] },
       { heading: 'Secret', blocks: ['主 secret、OAuth secret、推送凭据与存储凭据不得进入 Git。每个环境使用不同值，并限制对备份与服务端日志的访问。'] },
@@ -202,7 +202,7 @@ export const PUBLIC_DOCS_ZH_HANS: Record<string, PublicDocTranslation> = {
   integrations: {
     label: '集成与自动化', summary: '连接 IM、调度器与任务系统，同时避免把私有策略写进核心。',
     sections: [
-      { heading: '官方 skills：从工作台开始', blocks: ['“帮助与新手入门”提供团队安装器与官方待办 skills。网页创建团队会自动准备协作指引。终端使用时，在教程中选择 Agent、安装共享 skill，再让托管会话读取返回的路径；安装不会修改宿主的自动发现设置。', '在“待办 → 我的待办”选择“让 AI 使用我的待办”，复制完整指引与当前 server 地址；也可在已连接电脑上运行 very-happy todo skill。读取指引不会获得账号权限，请先核对 CLI 登录和 server，再读取现有待办。', '预览外部待办 provider skill', '用自动化按时或按事件启动会话'] },
+      { heading: '官方 skills：从工作台开始', blocks: ['“帮助与新手入门”提供团队安装器与官方待办 skills。网页创建团队会自动准备协作指引。终端使用时，在教程中选择 Agent、安装共享 skill，再让托管会话读取返回的路径；安装不会修改宿主的自动发现设置。', '在“待办 → 我的待办”选择“让 AI 使用我的待办”，复制完整指引与当前 server 地址；也可在已连接电脑上运行 very-happy todo skill。读取指引不会获得账号权限，请先核对 CLI 登录和 server，再读取现有待办。', '预览外部待办 provider skill', '用自动化按时或按事件启动会话', '用插件添加面板、角标和卡片'] },
       { heading: '交接到 Web 工作区的 MCP', blocks: ['基础托管 Claude 会话提供 change_title、copy_to_clipboard、open_preview 与 report_progress。托管 Codex、Gemini 与 ACP bridge 提供同样四个工具。这些交接让 Agent 把本地工作变成可见 Web 状态，而不只是再打印一行终端文本。托管会话还会拿到所属项目的 project_context 与 project_note。', ['仅语音助手 / 历史 assistant 变体提供：会话列表/读取/发送/派生/停止/归档、终端列表/读取/发送，以及 memory_update 和 journal_append。', '这些 Assistant 专属工具可以修改本地会话、终端、记忆与日志。应把 Assistant 及其 prompt/tool 权限视为高权限机器控制面。'], null, '这个 --scope user 注册会让该 OS 用户的每个 Claude 会话都获得 copy_to_clipboard；它不绑定 Very Happy Web 终端。在 Very Happy 终端内，它也通过本地 daemon 提供改名和预览工具。原生 Pi 执行一次 very-happy install-pi-tools 后，在 Very Happy 终端直接运行 pi 即可加载，已有 Pi 可 /reload；加 --remove 可卸载，也可用 very-happy pi --terminal 临时加载。每个对话和终端内都有复制与预览记录，可再次复制或重新打开文件；超长内容会标明节选。工具可用性因 runner 而异，不是通用 MCP 承诺。'] },
       { heading: '配置外部 Todo provider', blocks: ['“我的待办”无需配置；可选的“外部来源”读取机器本地的 provider 命令。请在实际运行该命令的 daemon 机器上，把 todoProvider 加到 ~/.happy/settings.json。由于该设置授予本地代码执行能力，Web 端不能修改。', null, '命令会收到 list、complete <id> 或 create <title>。list 输出 JSON；complete/create 以退出码表示成功。仓库在 packages/happy-cli/examples/todo-provider-jsonfile.mjs 提供零依赖示例。', '打开 Todo provider 契约与示例 ↗'] },
       { heading: '配置账户 Webhook', blocks: ['打开“设置 → 通道”，输入一个 HTTPS endpoint，选择完成和/或权限事件，然后保存。保存会替换账户之前的 webhook。接收端临时出故障时会自动重试最多 3 次，“设置 → 诊断”里能看到送达、重试和失败的次数。私网、loopback、link-local 和重定向目标会被拒绝。', 'Webhook 适合通知，不应当作保证投递的任务队列。完整契约记录了 payload、session trailer、事件过滤、HTTPS/SSRF 规则、超时和管理 API。', '打开 Webhook 契约 ↗'] },
@@ -222,11 +222,23 @@ export const PUBLIC_DOCS_ZH_HANS: Record<string, PublicDocTranslation> = {
       { heading: '需要我决策', blocks: ['任务看板顶部列出需要你处理的运行，最紧急的在前：Agent 在等你输入、失败或超时的运行、因为机器离线而没人领取的运行。每一行可以打开会话、确认、再跑一次，或取消仍未结束的运行。没有需要处理的事情时这一区不会出现。', ['运行在 Agent 上报后结束（automation_report 或 very-happy auto report --status done|failed）；没有上报时，会话本轮结束即视为完成，最后一段 assistant 文本作为摘要。', '脚本以退出为准：exit 0 为完成，其余为失败，输出尾部作为摘要。', '排队超过十分钟没有任何 daemon 领取的运行会标记为机器离线；机器恢复后照常执行。', '自动化列表显示每条的最近结果与下次运行；详情页保留最近的运行时间线、摘要和会话链接。'], '阅读完整的自动化指南 ↗'] },
     ],
   },
+  plugins: {
+    label: '插件', summary: '让你电脑上的程序在 Very Happy 里加角标、面板、决策卡和会话挂件。',
+    sections: [
+      { heading: '插件是什么', blocks: ['插件是跑在你某台电脑上的程序，加一份 vh-plugin/v1 清单。你在网页上逐项批准权限之前，它在 Very Happy 里什么都做不了。谁都可以写插件，Very Happy 把每个插件都当作可能不可信来处理。', '在 Very Happy Cloud 上，插件逐步开放中；设置里没有「插件」就是还没对你的账号打开。运行插件的电脑需要 CLI 0.2.231 或更新版本。'] },
+      { heading: '四个扩展点', blocks: [['侧栏入口和角标：侧栏「插件」分组里的一行，有图标、名字和数字。', '整页面板：在 Very Happy 里打开插件自己的网页，手机上全屏。页面经那台电脑转发，插件不需要 HTTPS，你的设备也不用能访问它所在的网络。', '决策卡：出现在「需要我决策」里，可以是 2–4 个按钮、一个输入框，或者只有「知道了」，都带「插件 · 名字」标记。按钮只会回调插件，不会触发 Very Happy 的操作。', '会话挂件：同一台电脑上的会话，页头显示一个状态芯片，可带一段短文字和最多 2 个动作。']] },
+      { heading: '安装和审批', blocks: ['先启动插件，再在运行它的电脑上登记。add 只接受本地文件或 loopback 地址，会打印审批链接，「需要我决策」里也会出现一张卡片。', null, ['审批页列出名字、版本、发布者（标为未验证）、所在电脑、本机地址，每项权限一行。可以全部批准、只批准一部分，或者拒绝。', '批准只对你看到的那份清单有效。新增权限、改地址、改名字或改图标都要重新批准；批准之前，继续按已批准的版本运行。', 'Agent 可以登记插件，但只有登录的真人能批准。']] },
+      { heading: '权限与隔离', blocks: [['sidebar、panel、decisions、session.widget 对应四个扩展点，每次调用都按当前授权检查。', 'sessions.list（标题、目录、agent、状态）和 sessions.read（对话正文）是敏感权限：默认不勾选，要单独确认，只限那台电脑上的会话，每次读取都有审计记录。', '插件拿不到你的账号 token、机器密钥和其他插件的数据，不能往 Very Happy 页面注入脚本、样式或 HTML，也不能通过插件 API 发消息或开会话。', '每个面板都有独立的 origin，放在沙箱 iframe 里，请求只转发到你批准过的 loopback 地址。'], '面板页面由服务端中转，服务端看得到内容。插件进程还拥有运行它的 OS 用户的权限：这里的权限只限制它通过 Very Happy 能做什么，管不到它在电脑上做什么。不信任的插件请用单独的 OS 用户或容器运行。'] },
+      { heading: '停用插件', blocks: [['在网页上：设置 → 插件 → 停用、移除，或撤销某一项权限，立即生效；卡片和挂件会隐藏，重新启用后恢复。「静音」会保留插件，只是不推送通知、不计入 App 角标。', '在电脑上：very-happy plugin disable <id> 立即生效，离线也可以。very-happy plugin enable <id> 只能解除这台电脑自己设的停用；你在账号里停用的，要到「设置 → 插件」里启用。', '服务端运营方可以停掉全部或指定的插件，只有运营方能解除。'], null, '如果面板提示这台电脑是用旧方式登录的，按页面上的步骤操作：移除插件、重新登录、启动 daemon，再重新添加并批准插件。'] },
+      { heading: '自托管怎么开', blocks: [null, ['VH_PLUGINS_ENABLED=1 对所有账号打开；只给部分账号开，改用 VH_PLUGINS_ENABLED_ACCOUNTS 列出账号 id。默认关闭。', '面板需要 VH_PLUGIN_HOST：为 *.p.example.com 配好泛域名 DNS 和 TLS，并与 Web 放在同一个可注册域名下。不配时，角标、卡片和挂件照常可用。', '要看到并回答决策卡，需要 VH_OWNER_BOARD_ENABLED=true。', 'VH_PLUGINS_DISABLED=1 停掉全部插件；VH_PLUGIN_DENYLIST 停掉列出的插件 id 或清单 hash。'], '打开插件自托管指南 ↗'] },
+      { heading: '写一个插件', blocks: ['从 Hello Board 开始：零依赖的 Node 示例，四个扩展点都用到了，并带参考的签名校验。回调和转发来的请求都要校验 X-VH-Signature，因为本机任何程序都能访问你的端口。', null, '打开 Hello Board 示例 ↗', '阅读插件指南 ↗', '阅读插件 API v1 契约 ↗'] },
+    ],
+  },
   security: {
     label: '安全与隐私', summary: '真实的信任模型、远程执行边界与运营方责任。',
     sections: [
       { heading: '服务端可信设计', blocks: ['产品采用服务端可信架构。', 'Very Happy 不是端到端加密或零知识系统。服务端运营方——或控制服务端的攻击者——可以访问中继保存的内容、恢复账户密钥，并影响发送给在线 daemon 的请求。', '只使用你信任其运营方和安全状态的中继。自托管会改变你信任谁，但不会从架构中移除可信中继。'] },
-      { heading: '机器授权', blocks: [['只批准由你自己的 CLI 命令生成的链接。', '应把已连接 daemon 视为对该用户账户的远程执行权限。', '以满足需求的最低 OS 权限运行 daemon，并保持宿主机更新。', '怀疑泄露后断开机器并轮换凭据。']] },
+      { heading: '机器授权', blocks: [['只批准由你自己的 CLI 命令生成的链接。', '应把已连接 daemon 视为对该用户账户的远程执行权限。', '以满足需求的最低 OS 权限运行 daemon，并保持宿主机更新。', '怀疑泄露后断开机器并轮换凭据。'], '插件要经登录的真人批准权限后才能使用，但它的进程仍有所在 OS 用户的权限，面板内容服务端也看得到。', '插件的权限与隔离'] },
       { heading: '数据处理', blocks: ['根据功能不同，会话、终端流量、账户元数据、日志、附件、通知与集成数据可能经过中继或持久化在中继上。运营方应记录部署的保留策略、备份、子处理方和事故响应。', '邮箱验证码登录会在可信中继上保存规范化邮箱地址。配置的邮件 provider 会依据自己的处理与保留条款接收目标地址、发件人和一次性验证码。', '终端文件交接会经过可信中继，并落到选中机器的 ~/.happy/uploads/terminal/。当前客户端单文件上限 8 MB，使用有界分块传输，只把按 daemon 默认 shell 引用的路径粘贴出来；不会执行文件或按 Enter。原生 Windows 路径插入需要当前 daemon 区分 cmd 与 PowerShell。', '从「设置 → 发送反馈」或偶尔出现的反馈提示卡提交的反馈，只保存在你所用的中继里，并记录你的账号 id，不会发到 veryhappy.dev 或任何第三方。可选的诊断信息在发送前完整展示（Web 与 CLI 版本、浏览器、页面路径模式如 /session/:id、时间），不含任何会话内容。自托管中继上只有 VH_FEEDBACK_ADMIN_ACCOUNT_IDS 列出的账号能查看。'] },
     ],
   },

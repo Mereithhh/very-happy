@@ -425,6 +425,8 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
       ] },
       { heading: 'Production operations', blocks: [
         { type: 'p', text: 'Back up persistent volumes, pin versions, health-check the server, and rehearse rollback before upgrades. Configure only the login providers you operate; never disable password login until a real email-code or Google login has passed.' },
+        { type: 'p', text: 'Plugins are off by default. VH_PLUGINS_ENABLED, VH_PLUGIN_HOST and VH_OWNER_BOARD_ENABLED turn them on.' },
+        { type: 'link', href: '/docs/plugins', label: 'Turn on Plugins' },
       ] },
     ],
   },
@@ -448,6 +450,8 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         { type: 'p', text: 'A machine can declare local web pages a person may need to see — a remote desktop (noVNC), a browser dashboard, a dev server — in its own ~/.happy/settings.json. They open beside your session from the workspace + menu, on the machine page, and at /machine/<machineId>/panel/<id>. When an agent needs a person (a captcha, a QR code, an OAuth page), it can send a “Needs you” notification that opens the right panel. Needs CLI 0.2.179.' },
         { type: 'code', code: '"webPanels": [\n  { "id": "desktop", "title": "Desktop", "url": "https://dev.example.ts.net:6443/vnc.html?autoconnect=1" },\n  { "id": "grafana", "title": "Grafana", "url": "https://grafana.example.com/", "embed": false }\n]' },
         { type: 'note', text: 'Only that file can declare panels; the web and server cannot add one. Nothing is proxied: your browser loads the URL directly, so it must be reachable from your device. Use embed: false for sites that refuse to be framed, and very-happy panels check to test them.' },
+        { type: 'p', text: 'Plugins are separate: pages forwarded through the daemon and approved per permission, so your device does not need to reach the address.' },
+        { type: 'link', href: '/docs/plugins', label: 'Read about Plugins' },
       ] },
       { heading: 'Account policy', blocks: [
         { type: 'p', text: 'The server controls email-code, password, and Google registration, invite requirements, global account capacity, and rate limits. SIGNUP_MODE defaults to closed; opening registration must be explicit. Set SIGNUP_MAX_ACCOUNTS to a small reviewed capacity on a public relay.' },
@@ -507,6 +511,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         { type: 'p', text: 'In Todos → My todos, choose Let AI use my todos to copy the complete instructions and current server address. You can also run very-happy todo skill on the connected computer. Reading instructions grants no account access; verify the CLI login and server before reading existing todos.' },
         { type: 'link', href: '/skills/very-happy-todo-provider/SKILL.md', label: 'Preview external todo-provider skill' },
         { type: 'link', href: '/docs/automations', label: 'Schedule or trigger sessions with Automations' },
+        { type: 'link', href: '/docs/plugins', label: 'Add panels, badges and cards with Plugins' },
       ] },
       { heading: 'MCP handoffs into the Web workspace', blocks: [
         { type: 'p', text: 'Base managed Claude sessions receive change_title, copy_to_clipboard, open_preview, and report_progress. The managed Codex, Gemini, and ACP bridge exposes the same four tools. These handoffs let an agent turn local work into visible Web state instead of merely printing another terminal line. Managed sessions also receive project_context and project_note for the project they belong to.' },
@@ -578,6 +583,44 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
     ],
   },
   {
+    slug: 'plugins', label: 'Plugins', summary: 'Let a program on your computer add a badge, a panel, decision cards and session widgets to Very Happy.',
+    sections: [
+      { heading: 'What a plugin is', blocks: [
+        { type: 'p', text: 'A plugin is a program running on one of your computers plus a vh-plugin/v1 manifest. It does nothing in Very Happy until you approve it, permission by permission, on the web. Anyone can write one, and Very Happy treats every plugin as possibly untrusted.' },
+        { type: 'note', text: 'On Very Happy Cloud, plugins are rolling out gradually. If Settings has no Plugins entry, they are not on for your account yet. Needs CLI 0.2.231 or newer on the computer that runs the plugin.' },
+      ] },
+      { heading: 'Four extension points', blocks: [
+        { type: 'list', items: ['Sidebar entry and badge: a row in the sidebar’s Plugins group with an icon, a name and a count.', 'Full-page panel: the plugin’s own web page inside Very Happy, full screen on phones. It is forwarded through the computer, so it needs neither HTTPS nor access to your network.', 'Decision cards: cards in Needs my decision with 2–4 buttons, a text box, or just “Got it”, always marked “Plugin · name”. A button only calls back into the plugin; it never triggers a Very Happy action.', 'Session widget: a status chip in the header of sessions on the same computer, with a short text and up to 2 actions.'] },
+      ] },
+      { heading: 'Install and approve', blocks: [
+        { type: 'p', text: 'Start the plugin, then register it on the computer it runs on. add accepts a local file or a loopback URL and prints the review link. A card also appears in Needs my decision.' },
+        { type: 'code', code: 'very-happy plugin add ./vh-plugin.json\nvery-happy plugin list\nvery-happy plugin doctor <id>' },
+        { type: 'list', items: ['The review page shows the name, version, publisher (marked unverified), computer, local addresses and one row per permission. Approve all or some of them, or reject.', 'Approval is bound to the manifest you were shown. New permissions, changed addresses, a new name or a new icon need approval again; the approved version keeps running until then.', 'An agent may register a plugin, but only a signed-in person can approve it.'] },
+      ] },
+      { heading: 'Permissions and isolation', blocks: [
+        { type: 'list', items: ['sidebar, panel, decisions and session.widget cover the four extension points. Every call is checked against the current grants.', 'sessions.list (titles, folders, agent, status) and sessions.read (message text) are sensitive: never pre-checked, confirmed separately, limited to sessions on that computer, and every read is audited.', 'A plugin never gets your account token, the machine key or another plugin’s data. It cannot inject scripts, styles or HTML into Very Happy pages, send messages, or start sessions through the plugin API.', 'Each panel is served from its own origin in a sandboxed frame and is forwarded only to the approved loopback address.'] },
+        { type: 'note', text: 'The server relays panel pages and can see their content. A plugin process also has the rights of the OS user that runs it: permissions limit what it can do through Very Happy, not on the computer. Run plugins you do not trust as a separate OS user or in a container.' },
+      ] },
+      { heading: 'Turn a plugin off', blocks: [
+        { type: 'list', items: ['In the app: Settings → Plugins → Disable, Remove, or revoke one permission. It applies immediately; cards and widgets are hidden and come back if you re-enable. Mute keeps the plugin but stops its notifications and app-badge count.', 'On the computer: very-happy plugin disable <id> takes effect at once, even offline. very-happy plugin enable <id> lifts only a disable set by that computer; one you set in your account is lifted in Settings → Plugins.', 'Server operators can stop every plugin or selected ones; only the operator can lift that.'] },
+        { type: 'code', code: 'very-happy plugin disable <id>\nvery-happy plugin enable <id>\nvery-happy plugin remove <id>' },
+        { type: 'p', text: 'If a panel says the computer is signed in the old way, follow the steps it shows: remove the plugin, sign in again, start the daemon, then add and approve the plugin again.' },
+      ] },
+      { heading: 'Turn plugins on when self-hosting', blocks: [
+        { type: 'code', code: 'VH_PLUGINS_ENABLED=1\nVH_PLUGIN_HOST=p.example.com\nVH_OWNER_BOARD_ENABLED=true' },
+        { type: 'list', items: ['VH_PLUGINS_ENABLED=1 turns plugins on for every account; VH_PLUGINS_ENABLED_ACCOUNTS lists account ids instead. Off by default.', 'VH_PLUGIN_HOST is needed for panels: wildcard DNS and TLS for *.p.example.com, under the same registrable domain as the web app. Without it, badges, cards and widgets still work.', 'VH_OWNER_BOARD_ENABLED=true is needed to see and answer decision cards.', 'VH_PLUGINS_DISABLED=1 stops every plugin; VH_PLUGIN_DENYLIST stops the listed ids or manifest hashes.'] },
+        { type: 'link', href: `${GITHUB_URL}/blob/main/docs/plugins.md#self-hosting`, label: 'Open the plugin self-hosting guide ↗' },
+      ] },
+      { heading: 'Write a plugin', blocks: [
+        { type: 'p', text: 'Start from Hello Board, a zero-dependency Node example that uses all four extension points and includes the reference signature check. Verify X-VH-Signature on callbacks and forwarded requests: any local program can reach your port.' },
+        { type: 'code', code: 'git clone https://github.com/Mereithhh/very-happy.git\ncd very-happy/examples/plugins/hello-board\nnode server.mjs\n# in another terminal, in the same directory\nvery-happy plugin add ./vh-plugin.json' },
+        { type: 'link', href: `${GITHUB_URL}/tree/main/examples/plugins/hello-board`, label: 'Open the Hello Board example ↗' },
+        { type: 'link', href: `${GITHUB_URL}/blob/main/docs/plugins.md`, label: 'Read the plugin guide ↗' },
+        { type: 'link', href: `${GITHUB_URL}/blob/main/docs/plugin-api-v1.md`, label: 'Read the plugin API v1 contract ↗' },
+      ] },
+    ],
+  },
+  {
     slug: 'security', label: 'Security & privacy', summary: 'The real trust model, remote execution boundary, and operator responsibilities.',
     sections: [
       { heading: 'Server-trusted by design', blocks: [
@@ -587,6 +630,8 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
       ] },
       { heading: 'Machine approval', blocks: [
         { type: 'list', items: ['Approve only a link generated by your own CLI command.', 'Treat a connected daemon as remote execution access to that user account.', 'Run the daemon with the least OS privilege needed and keep the host patched.', 'Disconnect machines and rotate credentials after suspected compromise.'] },
+        { type: 'p', text: 'A plugin acts only after a signed-in person approves its permissions, but its process still runs with the rights of its OS user, and the server can see panel content.' },
+        { type: 'link', href: '/docs/plugins', label: 'Plugin permissions and isolation' },
       ] },
       { heading: 'Data handling', blocks: [
         { type: 'p', text: 'Sessions, terminal traffic, account metadata, logs, attachments, notifications, and integration data may pass through or persist on the relay depending on the feature. Operators should document retention, backups, subprocessors, and incident response for their deployment.' },

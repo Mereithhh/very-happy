@@ -793,3 +793,36 @@ it('explains how projects, teams and sessions fit together in both languages (B-
  expect(text).toContain('does not touch your files, branches or Git history');
  expect(JSON.stringify(zh)).toContain('新建团队会新建一个同名项目');
 });
+
+it('documents plugins in both languages with real commands, switches and cross-links (B-974i)', () => {
+ const en = getPublicDocs('en').find(doc => doc.slug === 'plugins')!;
+ const zh = getPublicDocs('zh-Hans').find(doc => doc.slug === 'plugins')!;
+ expect(zh.label).toBe('插件');
+ // translations are index-aligned: every page that gained a plugin block keeps its block types
+ for (const slug of ['plugins', 'integrations', 'self-hosting', 'configuration', 'security']) {
+  const a = getPublicDocs('en').find(doc => doc.slug === slug)!;
+  const b = getPublicDocs('zh-Hans').find(doc => doc.slug === slug)!;
+  expect(b.sections.length).toBe(a.sections.length);
+  a.sections.forEach((section, i) => section.blocks.forEach((block, j) => {
+   const other = b.sections[i].blocks[j];
+   expect(other.type).toBe(block.type);
+   if (block.type === 'list') expect((other as typeof block).items.length).toBe(block.items.length);
+   if (slug === 'plugins' && block.type !== 'code') expect(other).not.toEqual(block);
+   if (block.type === 'link' && block.href === '/docs/plugins') expect((other as typeof block).label).toMatch(/插件/);
+  }));
+  if (slug !== 'plugins') expect(a.sections.flatMap(section => section.blocks).some(block => block.type === 'link' && block.href === '/docs/plugins'), slug).toBe(true);
+ }
+ const text = JSON.stringify(en);
+ const cli = readFileSync(new URL('../../../../happy-cli/src/commands/plugin.ts', import.meta.url), 'utf8');
+ const commands = [...new Set([...text.matchAll(/very-happy plugin ([a-z]+)/g)].map(match => match[1]))];
+ expect(commands).toEqual(expect.arrayContaining(['add', 'disable', 'enable', 'remove']));
+ for (const command of commands) expect(cli).toContain(`case '${command}'`);
+ const server = readFileSync(new URL('../../../../happy-server/sources/app/plugins/pluginConfig.ts', import.meta.url), 'utf8');
+ const board = readFileSync(new URL('../../../../happy-server/sources/app/attention/rules.ts', import.meta.url), 'utf8');
+ const switches = [...new Set(text.match(/VH_[A-Z_]+[A-Z]/g) ?? [])];
+ expect(switches).toEqual(expect.arrayContaining(['VH_PLUGINS_ENABLED', 'VH_PLUGIN_HOST', 'VH_OWNER_BOARD_ENABLED']));
+ for (const name of switches) expect(server + board).toContain(`env.${name}`);
+ expect(text).toContain('If Settings has no Plugins entry, they are not on for your account yet');
+ expect(JSON.stringify(zh)).toContain('逐步开放中；设置里没有「插件」就是还没对你的账号打开');
+ for (const path of ['docs/plugins.md', 'docs/plugin-api-v1.md', 'examples/plugins/hello-board/server.mjs']) expect(readFileSync(new URL(`../../../../../${path}`, import.meta.url), 'utf8').length).toBeGreaterThan(0);
+});
