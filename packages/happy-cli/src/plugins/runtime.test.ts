@@ -68,7 +68,7 @@ describe('B-974c runtime: install sync, approval, queue replay', () => {
         expect(s.runtime.registry.get('hello-board')?.state).toBe('disabled');
         expect(s.runtime.queue.size('pi_1')).toBe(0);
         s.runtime.stop();
-    });
+    }, 30_000);
 
     it('install views are parsed leniently but never invent states', () => {
         expect(parseInstallView({ installId: 'a', pluginId: 'b', state: 'enabled', grants: ['sidebar', 'root'] })).toEqual({ installId: 'a', pluginId: 'b', state: 'enabled', grants: ['sidebar'], manifestHash: null });

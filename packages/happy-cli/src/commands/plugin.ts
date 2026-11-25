@@ -11,6 +11,7 @@ import { PluginServerClient } from '@/plugins/serverOp';
 import { parseLoopbackUrl, SENSITIVE_PLUGIN_PERMISSIONS } from '@/plugins/manifest';
 import { loopbackRequest } from '@/plugins/loopbackHttp';
 import { signEvent, verifyEventSignature } from '@/plugins/signing';
+import { pingDaemonPlugin, reloadDaemonPlugins } from '@/daemon/controlClient';
 import {
     PluginCliError, addPlugin, disablePlugin, enablePlugin, pluginEnv, readManifestSource, removePlugin, rotatePlugin, shellQuote, updatePlugin,
     type PluginServerApi,
@@ -65,11 +66,8 @@ async function serverApi(): Promise<PluginServerApi> {
     return new PluginServerClient(configuration.serverUrl, credentials.token, configuration.currentCliVersion);
 }
 
-async function reloadDaemon(): Promise<Awaited<ReturnType<typeof import('@/daemon/controlClient').reloadDaemonPlugins>>> {
-    try {
-        const { reloadDaemonPlugins } = await import('@/daemon/controlClient');
-        return await reloadDaemonPlugins();
-    } catch { return null; }
+async function reloadDaemon(): Promise<Awaited<ReturnType<typeof reloadDaemonPlugins>>> {
+    try { return await reloadDaemonPlugins(); } catch { return null; }
 }
 
 function store(): PluginStore { return new PluginStore(configuration.happyHomeDir); }
@@ -335,7 +333,6 @@ async function doctor(id: string): Promise<void> {
         line(verifyEventSignature(secret, sig, ts, 'evt_selftest', '{}') && !verifyEventSignature(secret, sig, ts, 'evt_selftest', '{ }'), 'hmac', 'sign/verify self-test');
     }
     if (manifest.callback) {
-        const { pingDaemonPlugin } = await import('@/daemon/controlClient');
         const ping = await pingDaemonPlugin(id);
         line(ping.status !== null && ping.status >= 200 && ping.status < 300, 'callback', `${manifest.callback.url} → ${ping.status !== null ? `HTTP ${ping.status} to a signed ping` : ping.error ?? 'no answer'}`);
     } else line(null, 'callback', 'none declared (events only by pull)');
