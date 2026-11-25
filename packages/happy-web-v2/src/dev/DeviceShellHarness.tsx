@@ -38,6 +38,7 @@ import { seedMainAgentScene } from './mainAgentSeed';
 import { SIDEBAR_DENSE_HASH, seedSidebarDenseScene } from './sidebarDenseSeed';
 import { installIssuesHarness } from './issuesHarness';
 import { installFeedbackApi } from './feedbackHarness';
+import { installPluginsHarness } from './pluginsHarness';
 import { FeedbackPromptCard } from '@/app/feedback/FeedbackPrompt';
 import { sync } from '@/sync/sync';
 import { pendingSessions } from '@/sync/pendingSessionsRuntime';
@@ -87,6 +88,8 @@ export function DeviceShellHarness() {
     const dense = location.hash === SIDEBAR_DENSE_HASH;
     if (dense) seedSidebarDenseScene();
     const issues = installIssuesHarness(dense ? '#issues' : location.hash, 'dev-machine');
+    // B-974d: `#plugins` / `#plugins-off` — `/v1/plugins*` answered in-page (pluginsHarness.ts).
+    const plugins = installPluginsHarness(location.hash, 'dev-machine');
     setReady(true);
     // B-801: `#draft` opens a 「新会话」 draft page (the store's real draft record; nothing is spawned).
     if (location.hash === '#draft' && !pendingSessions.list().some((r) => r.state === 'draft')) {
@@ -113,7 +116,7 @@ export function DeviceShellHarness() {
       toast.error('发送失败：连接已断开，请稍后重试');
       toast.action('有新版本可用 — 点此刷新', () => {});
     }
-    return () => { setTeamNavigationDevOverride(null); board.cleanup(); feedback(); search(); issues(); sync.fetchSessionById = realLookup; };
+    return () => { setTeamNavigationDevOverride(null); board.cleanup(); feedback(); search(); issues(); plugins(); sync.fetchSessionById = realLookup; };
   }, []);
   if (!ready) return null;
   // B-836: `#feedback-prompt` shows the prompt card straight away (its timing and queue are unit-tested).

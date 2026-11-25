@@ -162,6 +162,9 @@ class ApiSocket {
                 clientType: 'user-scoped' as const,
                 happyClient: getHappyClientId(),
                 appState: getCurrentAppState(),
+                // B-974 (DESIGN r5, server #1013): this Web understands plugin updates — the server
+                // pushes plugin-install / plugin-widget / plugin attention items only to clients that ask.
+                include: 'plugin',
                 ...(handover ? { handoverEpoch: handover.epoch } : {}),
             }),
             ...(handover ? { query: { vh_slot: handover.candidateSlot }, forceNew: true } : {}),

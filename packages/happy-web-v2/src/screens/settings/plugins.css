@@ -1,0 +1,143 @@
+/* B-974d: Settings → Plugins (list, detail, review). Rows reuse .vh-item; this
+   file only adds the header block, permission rows and the action bar. */
+
+.plg-intro {
+  margin: 0;
+}
+
+.plg-loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--sp-5);
+  color: var(--text-faint);
+}
+
+.plg-row-right {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--text-dim);
+  min-width: 0;
+}
+
+.plg-mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  overflow-wrap: anywhere;
+}
+
+.plg-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-1);
+}
+.plg-head__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--r-md);
+  background: var(--fill-soft);
+  color: var(--text);
+}
+.plg-head__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.plg-head__name {
+  font-size: var(--fs-16);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.plg-head__line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+.plg-head__meta {
+  font-size: var(--fs-13);
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+.plg-head__desc {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-14);
+  color: var(--text-dim);
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+
+.plg-alert {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-btn);
+  background: var(--warn-dim);
+  color: var(--text);
+  font-size: var(--fs-13);
+}
+
+.plg-perm-title {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.plg-perm {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.plg-perm:last-child {
+  border-bottom: none;
+}
+.plg-perm__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.plg-perm__desc {
+  font-size: var(--fs-13);
+  color: var(--text-faint);
+  text-wrap: pretty;
+}
+.plg-perm[data-risk='sensitive'] .plg-perm__desc {
+  color: var(--danger);
+}
+
+.plg-diff-line {
+  display: inline;
+  overflow-wrap: anywhere;
+}
+.plg-diff {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  overflow-wrap: anywhere;
+}
+.plg-diff--del {
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+.plg-diff--add {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.plg-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  padding-top: var(--sp-2);
+}
+@media (pointer: coarse) {
+  .plg-actions > * {
+    min-height: 44px;
+    flex: 1;
+  }
+}
