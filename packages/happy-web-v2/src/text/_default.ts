@@ -3651,6 +3651,15 @@ export const en = {
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
             },
+            nov25g: {
+                title: 'Plugins: local tools get a sidebar entry, a panel, decision cards and session chips',
+                summary: 'A program on one of your machines can now register as a plugin with very-happy plugin add. Nothing runs until you approve it in Settings → Plugins, permission by permission.',
+                approve: 'Settings → Plugins lists what each plugin asks for, with a risk level and the local addresses it relays to. Reading your sessions is off by default and asks again before you allow it; an update that changes permissions or addresses shows the changed lines and waits for you.',
+                sidebar: 'An approved plugin can add one entry with a badge under 「Plugins」 in the sidebar. Its panel opens here, relayed through its machine — it works on your phone too, without https or a direct connection. The row greys out while the machine is offline.',
+                decisions: 'Plugins can post cards to Needs me: 2–4 buttons, a text box, or just 「Got it」. Every card carries a 「Plugin · name · machine」 mark it cannot remove, and links ask before opening.',
+                widget: 'A plugin can show a status chip on sessions of its own machine, with up to two actions.',
+                stop: 'Disable, remove, revoke one permission or mute a plugin from its page or from the panel bar; it takes effect at once.',
+            },
             nov25f: {
                 title: 'Team messages no longer loop on "Missing body"',
                 summary: 'Agents on models such as Kimi or DeepSeek could call team_message without the message text and get refused over and over. The text field is now marked required for every model, and a refusal says what to send.',

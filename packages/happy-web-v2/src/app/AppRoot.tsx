@@ -60,6 +60,8 @@ const SharedTerminalScreen = lazy(() => import('@/screens/terminal/SharedTermina
 const TerminalPickerScreen = lazy(() => import('@/screens/terminal/TerminalPickerScreen').then((m) => ({ default: m.TerminalPickerScreen })));
 const MachineScreen = lazy(() => import('@/screens/machine/MachineScreen').then((m) => ({ default: m.MachineScreen })));
 const MachinePanelScreen = lazy(() => import('@/screens/machine/MachinePanelScreen').then((m) => ({ default: m.MachinePanelScreen })));
+// B-974d: plugin panel (iframe on the install's own origin + postMessage bridge)
+const PluginPanelScreen = lazy(() => import('@/plugins/PluginPanelScreen').then((m) => ({ default: m.PluginPanelScreen })));
 const ConnectMachineScreen = lazy(() => import('@/screens/onboarding/ConnectMachineScreen').then((m) => ({ default: m.ConnectMachineScreen })));
 const ProjectScreen = lazy(() => import('@/screens/projects/ProjectScreen').then(m => ({ default: m.ProjectScreen })));
 const ProjectSettingsScreen = lazy(() => import('@/screens/projects/ProjectSettingsScreen').then(m => ({ default: m.ProjectSettingsScreen })));
@@ -413,6 +415,8 @@ export const appRoutes: RouteObject[] = [{ errorElement: <RouteError />, childre
             { path: 'terminal', element: <Lazy><TerminalPickerScreen /></Lazy> },
             { path: 'machine/connect', element: <Lazy><ConnectMachineScreen /></Lazy> },
             { path: 'machine/:id', element: <Lazy><MachineScreen /></Lazy> },
+            // B-974d: plugin panel against the in-page `/v1/plugins` fake (#plugins)
+            { path: 'plugins/:installId/:panelId', element: <Lazy fullViewport={false}><PluginPanelScreen /></Lazy> },
             { path: 'settings/*', element: <Lazy><SettingsRoutes basePath="/dev/device/settings" /></Lazy> },
           ],
         }]
@@ -513,6 +517,7 @@ export const appRoutes: RouteObject[] = [{ errorElement: <RouteError />, childre
             { path: 'machine/:id', element: <Lazy><MachineScreen /></Lazy> },
             // B-510: a machine web panel full screen (push click target).
             { path: 'machine/:machineId/panel/:panelId', element: <Lazy fullViewport={false}><MachinePanelScreen /></Lazy> },
+            { path: 'plugins/:installId/:panelId', element: <Lazy fullViewport={false}><PluginPanelScreen /></Lazy> },
             { path: 'settings/*', element: <Lazy><SettingsRoutes /></Lazy> },
           ],
         },

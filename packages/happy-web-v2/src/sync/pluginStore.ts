@@ -9,8 +9,9 @@
  */
 import { create } from 'zustand';
 import { isPluginsUnavailable, listPluginInstalls, listSessionWidgets, parseInstall, parseWidget } from './apiPlugins';
-import { isAttentionPluginItem, UpdatePluginInstallBodySchema, UpdatePluginWidgetBodySchema } from '@slopus/happy-wire';
+import { UpdatePluginInstallBodySchema, UpdatePluginWidgetBodySchema } from '@slopus/happy-wire';
 import type { PluginInstallView, PluginWidgetView } from '@/plugins/pluginTypes';
+import { handlePluginAttentionUpdate } from './pluginDecisions';
 
 export type PluginsAvailability = 'unknown' | 'available' | 'unavailable';
 
@@ -116,8 +117,8 @@ export function loadSessionWidgets(sessionId: string): Promise<void> {
 export function handlePluginUpdate(body: unknown): boolean {
   if (!body || typeof body !== 'object') return false;
   const b = body as Record<string, unknown>;
-  // Plugin / owner-system / sessionless attention items never reach session code (the cards render in P4b).
-  if (b.t === 'attention-item' && b.item && typeof b.item === 'object' && isAttentionPluginItem(b.item as { source: string; sessionId?: string | null; pluginInstallId?: string | null })) return true;
+  // Plugin decision items may have no sessionId: route them before ApiUpdateSchema rejects them.
+  if (handlePluginAttentionUpdate(b)) return true;
   if (b.t === 'plugin-install') {
     // server (#1013): a removed install is pushed as `{ t, installId, removed: true }`
     if (b.removed === true && typeof b.installId === 'string') {

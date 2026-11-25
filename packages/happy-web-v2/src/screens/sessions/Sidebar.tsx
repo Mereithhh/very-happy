@@ -1,3 +1,4 @@
+import { PluginSidebarGroup } from '@/plugins/PluginSidebarGroup';
 import { agentStatusSignal, codingAgentLabel, type AgentExecution } from '@/sync/agentStatus';
 import { sessionTurnFailure } from '@/sync/turnFailure';
 import { showsUnreadDot } from '@/sync/unreadTransition';
@@ -1593,6 +1594,8 @@ export function Sidebar() {
         capabilityNames={navName}
         onNavigate={navigate}
       />
+      {/* B-974d: 「插件」 group — one row per plugin with a sidebar entry (hidden when none) */}
+      <PluginSidebarGroup />
 
       <div className="sb-list-controls" ref={stickyRef}>
       <div className="sb-filter vh-segmented" role="tablist">

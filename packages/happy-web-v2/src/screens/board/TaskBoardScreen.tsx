@@ -40,6 +40,7 @@ import { BoardCard, fmtDuration } from './BoardCard';
 import { buildLifecycleColumns, groupBoardItems, type BoardItem, type CompletedEntry } from './boardItems';
 import { AttentionSection } from '@/screens/automations/AttentionSection';
 import { IssueDecisions } from '@/screens/issues/IssueDecisions';
+import { PluginDecisions } from '@/plugins/PluginDecisions';
 import { issuesCopyFor } from '@/screens/issues/issuesCopy';
 import { useIssuesEnabled } from '@/sync/issuesStore';
 import { useIssuesSync } from '@/sync/issuesSync';
@@ -587,6 +588,8 @@ export function TaskBoardScreen() {
         <AttentionSection />
         {/* B-873: in-review / blocked issues and sessionless failed runs (only while Issues are on) */}
         {issuesEnabled && <IssueDecisions />}
+        {/* B-974d: plugin decision cards (source-marked; hidden when none / older server) */}
+        <PluginDecisions />
       </div>
 
       {lifecycleMode ? (
