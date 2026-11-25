@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
     ATTENTION_ITEM_KINDS,
@@ -184,6 +185,23 @@ describe('vh-plugin/v1 manifest', () => {
         const entry = (e: string) => issues(with_({ panels: [{ id: 'main', title: 'T', upstream: 'http://127.0.0.1:4310', entry: e }] }));
         expect(entry('/app/?tab=1')).toBe('OK');
         for (const e of ['app', '//evil.example', 'https://evil.example/', '/a/../b', '/%2e%2e/x', '/a\\b']) expect(entry(e)).not.toBe('OK');
+    });
+});
+
+describe('examples/plugins/hello-board/vh-plugin.json (docs/plugin-api-v1.md §1.1 vectors)', () => {
+    it('parses and hashes to the documented values', () => {
+        const r = parsePluginManifestJson(readFileSync(new URL('../../../examples/plugins/hello-board/vh-plugin.json', import.meta.url), 'utf8'));
+        if (!r.ok) throw new Error(JSON.stringify(r));
+        expect(r.unknownKeys).toEqual([]);
+        expect(pluginManifestHash(r.manifest)).toBe('defa292ed6959042026f18e386382fc7ef5d1a17e308d7337b715685c310be59');
+        expect(pluginPrivilegedHash(r.manifest)).toBe(HELLO_PRIVILEGED_HASH);
+        const doc = readFileSync(new URL('../../../docs/plugin-api-v1.md', import.meta.url), 'utf8');
+        expect(doc).toContain(pluginManifestHash(r.manifest));
+        expect(doc).toContain(HELLO_PRIVILEGED_HASH);
+        expect(doc).toContain(HELLO_PRIVILEGED_CANONICAL);
+        // Signature vectors (pinned against node:crypto in pluginCrypto.test.ts).
+        for (const v of ['vhs_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'v1=26293e76e58b6d272a3f57797bdf36caacac9a6b83682bb89157ff6a40191748',
+            'v1=a729e176808c5ea4371e5a960690f469103473763da445b1a9f19cc6cf86702e', 'v1=80a3a21bab1f04934a5e204d24f482d695dfb437dfcc44f60767eb2a6b8092dc']) expect(doc).toContain(v);
     });
 });
 
