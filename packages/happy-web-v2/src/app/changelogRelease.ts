@@ -73,6 +73,13 @@ export interface ChangelogRelease {
   cliVersion?: string;
   featured?: boolean;
   /**
+   * B-974g: shown only while the server's `/v1/features` lists this value
+   * (serverFeatures.ts). Until then the entry is not listed, not counted unread
+   * and never marked read, so it turns up unread once the feature is on. Its
+   * `cliVersion` still counts for CLI update hints.
+   */
+  requiresFeature?: string;
+  /**
    * B-715: a big update — 「大更新」 badge everywhere, its own page in the
    * notice pager (which cannot be dismissed before the last page), and the
    * sidebar entry until read. Needs `highlights` (check-release.mjs enforces).
@@ -116,6 +123,18 @@ function pickShot(set: { en: ChangelogShot; zh?: ChangelogShot }, lang: string, 
   return theme === 'dark' && shot.dark ? shot.dark : shot.light;
 }
 
+/** B-974g: the entries this viewer may see, given the server's features. */
+export function visibleChangelogReleases(
+  features: readonly string[],
+  releases: readonly ChangelogRelease[] = CHANGELOG_RELEASES,
+): readonly ChangelogRelease[] {
+  return releases.filter((release) => isChangelogReleaseVisible(release, features));
+}
+
+export function isChangelogReleaseVisible(release: ChangelogRelease, features: readonly string[]): boolean {
+  return !release.requiresFeature || features.includes(release.requiresFeature);
+}
+
 /**
  * The release the /whats-new page tells: the newest featured release with
  * highlights, plus the CLI release that shipped beside it (same date).
@@ -141,6 +160,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
     id: '2026-11-25-web-plugins',
     cliVersion: '0.2.230',
+    requiresFeature: 'plugins-v1',
     date: '2026-11-25',
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.nov25g.title',

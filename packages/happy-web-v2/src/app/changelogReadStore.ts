@@ -5,7 +5,8 @@
  * the `storage` event.
  */
 import { useMemo, useSyncExternalStore } from 'react';
-import { CHANGELOG_STORAGE_KEY, changelogSeenValue, type ChangelogRelease } from './changelogRelease';
+import { getServerFeatures, useServerFeatures } from '@/sync/serverFeatures';
+import { CHANGELOG_STORAGE_KEY, type ChangelogRelease } from './changelogRelease';
 import { CHANGELOG_READ_KEY, markChangelogRead, parseChangelogRead, pendingChangelogReleases, type ChangelogReadState } from './changelogPager';
 
 function load(): ChangelogReadState {
@@ -45,20 +46,25 @@ export function changelogReadState(): ChangelogReadState {
   return current();
 }
 
-/** One page finished: its releases are read even if the person never reaches the end. */
+/**
+ * Releases the person was shown (a finished page, the last page, leaving through
+ * a link). By id, not "everything up to the newest": an entry that was hidden
+ * (B-974g) or arrived while the notes were open stays unread.
+ */
 export function markChangelogReleasesRead(ids: readonly string[]): void {
-  save(markChangelogRead(current(), ids));
+  save(markChangelogRead(current(), ids, undefined, getServerFeatures()));
 }
 
-/** Everything up to the newest release is read (last page, or leaving through a link). */
-export function acknowledgeAllChangelog(): void {
-  save({ seen: changelogSeenValue(), read: [] });
+/** Unread releases right now, newest first. */
+export function currentPendingChangelog(): ChangelogRelease[] {
+  return pendingChangelogReleases(current(), undefined, getServerFeatures());
 }
 
-/** Unread releases, newest first; re-renders on every read change. */
+/** Unread releases, newest first; re-renders on every read or feature change. */
 export function usePendingChangelog(): ChangelogRelease[] {
   const snapshot = useSyncExternalStore(subscribe, current, current);
-  return useMemo(() => pendingChangelogReleases(snapshot), [snapshot]);
+  const features = useServerFeatures();
+  return useMemo(() => pendingChangelogReleases(snapshot, undefined, features), [snapshot, features]);
 }
 
 // --- the notes open / closed during this visit (B-857) -----------------------

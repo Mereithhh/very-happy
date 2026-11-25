@@ -14,7 +14,8 @@ import { WhyVeryHappy } from './WhyVeryHappy';
 import { DAEMON_START_COMMAND, GITHUB_URL, INSTALL_COMMAND, LOGIN_COMMAND } from './publicContent';
 import { EXTERNAL_LINK } from '@/app/attribution';
 import { usePublicI18n } from '@/i18n/publicI18n';
-import { CHANGELOG_RELEASES } from '@/app/changelogRelease';
+import { visibleChangelogReleases } from '@/app/changelogRelease';
+import { useServerFeatures } from '@/sync/serverFeatures';
 import { ChangelogHighlights } from '@/app/ChangelogHighlights';
 import { useTranslation } from '@/i18n/useTranslation';
 import { AsciiField } from '@/ui/asciiField/AsciiField';
@@ -48,7 +49,7 @@ function WhatsNewShowcase() {
   const { copy } = usePublicI18n();
   const { t } = useTranslation();
   const c = copy.landing;
-  const release = CHANGELOG_RELEASES.find((r) => (r.highlights?.length ?? 0) > 0);
+  const release = visibleChangelogReleases(useServerFeatures()).find((r) => (r.highlights?.length ?? 0) > 0);
   if (!release) return null;
   return <section className="pub-whatsnew" aria-labelledby="whatsnew-title">
     <div className="pub-whatsnew-copy">

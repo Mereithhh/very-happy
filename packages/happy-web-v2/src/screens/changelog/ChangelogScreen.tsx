@@ -1,6 +1,7 @@
 import { Check, PackageOpen } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
-import { CHANGELOG_RELEASES } from '@/app/changelogRelease';
+import { visibleChangelogReleases } from '@/app/changelogRelease';
+import { useServerFeatures } from '@/sync/serverFeatures';
 import { ChangelogHighlights, ChangelogShotImage } from '@/app/ChangelogHighlights';
 import { MajorBadge } from '@/app/MajorBadge';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -8,6 +9,7 @@ import './changelog.css';
 
 export function ChangelogScreen() {
   const { t, lang } = useTranslation();
+  const releases = visibleChangelogReleases(useServerFeatures());
   const formatDate = (date: string) => new Intl.DateTimeFormat(lang, {
     year: 'numeric',
     month: 'long',
@@ -24,7 +26,7 @@ export function ChangelogScreen() {
         </div>
       </header>
       <div className="chg-timeline">
-        {CHANGELOG_RELEASES.map((release, index) => (
+        {releases.map((release, index) => (
           <article className="chg-release" key={release.id} data-latest={index === 0 || undefined} data-major={release.major || undefined}>
             <div className="chg-meta">
               <time dateTime={release.date}>{formatDate(release.date)}</time>
