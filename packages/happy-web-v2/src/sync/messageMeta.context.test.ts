@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveMessageModeMeta } from './messageMeta';
+import { resetRunPickBasesForTests } from './runPicks';
 
 const codexSession = (metadata: Record<string, unknown>, contextMode?: string | null) => ({
     id: 's1',
@@ -34,5 +35,29 @@ describe('B-977 meta.codexContext', () => {
     it('the account default applies when the session has no report', () => {
         const session = { ...codexSession({ codexContextMode: undefined }), modelMode: 'gpt-6.2-astra' };
         expect(resolveMessageModeMeta(session, { agentDefaultOverrides: { codex: { contextMode: 'extended' } } }).codexContext).toBe('extended');
+    });
+});
+
+describe('B-977d meta.codexContext carries the pick', () => {
+    const birth = { codexContextMode: 'extended', currentModelCode: undefined, codexThreadId: undefined };
+    const withModel = (s: Parameters<typeof resolveMessageModeMeta>[0]) => ({ ...s, modelMode: 'gpt-6.2-astra' });
+
+    it('first message of a new session: the draft pick, not the wrapper birth default', () => {
+        resetRunPickBasesForTests({});
+        expect(resolveMessageModeMeta(withModel(codexSession(birth, 'standard'))).codexContext).toBe('standard');
+    });
+
+    it('first message with no pick: the account default', () => {
+        resetRunPickBasesForTests({});
+        expect(resolveMessageModeMeta(withModel(codexSession(birth)), { agentDefaultOverrides: { codex: { contextMode: 'standard' } } }).codexContext).toBe('standard');
+        expect(resolveMessageModeMeta(withModel(codexSession(birth))).codexContext).toBe('extended');
+    });
+
+    it('a pick made in a running session (base = the report then) is sent over the report', () => {
+        resetRunPickBasesForTests({ s1: { c: 'extended' } });
+        expect(resolveMessageModeMeta(codexSession({ codexContextMode: 'extended', codexThreadId: 'th-1' }, 'standard')).codexContext).toBe('standard');
+        resetRunPickBasesForTests({ s1: { c: 'standard' } });
+        expect(resolveMessageModeMeta(codexSession({ codexContextMode: 'standard', codexThreadId: 'th-1' }, 'extended')).codexContext).toBe('extended');
+        resetRunPickBasesForTests(null);
     });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { codexContextOptions, contextWindowsForModel, formatContextWindow, resolveCodexContextMode, settingsCodexContextOptions, supportsCodexContextChoice } from './codexContextMode';
+import { codexContextOptions, contextWindowsForModel, formatContextWindow, reportedCodexContextIntent, resolveCodexContextMode, settledCodexContextPick, settingsCodexContextOptions, supportsCodexContextChoice } from './codexContextMode';
 
 const codex = {
     flavor: 'codex',
@@ -25,7 +25,7 @@ describe('B-977 web codex context mode', () => {
         expect(contextWindowsForModel(codex, null)).toBeNull();
     });
 
-    it('the wrapper report wins over a local pick, which wins over the account default', () => {
+    it('a local value with no base (picked before the report) yields to the report; no report → local, then account default', () => {
         expect(resolveCodexContextMode(codex, 'extended', undefined)).toBe('standard');
         expect(resolveCodexContextMode({ ...codex, codexContextMode: undefined }, 'extended', 'standard')).toBe('extended');
         expect(resolveCodexContextMode({ ...codex, codexContextMode: 'extended' }, 'standard', undefined)).toBe('extended');
@@ -65,5 +65,56 @@ describe('B-977 default extended (Owner 11-26, #171)', () => {
     });
     it('an existing session keeps the level the wrapper reported', () => {
         expect(resolveCodexContextMode({ ...fresh, codexContextMode: 'standard' }, null, 'extended')).toBe('standard');
+    });
+});
+
+describe('B-977d 「上下文」 is a run pick (QA R87b P1)', () => {
+    const windows = codex.codexContextWindows;
+    // A wrapper at birth: reports the product default before any turn ran.
+    const birth = { flavor: 'codex', codexContextMode: 'extended', codexContextWindows: windows };
+    // A wrapper that ran turns in extended.
+    const ran = { ...birth, codexThreadId: 'th-1', currentModelCode: 'gpt-6.2-astra' };
+
+    it('the birth report is no choice: a draft pick and the account default win over it', () => {
+        expect(reportedCodexContextIntent(birth)).toBeNull();
+        expect(resolveCodexContextMode(birth, 'standard', null)).toBe('standard');
+        expect(resolveCodexContextMode(birth, null, 'standard')).toBe('standard');
+        expect(resolveCodexContextMode(birth, null, null)).toBe('extended');
+        // A non-default birth report is a resumed / picked mode, not a default.
+        expect(reportedCodexContextIntent({ ...birth, codexContextMode: 'standard' })).toBe('standard');
+        // Older wrapper: no report at all.
+        expect(reportedCodexContextIntent({ flavor: 'codex' })).toBeUndefined();
+    });
+
+    it('priority: pending local pick > wrapper report > account default > product default', () => {
+        // Picked 「标准」 while the wrapper reported extended (base = that report): pending, wins.
+        expect(resolveCodexContextMode(ran, 'standard', 'extended', 'extended')).toBe('standard');
+        // No pick: the report wins over the account default.
+        expect(resolveCodexContextMode(ran, null, 'standard')).toBe('extended');
+        // No report (older wrapper): account default, then product default.
+        expect(resolveCodexContextMode({ ...ran, codexContextMode: undefined }, null, 'standard')).toBe('standard');
+        expect(resolveCodexContextMode({ ...ran, codexContextMode: undefined }, null, null)).toBe('extended');
+    });
+
+    it('another device\'s later choice wins over an unsent pick', () => {
+        // Picked extended seeing standard; the wrapper now reports extended, not that base: superseded.
+        const movedOn = { ...ran, codexContextMode: 'extended' };
+        expect(resolveCodexContextMode(movedOn, 'extended', null, 'standard')).toBe('extended');
+        expect(resolveCodexContextMode(movedOn, 'standard', null, 'standard')).toBe('extended');
+        expect(settledCodexContextPick(movedOn, 'standard', 'standard')).toBe('clear');
+    });
+
+    it('the wrapper echo settles the pick (cleared); a pending one stays', () => {
+        expect(settledCodexContextPick(ran, 'standard', 'extended')).toBeNull();
+        const echoed = { ...ran, codexContextMode: 'standard' };
+        expect(settledCodexContextPick(echoed, 'standard', 'extended')).toBe('clear');
+        expect(resolveCodexContextMode(echoed, null, 'extended')).toBe('standard');
+        // Draft pick (base unset) at birth: pending until the first turn's echo.
+        expect(settledCodexContextPick(birth, 'standard', undefined)).toBeNull();
+        expect(settledCodexContextPick({ ...echoed, codexThreadId: 'th-2' }, 'standard', undefined)).toBe('clear');
+        // Switching back to extended from a standard session.
+        expect(resolveCodexContextMode(echoed, 'extended', null, 'standard')).toBe('extended');
+        expect(settledCodexContextPick({ ...echoed, codexContextMode: 'extended' }, 'extended', 'standard')).toBe('clear');
+        expect(settledCodexContextPick(ran, null, undefined)).toBeNull();
     });
 });

@@ -76,12 +76,12 @@ import { useNavigate } from 'react-router-dom';
 import { useLatestModelTable } from '@/sync/latestModels';
 import { claudeMachineConfigEntry, customModelsBesideFollow, followEntryModel, followLatestState, followLatestDescriptionKey, launcherReportsRunFacts, modelPickToStore, withFollowLatestOption } from '@/sync/followLatestDisplay';
 import { CLAUDE_CONFIG_MODEL_CAPABILITY, LATEST_MODEL_MODE, isLatestModelMode } from '@slopus/happy-wire';
-import { CODEX_WRAPPER_START_EFFORT, EFFORT_PICK_AUTO, pushRunIntent, sessionRunIntents, setRunPickBase, settledRunPick, withRunPicks } from '@/sync/runPicks';
+import { CODEX_WRAPPER_START_EFFORT, EFFORT_PICK_AUTO, getRunPickBase, pushRunIntent, sessionRunIntents, setRunPickBase, settledRunPick, withRunPicks } from '@/sync/runPicks';
 import { apiSocket } from '@/sync/apiSocket';
 import { forkCatalogSource, type LauncherModelSource } from '@/sync/launcherModels';
 import { ModeMenu } from './ModeMenu';
 import { codexEffortDowngrade, resolveMessageModeMeta } from '@/sync/messageMeta';
-import { codexContextOptions, resolveCodexContextMode } from '@/sync/codexContextMode';
+import { codexContextOptions, reportedCodexContextIntent, resolveCodexContextMode, settledCodexContextPick } from '@/sync/codexContextMode';
 import { deriveCodexRunningModel, deriveRunningModelSubtitle, runningModelForTrigger, selectDisplayedModelKey, withSelectedModelEntry } from './modelDisplay';
 import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
 import {
@@ -621,14 +621,15 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
             isCodex && !session ? CODEX_WRAPPER_START_EFFORT : undefined,
         ]);
     // B-977: Codex 「上下文」 — only for a model the wrapper reports as able to run larger.
-    // The wrapper's report is what the session runs; a local pick is pending until then.
+    // B-977d: a run pick like model / effort — a local pick is pending (and sent with
+    // every message) until the wrapper reports it; then the report is the truth.
     const contextModelId = isCodex ? (modelKey && modelKey !== 'default' ? modelKey : metadata?.currentModelCode ?? launcherContext?.configuredModel) : undefined;
     const contextChoices = isCodex
         ? codexContextOptions(isCodex && !session ? draftCatalog : metadata, contextModelId)
         : null;
     const contextOptions = contextChoices ? namedContextOptions(contextChoices, t) : [];
     const contextKey = contextOptions.length === 0 ? null
-        : resolveCodexContextMode(isCodex && !session ? draftCatalog : metadata, pending ? pending.contextMode : runSession?.contextMode, getAgentDefaultOverride(agentDefaultOverrides, flavor).contextMode);
+        : resolveCodexContextMode(isCodex && !session ? draftCatalog : metadata, pending ? pending.contextMode : runSession?.contextMode, getAgentDefaultOverride(agentDefaultOverrides, flavor).contextMode, pending ? undefined : getRunPickBase(sessionId, 'context'));
     const setContext = (key: string) => {
         setMode('updateSessionContextMode', 'contextMode', key);
     };
@@ -1647,6 +1648,8 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
             // B-849b: remember which session choice this pick replaces, so a later
             // choice from another device wins over it (sync/runPicks.ts).
             if (field === 'modelMode' || field === 'effortLevel') setRunPickBase(sessionId, field === 'modelMode' ? 'model' : 'effort', sessionRunIntents(metadata)[field === 'modelMode' ? 'model' : 'effort']);
+            // B-977d: so is 「上下文」 (it rides the next message; no RPC push).
+            else if (field === 'contextMode') setRunPickBase(sessionId, 'context', reportedCodexContextIntent(metadata));
             storage.getState()[fn](sessionId, key);
             if (session && (field === 'modelMode' || field === 'effortLevel')) void pushPick(field, key);
         }
@@ -1684,7 +1687,11 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
             storage.getState().updateSessionEffortLevel(sessionId, null);
             setRunPickBase(sessionId, 'effort', undefined);
         }
-    }, [sessionId, session, modelIntent, effortIntent]);
+        if (current.contextMode && settledCodexContextPick(current.metadata, current.contextMode, getRunPickBase(sessionId, 'context')) === 'clear') {
+            storage.getState().updateSessionContextMode(sessionId, null);
+            setRunPickBase(sessionId, 'context', undefined);
+        }
+    }, [sessionId, session, modelIntent, effortIntent, metadata?.codexContextMode]);
 
     // B-848: the one place a composer pick becomes the account default — an
     // explicit, confirmed act naming the agent and the value.
