@@ -340,13 +340,9 @@ export function enableMessages(id: string, record: InstallRecord, server: Enable
         return lines;
     }
     lines.push({ text: `${id}: enabled on this machine.` });
-    if (server.kind === 'not_disabled') {
-        if (record.state !== 'enabled' && record.state !== 'update_pending') lines.push({ text: `The server has no disable of its own to lift; this computer last saw it as ${record.state}. If it stays off, check Settings → Plugins: ${settings}`, warn: true });
-    } else if (server.kind === 'requires_owner') {
-        lines.push({ text: record.state === 'disabled_by_operator'
-            ? 'It is disabled by the server operator; only the operator can lift that.'
-            : `It was disabled in your account (or from another computer), which this computer cannot undo. Turn it back on in Settings → Plugins: ${settings}`, warn: true });
-    } else if (record.state === 'disabled_by_operator') {
+    if (server.kind === 'requires_owner') {
+        lines.push({ text: `It was disabled in your account (or from another computer), which this computer cannot undo. Turn it back on in Settings → Plugins: ${settings}`, warn: true });
+    } else if (server.kind === 'operator' || record.state === 'disabled_by_operator') {
         lines.push({ text: 'It is disabled by the server operator; only the operator can lift that.', warn: true });
     } else {
         lines.push({ text: `The server was not told (${server.error}). If it stays disabled, turn it back on in Settings → Plugins: ${settings}`, warn: true });

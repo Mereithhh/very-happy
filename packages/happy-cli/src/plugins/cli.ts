@@ -135,8 +135,8 @@ export async function disablePlugin(store: PluginStore, server: PluginServerApi,
 /** What `plugin enable` found on the server. */
 export type EnableServerOutcome =
     | { kind: 'enabled' }            // the machine-set disable was lifted
-    | { kind: 'not_disabled' }       // 409: nothing to lift there (also how an operator block answers)
-    | { kind: 'requires_owner' }     // disabled in the account, by the operator, or by another machine: the web app only
+    | { kind: 'operator' }           // 409 disabled_by_operator: only the operator can lift it
+    | { kind: 'requires_owner' }     // 403: disabled in the account, or not this machine's install: the web app only
     | { kind: 'not_sent'; error: string }; // unreachable / server_too_old / not signed in — only the local state changed
 
 /**
@@ -158,9 +158,11 @@ export async function enablePlugin(store: PluginStore, server: PluginServerApi, 
     try {
         await server.enable(current.installId);
     } catch (error) {
-        if (error instanceof PluginServerError && (error.code === 'enable_requires_owner' || error.code === 'disabled_by_operator')) return { record: next, server: { kind: 'requires_owner' } };
-        if (error instanceof PluginServerError && error.code === 'not_disabled') return { record: next, server: { kind: 'not_disabled' } };
-        return { record: next, server: { kind: 'not_sent', error: (error as Error).message } };
+        const code = error instanceof PluginServerError ? error.code : null;
+        if (code === 'enable_requires_owner') return { record: next, server: { kind: 'requires_owner' } };
+        if (code === 'disabled_by_operator') return { record: next, server: { kind: 'operator' } };
+        // 409 not_disabled: nothing left to lift, i.e. done.
+        if (code !== 'not_disabled') return { record: next, server: { kind: 'not_sent', error: (error as Error).message } };
     }
     // Lifted on the server: show it as enabled now; the daemon's next install.sync is authoritative.
     if (next.state === 'disabled') next = { ...next, state: 'enabled', updatedAt: Date.now() };

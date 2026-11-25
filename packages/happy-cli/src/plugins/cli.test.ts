@@ -263,12 +263,19 @@ describe('B-974h plugin enable (P2-2): local first, then the machine-token /enab
 
     it('409 not_disabled means nothing to lift; an unreachable server only changes local state', async () => {
         const store = await installed();
-        expect((await enablePlugin(store, mockServer({ enable: async () => { throw new PluginServerError('not_disabled', 'x', 409); } }), 'hello-board')).server).toEqual({ kind: 'not_disabled' });
-        const stale = enableMessages('hello-board', { ...store.readInstall('hello-board')!, state: 'disabled' }, { kind: 'not_disabled' }, 'https://w.test');
-        expect(stale.some((l) => l.warn && l.text.includes('last saw it as disabled'))).toBe(true);
+        expect((await enablePlugin(store, mockServer({ enable: async () => { throw new PluginServerError('not_disabled', 'x', 409); } }), 'hello-board')).server).toEqual({ kind: 'enabled' });
         const r = await enablePlugin(store, mockServer({ enable: async () => { throw new Error('offline'); } }), 'hello-board');
         expect(r.server).toEqual({ kind: 'not_sent', error: 'offline' });
         expect(enableMessages('hello-board', r.record, r.server, 'https://w.test').some((l) => l.warn && l.text.includes('not told'))).toBe(true);
+    });
+
+    it('409 disabled_by_operator (local record stale) names the operator, not the account', async () => {
+        const store = await installed();
+        const r = await enablePlugin(store, mockServer({ enable: async () => { throw new PluginServerError('disabled_by_operator', 'x', 409); } }), 'hello-board');
+        expect(r.server).toEqual({ kind: 'operator' });
+        const lines = enableMessages('hello-board', r.record, r.server, 'https://w.test').map((l) => l.text).join('\n');
+        expect(lines).toContain('server operator');
+        expect(lines).not.toContain('in your account');
     });
 
     it('operator disable is never sent and says only the operator can lift it', async () => {

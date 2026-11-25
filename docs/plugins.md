@@ -152,10 +152,12 @@ How `disable` and `enable` on the computer work:
 - `plugin enable <id>` clears the local disable, then calls
   `POST /v1/plugins/installs/<installId>/enable` with the computer's token
   (body `{ "machineId": … }`, header `X-VH-Machine-Id`). The server lifts only
-  a disable set by this same machine on its own install. Anything else (your
-  account, another computer, the operator) answers
+  a disable set by this same machine on its own install. A disable
+  set in your account, or an install on another computer, answers
   `403 enable_requires_owner`, and the CLI points you to **Settings →
-  Plugins**. If the server cannot be reached, only the local disable is
+  Plugins**. An operator block answers `409 disabled_by_operator`; only the
+  operator can lift it. `409 not_disabled` means there was nothing left to
+  lift and counts as success. If the server cannot be reached, only the local disable is
   cleared and the CLI says so.
 
 If a plugin token leaks, `rotate` it or disable the plugin in your account.
