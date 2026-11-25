@@ -145,7 +145,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.nov25g.title',
     summaryKey: 'changelog.releases.nov25g.summary',
-    itemKeys: ['changelog.releases.nov25g.approve', 'changelog.releases.nov25g.sidebar', 'changelog.releases.nov25g.decisions', 'changelog.releases.nov25g.widget', 'changelog.releases.nov25g.stop'],
+    itemKeys: ['changelog.releases.nov25g.approve', 'changelog.releases.nov25g.sidebar', 'changelog.releases.nov25g.decisions', 'changelog.releases.nov25g.widget', 'changelog.releases.nov25g.stop', 'changelog.releases.nov25g.legacy'],
   },
   {
     id: '2026-11-25-team-tool-required',

@@ -3368,6 +3368,18 @@ export const en = {
             sent: 'Sent to the plugin',
             confirm: 'Confirm',
         },
+        // B-974e: machine signed in with legacy CLI credentials (no data key)
+        legacy: {
+            title: ({ machine }: { machine: string }) => `${machine} is signed in the old way, so this plugin cannot open here.`,
+            why: 'The server relays plugin panels and session chips through the machine, which needs an encryption key that only newer sign-ins create.',
+            how: 'To fix it, run these on that computer, in order:',
+            stepRemove: 'Remove the plugin from this machine',
+            stepLogin: 'Sign in again (the computer is added as a new machine)',
+            stepDaemon: 'Start the daemon',
+            stepAdd: 'Add the plugin again, then approve it here',
+            note: 'A plugin belongs to one machine, so it has to be added again. If the old one is still listed in Settings → Plugins, remove it there.',
+            chip: 'Plugin unavailable',
+        },
     },
     // B-916a: Settings → Main agent (the page body uses assistant/mainAgentCopy.ts)
     settingsMainAgent: {
@@ -3659,6 +3671,7 @@ export const en = {
                 decisions: 'Plugins can post cards to Needs me: 2–4 buttons, a text box, or just 「Got it」. Every card carries a 「Plugin · name · machine」 mark it cannot remove, and links ask before opening.',
                 widget: 'A plugin can show a status chip on sessions of its own machine, with up to two actions.',
                 stop: 'Disable, remove, revoke one permission or mute a plugin from its page or from the panel bar; it takes effect at once.',
+                legacy: 'A machine signed in with an older CLI login cannot run plugins. Its panel and session chips now say so and list the commands that fix it: sign in again with very-happy auth login --force, then add the plugin again.',
             },
             nov25f: {
                 title: 'Team messages no longer loop on "Missing body"',

@@ -157,6 +157,46 @@ badge stops counting toward the app badge. Only badges with
 | Kill switch | `VH_PLUGINS_DISABLED`, `VH_PLUGIN_DENYLIST` | Yours |
 | Who can see panel content | The operator | Only you |
 
+Two things self-hosters most often miss:
+
+- **Decision cards need the owner board.** Set `VH_OWNER_BOARD_ENABLED=true`
+  as well as `VH_PLUGINS_ENABLED=1`, or plugin cards are stored but never
+  shown in **Needs you**. Badges, panels and widgets do not depend on it.
+- **Machines signed in with old credentials cannot run plugins** (next
+  section).
+
+## Machines signed in with old credentials
+
+**What you see.** The plugin panel shows "*machine* is signed in the old way,
+so this plugin cannot open here" with a list of commands, instead of the
+panel. Sessions on that machine show a **Plugin unavailable** chip in their
+header instead of the plugin's widget. Through the API, the panel answers
+`502 machine_unsupported` and widget writes for its sessions answer
+`403 session_not_on_machine`. Badges and decision cards still work.
+
+**Why.** Older CLI logins stored only the account secret in
+`~/.happy/access.key`, so the machine and its sessions were registered
+without a data encryption key. Panels and widgets need that key: the server
+uses it to relay panel traffic through the machine and to check which machine
+a session runs on. A machine keeps the key it was first registered with, so
+upgrading the CLI alone does not add one; a new sign-in does.
+
+**Fix.** On that computer, in this order:
+
+```bash
+very-happy plugin remove <id>         # while still signed in as the old machine: drops the old install on the server too
+very-happy auth login --force         # new sign-in; the computer is added as a new machine
+very-happy daemon start
+very-happy plugin add <manifest>      # the same file or loopback URL as before
+```
+
+Then approve the plugin again in **Settings → Plugins**. An install belongs
+to one machine, so after the new sign-in it has to be added again; its old
+credentials stop working. If the old install is still listed (for example
+because `plugin remove` ran after the new sign-in and could not reach it),
+remove it from **Settings → Plugins**. The old machine entry stays in the
+machine list as offline; its sessions and history are kept.
+
 ## Compatibility
 
 | Combination | Behaviour |

@@ -28,6 +28,7 @@ import { canOpenPanel } from './pluginModel';
 import { pluginPanelPath } from './pluginRoutes';
 import { hasGrant } from './pluginTypes';
 import { PluginIcon } from './PluginIcon';
+import { LegacyCredentialsNotice } from './LegacyCredentialsNotice';
 import { PLUGIN_FRAME_ALLOW, PLUGIN_FRAME_REFERRER_POLICY, PLUGIN_FRAME_SANDBOX, ticketUrlAllowed, withPathFragment } from './pluginFrame';
 import './pluginSurfaces.css';
 
@@ -46,6 +47,10 @@ export function PluginPanelScreen() {
   const online = !!machine && isMachineOnline(machine);
   const panel = install?.panels.find((p) => p.id === panelId) ?? null;
   const openable = canOpenPanel(install, panelId);
+  // B-974e: a machine signed in with legacy credentials has no data key; the
+  // server cannot relay its panel (502 machine_unsupported). Say so up front
+  // instead of loading an iframe that can only show the error body.
+  const legacyMachine = !!machine?.legacyKey;
   const origin = install?.origin ?? null;
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
   const [frameTitle, setFrameTitle] = useState<string | null>(null);
@@ -56,7 +61,7 @@ export function PluginPanelScreen() {
   // One ticket per (install, panel, path, reload). Never reuse: tickets are one-time.
   useEffect(() => {
     setFrameTitle(null);
-    if (!openable || !origin || !online) return;
+    if (!openable || !origin || !online || legacyMachine) return;
     let live = true;
     setPhase({ kind: 'loading' });
     createFrameTicket(installId, panelId, path)
@@ -69,7 +74,7 @@ export function PluginPanelScreen() {
     return () => {
       live = false;
     };
-  }, [installId, panelId, path, openable, origin, online, generation]);
+  }, [installId, panelId, path, openable, origin, online, legacyMachine, generation]);
 
   const isMobile = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 700px)').matches;
   const themeRef = useRef(theme);
@@ -143,9 +148,10 @@ export function PluginPanelScreen() {
   else if (!hasGrant(install, 'panel') && (install.state === 'enabled' || install.state === 'update_pending')) blocked = t('plugins.panel.noPermission');
   else if (!openable && install.state !== 'enabled' && install.state !== 'update_pending') blocked = t('plugins.panel.disabled');
   else if (!origin) blocked = t('plugins.panel.noHost');
-  else if (!online) blocked = t('plugins.panel.offline');
+  const legacy = !blocked && !!install && (legacyMachine || (phase.kind === 'error' && phase.code === 'machine_unsupported'));
+  if (!blocked && !legacy && !online) blocked = t('plugins.panel.offline');
 
-  const live = !blocked && availability === 'available';
+  const live = !blocked && !legacy && availability === 'available';
   const machineName = machine ? machineLabel(machine) : t('plugins.unknownMachine');
 
   return (
@@ -179,7 +185,11 @@ export function PluginPanelScreen() {
           </Button>
         )}
       </div>
-      {blocked ? (
+      {legacy && install ? (
+        <div className="plg-panel-empty plg-panel-empty--legacy">
+          <LegacyCredentialsNotice install={install} machineName={machine ? machineLabel(machine) : null} />
+        </div>
+      ) : blocked ? (
         <div className="plg-panel-empty" role="status">
           <p>{blocked}</p>
           {install && (

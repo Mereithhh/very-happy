@@ -12,7 +12,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as Popover from '@radix-ui/react-popover';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Button, toast } from '@/ui';
 import { Modal } from '@/modal';
@@ -22,8 +22,9 @@ import { PluginsApiError, sendWidgetAction } from '@/sync/apiPlugins';
 import { loadSessionWidgets, usePluginInstallMap, usePluginsAvailable, useSessionWidgets } from '@/sync/pluginStore';
 import { canOpenPanel, visibleWidgets } from './pluginModel';
 import { pluginPanelPath } from './pluginRoutes';
-import type { PluginInstallView, PluginWidgetAction, PluginWidgetView } from './pluginTypes';
+import { hasGrant, type PluginInstallView, type PluginWidgetAction, type PluginWidgetView } from './pluginTypes';
 import { PluginIcon } from './PluginIcon';
+import { LegacyCredentialsNotice } from './LegacyCredentialsNotice';
 import './pluginSurfaces.css';
 
 export function PluginWidgetChips({ sessionId, compact }: { sessionId: string; compact?: boolean }) {
@@ -36,6 +37,13 @@ export function PluginWidgetChips({ sessionId, compact }: { sessionId: string; c
   }, [available, sessionId]);
   if (!available || !session) return null;
   const rows = visibleWidgets(widgets, Object.values(installs), { id: sessionId, machineId: session.metadata?.machineId, archived: !!session.archivedAt });
+  // B-974e: the server refuses widgets on a session without a data key (legacy
+  // CLI credentials), so a plugin allowed to put one here never shows up.
+  // Say why, once, instead of showing nothing.
+  const blockedInstall = rows.length === 0 && session.legacyKey && !session.archivedAt
+    ? legacyWidgetInstall(Object.values(installs), session.metadata?.machineId)
+    : null;
+  if (blockedInstall) return <span className="plg-chips" data-testid="plugin-widget-chips"><LegacyWidgetChip install={blockedInstall} compact={compact} /></span>;
   if (rows.length === 0) return null;
   return (
     <span className="plg-chips" data-testid="plugin-widget-chips">
@@ -43,6 +51,36 @@ export function PluginWidgetChips({ sessionId, compact }: { sessionId: string; c
         <PluginWidgetChip key={install.id} widget={widget} install={install} compact={compact} />
       ))}
     </span>
+  );
+}
+
+/** A live install on this machine that may put a widget on its sessions. */
+export function legacyWidgetInstall(installs: readonly PluginInstallView[], machineId: string | null | undefined): PluginInstallView | null {
+  if (!machineId) return null;
+  return installs.find((i) => i.machineId === machineId && hasGrant(i, 'session.widget')) ?? null;
+}
+
+function LegacyWidgetChip({ install, compact }: { install: PluginInstallView; compact?: boolean }) {
+  const { t } = useTranslation();
+  const machine = useMachine(install.machineId);
+  const label = t('plugins.legacy.chip');
+  return (
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button type="button" className="plg-chip" data-tone="warning" data-legacy="" title={label} aria-label={`${t('plugins.decision.source')} · ${install.name} · ${label}`}>
+          <AlertTriangle size={13} />
+          {!compact && <span className="plg-chip-text">{label}</span>}
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content className="plg-widget-card plg-widget-card--legacy" align="end" sideOffset={6} collisionPadding={12}>
+          <div className="plg-widget-body">
+            <PluginSourceLine install={install} machineName={machine ? machineLabel(machine) : null} />
+            <LegacyCredentialsNotice install={install} machineName={machine ? machineLabel(machine) : null} compact />
+          </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 

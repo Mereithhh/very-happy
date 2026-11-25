@@ -2591,7 +2591,8 @@ class Sync {
                     metadata,
                     metadataVersion: machine.metadataVersion,
                     daemonState,
-                    daemonStateVersion: machine.daemonStateVersion || 0
+                    daemonStateVersion: machine.daemonStateVersion || 0,
+                    legacyKey: !machine.dataEncryptionKey,
                 });
             } catch (error) {
                 console.error(`Failed to decrypt machine ${machine.id}:`, error);
@@ -2606,7 +2607,8 @@ class Sync {
                     metadata: null,
                     metadataVersion: machine.metadataVersion,
                     daemonState: null,
-                    daemonStateVersion: 0
+                    daemonStateVersion: 0,
+                    legacyKey: !machine.dataEncryptionKey,
                 });
             }
         }
@@ -3985,7 +3987,8 @@ class Sync {
                 metadata: null,
                 metadataVersion: machineUpdate.metadataVersion,
                 daemonState: null,
-                daemonStateVersion: machineUpdate.daemonStateVersion
+                daemonStateVersion: machineUpdate.daemonStateVersion,
+                legacyKey: !machineUpdate.dataEncryptionKey,
             };
 
             // Decrypt best-effort; still apply the machine on failure so it stays
@@ -4019,7 +4022,8 @@ class Sync {
                 metadata: machine?.metadata ?? null,
                 metadataVersion: machine?.metadataVersion ?? 0,
                 daemonState: machine?.daemonState ?? null,
-                daemonStateVersion: machine?.daemonStateVersion ?? 0
+                daemonStateVersion: machine?.daemonStateVersion ?? 0,
+                ...(machine?.legacyKey !== undefined ? { legacyKey: machine.legacyKey } : {}),
             };
 
             // Get machine-specific encryption (might not exist if machine wasn't initialized)

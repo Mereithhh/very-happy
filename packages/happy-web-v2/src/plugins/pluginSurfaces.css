@@ -102,3 +102,20 @@
 .plg-card--system { width: 100%; text-align: left; color: var(--text); cursor: pointer; }
 .plg-card--system:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 @media (hover: hover) and (pointer: fine) { .plg-card--system:hover { box-shadow: var(--panel-shadow-hover); } }
+
+/* ── legacy credentials notice (B-974e) ─────────────────────────────── */
+.plg-panel-empty--legacy { justify-content: flex-start; padding-top: max(var(--sp-6), 8vh); overflow-y: auto; }
+.plg-legacy { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); width: 100%; max-width: 560px; text-align: left; color: var(--text-dim); font-size: var(--fs-14); line-height: 1.5; }
+.plg-legacy p { margin: 0; max-width: none; }
+.plg-legacy-lead { color: var(--text); font-weight: 500; font-size: var(--fs-15, var(--fs-14)); }
+.plg-legacy-how { color: var(--text); }
+.plg-legacy-steps { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: var(--sp-2); width: 100%; }
+.plg-legacy-steps > li { padding-left: 2px; }
+.plg-legacy-step { display: block; }
+.plg-legacy-cmd { display: flex; align-items: center; gap: var(--sp-1); margin-top: 4px; padding: 4px 4px 4px 10px; border-radius: var(--r-sm); background: var(--fill-soft); color: var(--text); }
+.plg-legacy-cmd code { flex: 1; min-width: 0; font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--fs-13); overflow-wrap: anywhere; }
+.plg-legacy-note { font-size: var(--fs-13); color: var(--text-faint); }
+.plg-legacy[data-compact] { font-size: var(--fs-13); gap: var(--sp-1); }
+.plg-legacy[data-compact] .plg-legacy-lead { font-size: var(--fs-13); }
+.plg-legacy[data-compact] .plg-legacy-cmd code { font-size: var(--fs-12); }
+.plg-widget-card--legacy { width: min(380px, calc(100vw - 24px)); max-height: min(70vh, 520px); overflow-y: auto; }
