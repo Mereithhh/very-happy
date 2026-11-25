@@ -1018,7 +1018,8 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                 toast.show(t('pendingSession.attachmentsLater'), 'info');
                 return;
             }
-            if (!(await confirmEffort()) || draftRef.current !== draft) return;
+            // No await without a question: the send stays in the click stack (B-722).
+            if (effortDowngrade && (!(await confirmEffort()) || draftRef.current !== draft)) return;
             const files = sendFiles ? take() : [];
             if (!pending.onSend(value, files)) {
                 if (files.length > 0) restore(files);
@@ -1067,7 +1068,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
             toast.show(t('session.chat.goalUnsupported'), 'info');
             return;
         }
-        if (compactCommand === null && (!(await confirmEffort()) || (!request && draftRef.current !== draft))) { request?.onResult(false); return; }
+        if (effortDowngrade && compactCommand === null && (!(await confirmEffort()) || (!request && draftRef.current !== draft))) { request?.onResult(false); return; }
         // Captured BEFORE the async send: did the textarea own focus (⇒ the
         // soft keyboard was up) when the user hit send? On iOS, tapping a
         // button does NOT move focus off the textarea, so this stays true for
@@ -1116,7 +1117,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
                 id: randomUUID(),
                 text: sendValue,
                 createdAt,
-                modeMeta: resolveMessageModeMeta(storage.getState().sessions[sessionId] ?? session, storage.getState().settings),
+                modeMeta: resolveMessageModeMeta(storage.getState().sessions?.[sessionId] ?? session, storage.getState().settings),
                 attachments: takenAttachments,
             });
             let serverSubmit: Promise<'queued' | 'unsupported'> | null = null;
