@@ -3678,7 +3678,7 @@ export const en = {
             nov25i: {
                 title: 'A new Codex session keeps the effort you set',
                 summary: 'With a default Codex effort such as Max, a new session showed it, then switched to Medium and ran the first message at Medium. It now runs, and keeps showing, the level you set.',
-                fresh: 'Applies to new sessions on every CLI version; no update needed. Sessions that already ran keep the level they run. To raise one that was set to Medium this way, pick the level again in that session.',
+                fresh: 'Applies to new sessions on every CLI version; no update needed. Sessions that already ran keep the level they run. To raise one that was set to Medium this way, pick the level again in that session. Settings now shows Max and the other levels your machines report, so you can change the default there too.',
                 unsupported: 'If the model cannot run that level, the composer says which level the message would run at and which are available, and sends only after you confirm.',
             },
             nov25h: {
@@ -7303,6 +7303,7 @@ export const en = {
 
     // Per-agent defaults settings screen.
     settingsAgents: {
+        effortUnsupported: ({ level }: { level: string }) => `This model does not support “${level}”. New sessions ask before the first message.`,
         title: 'Agent defaults',
         subtitle: 'Default permission, model and thinking level per agent for new sessions.',
         intro: 'These defaults apply to new sessions. You can still change them per session.',
