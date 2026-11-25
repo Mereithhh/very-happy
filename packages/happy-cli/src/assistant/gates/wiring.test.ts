@@ -72,7 +72,7 @@ describe('B-916c main agent gate wiring', () => {
         // QA77 #6: the main agent needs the gate runtime; QA77 #2: its owner_board_* go through the gate's write guard
         expect(server).toContain('return options?.assistant === true && !env.VH_TEAM_SCOPE_FILE && options.mainAgent !== undefined;')
         expect(server).toContain('registerOwnerBoardTools(options!.mainAgent!.gate.wrap(withNonOwnerProvenance(withToolOutputCaps(mcp, MAIN_AGENT_LIST_VIEWS))), leadBoard);')
-        expect(server).toContain('registerTeamsTools(dispatchRegistrar, sessionId);')
+        expect(server).toContain('registerTeamsTools(dispatchRegistrar, sessionId, undefined, { refusalTracker });')
         expect(server).toContain('registerAutomationTools(dispatchRegistrar);')
         expect(server).toContain('registerSessionPeerTools(dispatchRegistrar, createSessionPeerToolExecutor(client));')
         expect(server).toContain('registerAssistantTools(dispatchRegistrar);')
