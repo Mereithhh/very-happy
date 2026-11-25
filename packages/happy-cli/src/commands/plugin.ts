@@ -5,7 +5,7 @@
 import chalk from 'chalk';
 import { readFile, stat } from 'node:fs/promises';
 import { configuration } from '@/configuration';
-import { readCredentialsForConfiguredRelay } from '@/persistence';
+import { readCredentialsForConfiguredRelay, readSettings } from '@/persistence';
 import { PluginStore, effectiveState } from '@/plugins/store';
 import { PluginServerClient } from '@/plugins/serverOp';
 import { parseLoopbackUrl, SENSITIVE_PLUGIN_PERMISSIONS } from '@/plugins/manifest';
@@ -63,8 +63,9 @@ const one = (f: Flags, name: string) => f.flags.get(name)?.at(-1);
 
 async function serverApi(): Promise<PluginServerApi> {
     const credentials = await readCredentialsForConfiguredRelay();
-    if (!credentials) throw new PluginCliError('not_authenticated', 'Not authenticated on this machine. Run "very-happy auth login" first.');
-    return new PluginServerClient(configuration.serverUrl, credentials.token, configuration.currentCliVersion);
+    const machineId = (await readSettings()).machineId;
+    if (!credentials || !machineId) throw new PluginCliError('not_authenticated', 'Not authenticated on this machine. Run "very-happy auth login" first.');
+    return new PluginServerClient(configuration.serverUrl, credentials.token, configuration.currentCliVersion, machineId);
 }
 
 async function reloadDaemon(): Promise<Awaited<ReturnType<typeof reloadDaemonPlugins>>> {

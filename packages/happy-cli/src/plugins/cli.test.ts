@@ -152,7 +152,7 @@ describe('B-974c manifest sources: only local files or loopback URLs', () => {
 describe('B-974c server capability (r2)', () => {
     it.each([
         [200, { features: ['plugins-v1', 'x'] }, 'yes'],
-        [200, { features: { 'plugins-v1': true } }, 'yes'],
+        [200, { features: { 'plugins-v1': true } }, 'no'],
         [200, { features: ['x'] }, 'no'],
         [200, { features: { 'plugins-v1': false } }, 'no'],
         [200, {}, 'no'],
@@ -175,15 +175,39 @@ describe('B-974c server client', () => {
 
     it('a 404 route-not-found from an old server is server_too_old', async () => {
         const url = await serve(404, { message: 'Route POST:/v1/plugins/installs not found', error: 'Not Found', statusCode: 404 });
-        await expect(new PluginServerClient(url, 't', '0').submitManifest({})).rejects.toMatchObject({ code: 'server_too_old' });
+        await expect(new PluginServerClient(url, 't', '0', 'm-1').submitManifest({})).rejects.toMatchObject({ code: 'server_too_old' });
+    });
+
+    it('every machine-token call names this machine (X-VH-Machine-Id; body machineId on POST)', async () => {
+        const seen: Array<{ method: string; url: string; machine: unknown; body: string }> = [];
+        server = createServer((req, res) => {
+            let body = '';
+            req.on('data', (c) => { body += c; });
+            req.on('end', () => {
+                seen.push({ method: req.method!, url: req.url!, machine: req.headers['x-vh-machine-id'], body });
+                res.setHeader('content-type', 'application/json');
+                res.end(JSON.stringify({ installId: 'pi_1', state: 'pending', reviewUrl: 'r', manifestHash: 'h' }));
+            });
+        });
+        await new Promise<void>((r) => server!.listen(0, '127.0.0.1', () => r()));
+        const client = new PluginServerClient(`http://127.0.0.1:${(server.address() as AddressInfo).port}`, 't', '0', 'm-1');
+        await client.submitManifest({ id: 'x' });
+        await client.disable('pi_1', 'why');
+        await client.remove('pi_1', false);
+        expect(seen.map((s) => [s.method, s.url, s.machine])).toEqual([
+            ['POST', '/v1/plugins/installs', 'm-1'],
+            ['POST', '/v1/plugins/installs/pi_1/disable', 'm-1'],
+            ['DELETE', '/v1/plugins/installs/pi_1', 'm-1'],
+        ]);
+        expect(JSON.parse(seen[0].body)).toEqual({ manifest: { id: 'x' }, machineId: 'm-1' });
     });
 
     it('a structured refusal keeps its code', async () => {
         const url = await serve(409, { error: 'already_installed', message: 'x' });
-        await expect(new PluginServerClient(url, 't', '0').submitManifest({})).rejects.toMatchObject({ code: 'already_installed', status: 409 });
+        await expect(new PluginServerClient(url, 't', '0', 'm-1').submitManifest({})).rejects.toMatchObject({ code: 'already_installed', status: 409 });
         await server!.close();
         server = null;
         const url2 = await serve(404, { error: 'not_found', message: 'install' });
-        await expect(new PluginServerClient(url2, 't', '0').disable('pi_x')).rejects.toMatchObject({ code: 'not_found' });
+        await expect(new PluginServerClient(url2, 't', '0', 'm-1').disable('pi_x')).rejects.toMatchObject({ code: 'not_found' });
     });
 });

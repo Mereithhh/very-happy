@@ -28,7 +28,8 @@ export class PluginServerError extends Error {
 
 /** Machine-token HTTP to the server; 404 on the plugin routes = `server_too_old` (§7). */
 export class PluginServerClient {
-    constructor(private readonly serverUrl: string, private readonly token: string, private readonly clientVersion: string) {}
+    /** `machineId`: the server needs it on every machine-token call (`X-VH-Machine-Id`, and in the body of POST /installs). */
+    constructor(private readonly serverUrl: string, private readonly token: string, private readonly clientVersion: string, private readonly machineId: string) {}
 
     private async call<T>(method: 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
         let res;
@@ -37,7 +38,7 @@ export class PluginServerClient {
                 method,
                 url: `${this.serverUrl}${path}`,
                 data: body,
-                headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json', 'X-Happy-Client': `cli/${this.clientVersion}` },
+                headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json', 'X-Happy-Client': `cli/${this.clientVersion}`, 'X-VH-Machine-Id': this.machineId },
                 timeout: 15_000,
                 validateStatus: () => true,
             });
@@ -56,7 +57,7 @@ export class PluginServerClient {
     }
 
     submitManifest(manifest: unknown): Promise<ServerInstallReply> {
-        return this.call('POST', '/v1/plugins/installs', { manifest });
+        return this.call('POST', '/v1/plugins/installs', { manifest, machineId: this.machineId });
     }
 
     disable(installId: string, reason?: string): Promise<unknown> {
@@ -69,17 +70,15 @@ export class PluginServerClient {
 }
 
 /**
- * r2 capability gate: does the server publish `plugins-v1` in `/v1/features`?
- * Accepts `{ features: [...] }` and `{ features: { 'plugins-v1': true } }`.
- * 404 or absent → `no`; a network failure → `unknown` (treated as offline).
+ * r2/r6 capability gate: `/v1/features` answers `{ features: string[] }`;
+ * only `plugins-v1` in that array means yes. 404, any other shape or a
+ * missing entry → `no`; a network failure or 5xx → `unknown` (treated as offline).
  */
 export function pluginSupportFromFeatures(status: number, data: unknown): 'yes' | 'no' | 'unknown' {
     if (status === 404) return 'no';
     if (status < 200 || status >= 300) return 'unknown';
     const features = data && typeof data === 'object' ? (data as { features?: unknown }).features : undefined;
-    if (Array.isArray(features)) return features.includes(PLUGIN_SERVER_FEATURE) ? 'yes' : 'no';
-    if (features && typeof features === 'object') return (features as Record<string, unknown>)[PLUGIN_SERVER_FEATURE] === true ? 'yes' : 'no';
-    return 'no';
+    return Array.isArray(features) && features.includes(PLUGIN_SERVER_FEATURE) ? 'yes' : 'no';
 }
 
 export async function fetchServerPluginSupport(serverUrl: string, token: string, clientVersion: string): Promise<'yes' | 'no' | 'unknown'> {
