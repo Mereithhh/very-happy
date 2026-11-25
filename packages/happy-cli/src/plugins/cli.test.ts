@@ -347,15 +347,15 @@ describe('B-974h P3-4: review links are absolute on the web app origin', () => {
 });
 
 describe('B-974h P3-9: install origins from GET /v1/plugins/installs', () => {
-    it('keeps https origins only, keyed by install id', () => {
+    it('keeps http(s) origins (dev servers use http and a port), keyed by install id', () => {
         const map = originHostsFromInstalls({ installs: [
             { id: 'pi_1', origin: 'https://hello-board-abcdefgh.plugins.example.test' },
             { id: 'pi_2', origin: null },
-            { id: 'pi_3', origin: 'http://x-abcdefgh.plugins.example.test' },
+            { id: 'pi_3', origin: 'http://x-abcdefgh.localhost:5350' },
             { id: 'pi_4', origin: 'https://u:p@x.example.test' },
             { origin: 'https://no-id.example.test' },
         ] });
-        expect([...map]).toEqual([['pi_1', 'hello-board-abcdefgh.plugins.example.test']]);
+        expect([...map]).toEqual([['pi_1', 'hello-board-abcdefgh.plugins.example.test'], ['pi_3', 'x-abcdefgh.localhost:5350']]);
         expect(originHostsFromInstalls(null).size).toBe(0);
     });
 });

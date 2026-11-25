@@ -98,7 +98,7 @@ export function serverTooOldFrom404(status: number, body: unknown): string | nul
     return 'this server does not support plugins yet (no /v1/plugins); update the server first';
 }
 
-/** `{ installs: [{ id, origin }] }` → installId → origin host (`<label>.<pluginHost>`); entries without an https origin are skipped. */
+/** `{ installs: [{ id, origin }] }` → installId → origin host (`<label>.<pluginHost>`); entries without an http(s) origin are skipped (http: a dev server's `VH_PLUGIN_HOST_SCHEME`). */
 export function originHostsFromInstalls(data: unknown): Map<string, string> {
     const out = new Map<string, string>();
     const installs = data && typeof data === 'object' ? (data as { installs?: unknown }).installs : undefined;
@@ -109,7 +109,7 @@ export function originHostsFromInstalls(data: unknown): Map<string, string> {
         if (typeof id !== 'string' || typeof origin !== 'string') continue;
         let url: URL;
         try { url = new URL(origin); } catch { continue; }
-        if (url.protocol !== 'https:' || url.username || url.password || (url.pathname !== '/' && url.pathname !== '')) continue;
+        if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.username || url.password || (url.pathname !== '/' && url.pathname !== '')) continue;
         out.set(id, url.host.toLowerCase());
     }
     return out;
