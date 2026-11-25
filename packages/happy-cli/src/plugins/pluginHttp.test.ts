@@ -69,6 +69,17 @@ describe('B-974c plugin-http path and header rules (DESIGN §4.6)', () => {
         expect(stripHostCookies('__Host-vhp=1')).toBe('');
     });
 
+    it('P3-9: X-Forwarded-Host on a plain GET (no Host / Origin / Referer reach the daemon) from the known origin host', () => {
+        const ctx = { target: { host: '127.0.0.1' as const, port: 4310 }, pluginId: 'hello-board', installId: 'pi_hello-board', signature: {} };
+        expect(buildUpstreamHeaders({ accept: 'text/html' }, ctx)['x-forwarded-host']).toBeUndefined();
+        const out = buildUpstreamHeaders({ accept: 'text/html' }, { ...ctx, originHost: 'hello-board-tuc24vyu.p.example.test' });
+        expect(out).toMatchObject({ host: '127.0.0.1:4310', 'x-forwarded-proto': 'https', 'x-forwarded-host': 'hello-board-tuc24vyu.p.example.test' });
+        // Same-origin Origin is still rewritten using it.
+        expect(buildUpstreamHeaders({ origin: 'https://hello-board-tuc24vyu.p.example.test' }, { ...ctx, originHost: 'hello-board-tuc24vyu.p.example.test' }).origin).toBe('http://127.0.0.1:4310');
+        // A host that is not this install's label is ignored (never names another site).
+        expect(buildUpstreamHeaders({}, { ...ctx, originHost: 'other-plugin-tuc24vyu.p.example.test' })['x-forwarded-host']).toBeUndefined();
+    });
+
     it('Location to the upstream becomes a relative path; others stay', () => {
         const t = { host: '127.0.0.1' as const, port: 4310 };
         expect(rewriteLocation('http://127.0.0.1:4310/next?a=1#h', t)).toBe('/next?a=1#h');
@@ -134,6 +145,15 @@ describe('B-974c plugin-http forwarding against a real loopback upstream', () =>
         const ts = Number(got.headers['x-vh-timestamp']);
         expect(verifyPluginRequest({ secret: secretKey, signature: String(got.headers['x-vh-signature']), timestamp: ts, requestId: 'req_1', method: 'POST', pathWithQuery: '/api/count?a=1', body: '{"n":1}', nowSec: ts }).ok).toBe(true);
         expect(verifyPluginRequest({ secret: secretKey, signature: String(got.headers['x-vh-signature']), timestamp: ts, requestId: 'req_1', method: 'POST', pathWithQuery: '/api/count?a=2', body: '{"n":1}', nowSec: ts }).ok).toBe(false);
+    });
+
+    it('P3-9: a GET as the server sends it (Host dropped) reaches the upstream with X-Forwarded-Host', async () => {
+        const { registry } = await setup();
+        const fwd = new PluginHttpForwarder(registry, { timeoutMs: 2_000, originHost: (id) => id === 'pi_hello-board' ? 'hello-board-tuc24vyu.p.example.test' : null });
+        const r = await fwd.handle(req({ method: 'GET', path: '/', query: '', headers: { accept: 'text/html' }, bodyB64: undefined }));
+        expect(r.status).toBe(200);
+        expect(seen.at(-1)!.headers['x-forwarded-host']).toBe('hello-board-tuc24vyu.p.example.test');
+        expect(seen.at(-1)!.headers['x-forwarded-proto']).toBe('https');
     });
 
     it('does not follow redirects; rewrites Location back to the upstream', async () => {

@@ -3,8 +3,9 @@ import type { AddressInfo } from 'node:net';
 import { existsSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PluginCliError, addPlugin, disablePlugin, enablePlugin, pluginEnv, readManifestSource, removePlugin, rotatePlugin, updatePlugin, type PluginServerApi } from './cli';
-import { PluginServerClient, PluginServerError, pluginSupportFromFeatures } from './serverOp';
+import { PluginCliError, absoluteReviewUrl, addPlugin, disablePlugin, enablePlugin, pluginEnv, readManifestSource, removePlugin, rotatePlugin, updatePlugin, type PluginServerApi } from './cli';
+import { PluginServerClient, PluginServerError, originHostsFromInstalls, pluginSupportFromFeatures, serverTooOldFrom404 } from './serverOp';
+import { enableMessages } from '@/commands/plugin';
 import { manifestHash } from './manifest';
 import { applyServerInstall, PluginStore } from './store';
 import { sampleManifest, tempHome } from './testFixtures';
@@ -13,6 +14,7 @@ function mockServer(over: Partial<PluginServerApi> = {}): PluginServerApi & { su
     return {
         submitManifest: vi.fn(async () => ({ installId: 'pi_1', state: 'pending', reviewUrl: 'https://web.example.test/settings/plugins/pi_1/review' })),
         disable: vi.fn(async () => ({})),
+        enable: vi.fn(async () => ({})),
         remove: vi.fn(async () => ({})),
         ...over,
     } as any;
@@ -110,7 +112,7 @@ describe('B-974c very-happy plugin (DESIGN §2.2, §3.3, §7)', () => {
         const d = await disablePlugin(store, down, 'hello-board', 'testing');
         expect(d.serverNotified).toBe(false);
         expect(store.readInstall('hello-board')).toMatchObject({ localDisabled: true, localDisabledReason: 'testing' });
-        expect(enablePlugin(store, 'hello-board').localDisabled).toBeUndefined();
+        expect((await enablePlugin(store, mockServer(), 'hello-board')).record.localDisabled).toBeUndefined();
         const before = [store.readToken('hello-board'), store.readSecret('hello-board')];
         rotatePlugin(store, 'hello-board');
         expect(store.readToken('hello-board')).not.toBe(before[0]);
@@ -214,5 +216,146 @@ describe('B-974c server client', () => {
         server = null;
         const url2 = await serve(404, { error: 'not_found', message: 'install' });
         await expect(new PluginServerClient(url2, 't', '0', 'm-1').disable('pi_x')).rejects.toMatchObject({ code: 'not_found' });
+    });
+});
+
+describe('B-974h plugin enable (P2-2): local first, then the machine-token /enable', () => {
+    let cleanup = () => {};
+    afterEach(() => cleanup());
+    const text = () => ({ text: JSON.stringify(sampleManifest()), source: '/tmp/vh-plugin.json' });
+    async function installed(state: 'enabled' | 'disabled' | 'disabled_by_operator' = 'enabled') {
+        const t = tempHome(); cleanup = t.cleanup;
+        const store = new PluginStore(t.home);
+        await addPlugin(store, mockServer(), text());
+        applyServerInstall(store, 'hello-board', { installId: 'pi_1', state, grants: ['sidebar'], manifestHash: manifestHash(sampleManifest()) });
+        return store;
+    }
+
+    it('after a local disable (server not yet synced) enable lifts both: the local flag and the machine disable', async () => {
+        const store = await installed();
+        await disablePlugin(store, mockServer(), 'hello-board');
+        const server = mockServer();
+        const r = await enablePlugin(store, server, 'hello-board');
+        expect(server.enable).toHaveBeenCalledWith('pi_1');
+        expect(r.server).toEqual({ kind: 'enabled' });
+        expect(store.readInstall('hello-board')).toMatchObject({ state: 'enabled' });
+        expect(store.readInstall('hello-board')?.localDisabled).toBeUndefined();
+    });
+
+    it('a synced machine disable (state disabled) is lifted and shown enabled at once', async () => {
+        const store = await installed('disabled');
+        store.writeInstall('hello-board', { ...store.readInstall('hello-board')!, localDisabled: true });
+        const r = await enablePlugin(store, mockServer(), 'hello-board');
+        expect(r).toMatchObject({ server: { kind: 'enabled' }, record: { state: 'enabled' } });
+    });
+
+    it('403 enable_requires_owner (account / another machine) → local flag cleared, web needed', async () => {
+        const store = await installed('disabled');
+        store.writeInstall('hello-board', { ...store.readInstall('hello-board')!, localDisabled: true });
+        const r = await enablePlugin(store, mockServer({ enable: async () => { throw new PluginServerError('enable_requires_owner', 'x', 403); } }), 'hello-board');
+        expect(r.server).toEqual({ kind: 'requires_owner' });
+        expect(store.readInstall('hello-board')).toMatchObject({ state: 'disabled' });
+        expect(store.readInstall('hello-board')?.localDisabled).toBeUndefined();
+        const lines = enableMessages('hello-board', r.record, r.server, 'https://web.example.test/').map((l) => l.text).join('\n');
+        expect(lines).toContain('https://web.example.test/settings/plugins');
+        expect(lines).toContain('cannot undo');
+    });
+
+    it('409 not_disabled means nothing to lift; an unreachable server only changes local state', async () => {
+        const store = await installed();
+        expect((await enablePlugin(store, mockServer({ enable: async () => { throw new PluginServerError('not_disabled', 'x', 409); } }), 'hello-board')).server).toEqual({ kind: 'enabled' });
+        const r = await enablePlugin(store, mockServer({ enable: async () => { throw new Error('offline'); } }), 'hello-board');
+        expect(r.server).toEqual({ kind: 'not_sent', error: 'offline' });
+        expect(enableMessages('hello-board', r.record, r.server, 'https://w.test').some((l) => l.warn && l.text.includes('not told'))).toBe(true);
+    });
+
+    it('operator disable is never sent and says only the operator can lift it', async () => {
+        const store = await installed('disabled_by_operator');
+        const server = mockServer();
+        const r = await enablePlugin(store, server, 'hello-board');
+        expect(server.enable).not.toHaveBeenCalled();
+        expect(enableMessages('hello-board', r.record, r.server, 'https://w.test').map((l) => l.text).join('\n')).toContain('operator');
+    });
+
+    it('request shape: POST /v1/plugins/installs/:id/enable with the machine id (header and body)', async () => {
+        const seen: Array<{ method: string; url: string; machine: unknown; auth: unknown; body: string }> = [];
+        const srv = createServer((req, res) => {
+            let body = '';
+            req.on('data', (c) => { body += c; });
+            req.on('end', () => {
+                seen.push({ method: req.method!, url: req.url!, machine: req.headers['x-vh-machine-id'], auth: req.headers.authorization, body });
+                res.statusCode = seen.length === 1 ? 200 : 403;
+                res.setHeader('content-type', 'application/json');
+                res.end(JSON.stringify(seen.length === 1 ? { install: { id: 'pi_1', state: 'enabled' } } : { error: 'enable_requires_owner' }));
+            });
+        });
+        await new Promise<void>((r) => srv.listen(0, '127.0.0.1', () => r()));
+        try {
+            const client = new PluginServerClient(`http://127.0.0.1:${(srv.address() as AddressInfo).port}`, 'machine-token', '0', 'm-1');
+            await client.enable('pi_1');
+            await expect(client.enable('pi_1')).rejects.toMatchObject({ code: 'enable_requires_owner', status: 403 });
+            expect(seen[0]).toMatchObject({ method: 'POST', url: '/v1/plugins/installs/pi_1/enable', machine: 'm-1', auth: 'Bearer machine-token' });
+            expect(JSON.parse(seen[0].body)).toEqual({ machineId: 'm-1' });
+        } finally {
+            await new Promise<void>((r) => srv.close(() => r()));
+        }
+    });
+});
+
+describe('B-974h P3-3: a 404 from an older server is server_too_old', () => {
+    it.each([
+        [{ error: 'Not found', path: '/v1/plugins/installs', method: 'POST' }, true],   // happy-server's generic not-found handler (R83)
+        [{ message: 'Route POST:/v1/plugins/installs not found', error: 'Not Found', statusCode: 404 }, true], // Fastify default
+        ['Not found', true],
+        ['<html>404</html>', true],
+        ['', true],
+        [{}, true],
+        [{ error: 'plugins_disabled' }, true],
+        [{ error: 'not_found', message: 'install' }, false],
+    ] as const)('404 %j → too old: %s', (body, tooOld) => {
+        expect(serverTooOldFrom404(404, body) !== null).toBe(tooOld);
+    });
+
+    it('only 404 is considered', () => {
+        expect(serverTooOldFrom404(403, { error: 'Not found' })).toBeNull();
+    });
+
+    it('end to end: R83 body through the client', async () => {
+        const srv = createServer((_req, res) => { res.statusCode = 404; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ error: 'Not found', path: '/v1/plugins/installs', method: 'POST' })); });
+        await new Promise<void>((r) => srv.listen(0, '127.0.0.1', () => r()));
+        try {
+            await expect(new PluginServerClient(`http://127.0.0.1:${(srv.address() as AddressInfo).port}`, 't', '0', 'm-1').submitManifest({})).rejects.toMatchObject({ code: 'server_too_old' });
+        } finally {
+            await new Promise<void>((r) => srv.close(() => r()));
+        }
+    });
+});
+
+describe('B-974h P3-4: review links are absolute on the web app origin', () => {
+    it.each([
+        ['/settings/plugins/pi_1/review', 'https://web.example.test', 'https://web.example.test/settings/plugins/pi_1/review'],
+        ['/settings/plugins/pi_1/review', 'https://web.example.test/', 'https://web.example.test/settings/plugins/pi_1/review'],
+        ['https://other.example.test/x', 'https://web.example.test', 'https://other.example.test/x'],
+        ['//evil.example.test/x', 'https://web.example.test', '//evil.example.test/x'],
+    ] as const)('%s on %s', (path, web, expected) => {
+        expect(absoluteReviewUrl(path, web)).toBe(expected);
+    });
+    it('nothing in, nothing out', () => {
+        expect(absoluteReviewUrl(undefined, 'https://w.test')).toBeNull();
+        expect(absoluteReviewUrl('', 'https://w.test')).toBeNull();
+    });
+});
+
+describe('B-974h P3-9: install origins from GET /v1/plugins/installs', () => {
+    it('keeps https origins only, keyed by install id', () => {
+        const map = originHostsFromInstalls({ installs: [
+            { id: 'pi_1', origin: 'https://hello-board-abcdefgh.plugins.example.test' },
+            { id: 'pi_2', origin: null },
+            { id: 'pi_3', origin: 'http://x-abcdefgh.plugins.example.test' },
+            { id: 'pi_4', origin: 'https://u:p@x.example.test' },
+            { origin: 'https://no-id.example.test' },
+        ] });
+        expect([...map]).toEqual([['pi_1', 'hello-board-abcdefgh.plugins.example.test']]);
+        expect(originHostsFromInstalls(null).size).toBe(0);
     });
 });

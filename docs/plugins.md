@@ -81,7 +81,8 @@ plugins silently.
    very-happy plugin add ./vh-plugin.json        # or http://127.0.0.1:PORT/.well-known/vh-plugin.json
    ```
    `add` accepts a local file or a loopback URL only. It validates the
-   manifest and creates a **pending** install; you get a notification and a
+   manifest and creates a **pending** install, and prints the review link on
+   the web app (`HAPPY_WEBAPP_URL`, or the default web app); you get a notification and a
    "Plugin install waiting for approval" card.
 2. Open the card (or **Settings → Plugins**). The review page shows the name,
    icon, version, publisher (marked *unverified*), the computer, the first 8
@@ -124,12 +125,13 @@ very-happy plugin doctor <id>           # upstream/callback reachable, HMAC self
 very-happy plugin rotate <id>           # new token and secret; the old ones stop working once the daemon reloads (it does so right away)
 very-happy plugin env <id> [--shell]    # VH_PLUGIN_API, VH_PLUGIN_TOKEN_FILE, VH_PLUGIN_SECRET_FILE (--shell: as export lines)
 very-happy plugin badge <id> <count|clear> [--tone attention] [--label L]
-very-happy plugin decision <id> post --key K --title T [--option id=label]... [--input | --notice] [--body-file F]
+very-happy plugin decision <id> post --key K --title T [--option id=label]... [--input [--multiline] | --notice] [--body-file F]
 very-happy plugin decision <id> close --key K [--outcome done|dropped|superseded]
 ```
 
 `badge` and `decision` are thin wrappers for script-style plugins. `post` makes
-an `input` card with `--input`, a `notice` with `--notice` or without any
+an `input` card with `--input` (`--multiline` gives it a multi-line text
+box, `input.multiline: true`, and implies `--input`), a `notice` with `--notice` or without any
 `--option`, and a `choice` card otherwise. Commands that print data accept
 `--json`; `plugins` works as an alias of `plugin`.
 
@@ -137,9 +139,24 @@ an `input` card with `--input`, a `notice` with `--notice` or without any
 
 | Where | How | Effect |
 |---|---|---|
-| The computer | `very-happy plugin disable <id> [--reason …]` / `plugin remove <id> [--keep-items]` | The daemon refuses the plugin's API calls (`plugin_disabled`) and stops proxying at once; the server is told. `remove` also deletes the credentials and the install (`--keep-items` keeps its cards). Works while the daemon is stopped (applied on next start). `plugin enable <id>` lifts a local disable only; one set in your account is lifted in the web app. |
+| The computer | `very-happy plugin disable <id> [--reason …]` / `plugin remove <id> [--keep-items]` | The daemon refuses the plugin's API calls (`plugin_disabled`) and stops proxying at once; the server is told. `remove` also deletes the credentials and the install (`--keep-items` keeps its cards). Works while the daemon is stopped (applied on next start). `plugin enable <id>` undoes it: it clears the local disable, then asks the server (with this computer's token) to lift the disable this computer set. A disable set in your account, from another computer, or by the operator cannot be lifted from the CLI; `enable` then says so and links to **Settings → Plugins**. |
 | Your account | **Settings → Plugins**: Disable, Remove, or revoke one permission | Immediate on the server: open panels are signed out, machine calls are refused, cards and widgets are hidden (kept, and restored if you re-enable). Revoking a permission needs nothing from the plugin. |
 | The server operator | `VH_PLUGINS_DISABLED=1` (everything) or `VH_PLUGIN_DENYLIST=<plugin id or manifest sha256, …>` | Matching installs show as `disabled_by_operator`; only the operator can lift it. |
+
+How `disable` and `enable` on the computer work:
+
+- `plugin disable <id>` turns the plugin off on this computer at once (works
+  offline), then calls `POST /v1/plugins/installs/<installId>/disable` with
+  the computer's token. The server records it as disabled **by this
+  machine**.
+- `plugin enable <id>` clears the local disable, then calls
+  `POST /v1/plugins/installs/<installId>/enable` with the computer's token
+  (body `{ "machineId": … }`, header `X-VH-Machine-Id`). The server lifts only
+  a disable set by this same machine on its own install. Anything else (your
+  account, another computer, the operator) answers
+  `403 enable_requires_owner`, and the CLI points you to **Settings →
+  Plugins**. If the server cannot be reached, only the local disable is
+  cleared and the CLI says so.
 
 If a plugin token leaks, `rotate` it or disable the plugin in your account.
 
@@ -201,8 +218,8 @@ machine list as offline; its sessions and history are kept.
 
 | Combination | Behaviour |
 |---|---|
-| New server, old CLI | No `plugin` command; the machine's plugin area says "CLI too old". |
-| New CLI, old server (or plugins switched off for the account) | `plugin add` reports `server_too_old` and writes nothing locally; `/plugin/v1` calls get `503 server_too_old`. |
+| New server, old CLI | No `plugin` command: `very-happy plugin …` is not recognised and, like any unknown word, is passed to Claude as a prompt (it starts a Claude session). The machine's plugin area says "CLI too old". |
+| New CLI, old server (or plugins switched off for the account) | `plugin add` / `update` report `server_too_old` (any 404 without a plugin error code counts) and write nothing locally; `plugin list` says the server does not support plugins; `/plugin/v1` calls get `503 server_too_old`. |
 | New server, old web app | No plugin UI. Plugin cards without a session are only sent to clients that ask for them (`?include=plugin`). |
 | New web app, old server | `/v1/plugins/*` returns 404; the plugin UI is hidden. |
 | Manifest `minApi` above the daemon's `pluginApi` | `plugin add` reports `api_too_old`. |
