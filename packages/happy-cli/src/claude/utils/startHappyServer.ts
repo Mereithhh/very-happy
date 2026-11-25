@@ -12,7 +12,7 @@ import { PiContextReportSchema, type PiContextReport } from '@/agent/acp/piConte
  */
 
 import { createTeamAdoption, TEAMS_ADOPT_CAPABILITY } from '@/teams/adopt';
-import { registerTeamsTools, TEAM_TOOL_NAMES, withRequiredSchema } from '@/teams/tools';
+import { createTeamRefusalTracker, registerTeamsTools, TEAM_TOOL_NAMES, withRequiredSchema, type TeamRefusalTracker } from '@/teams/tools';
 import { registerAutomationTools, AUTOMATION_TOOL_NAMES } from '@/automations/tools';
 import { registerSessionPeerTools, createSessionPeerContext, createSessionPeerToolExecutor, sendPeerMessage, SESSION_PEER_TOOL_NAMES } from '@/sessions/peerTools';
 import { createWrapupTracker } from '@/wrapup/tracker';
@@ -131,7 +131,7 @@ function isLegacyAssistantSession(options?: StartHappyServerOptions, env: NodeJS
     return options?.assistant === true && !env.VH_TEAM_SCOPE_FILE && options.mainAgent === undefined;
 }
 
-function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions, sessionId?: string, client?: ApiSessionClient, wrapup?: WrapupToolExecutor): McpServer {
+function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions, sessionId?: string, client?: ApiSessionClient, wrapup?: WrapupToolExecutor, refusalTracker?: TeamRefusalTracker): McpServer {
     const server = new McpServer({
         name: "Very Happy Tools",
         version: "1.0.0",
@@ -156,7 +156,7 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     // the follow-up recording sits outside, on what the gate finally runs.
     const gated = mainAgent ? options!.mainAgent!.gate.wrap(mcp) : mcp;
     const dispatchRegistrar = mainAgent && options?.mainAgentProactive ? withMainAgentProactive(gated, options.mainAgentProactive) : gated;
-    registerTeamsTools(dispatchRegistrar, sessionId);
+    registerTeamsTools(dispatchRegistrar, sessionId, undefined, { refusalTracker });
     // B-496: account-level automations, same trust level as the session itself.
     registerAutomationTools(dispatchRegistrar);
     // B-497: message / list the other sessions on this machine (identity = this session).
@@ -327,6 +327,8 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
     logger.debug(`[happyMCP] server:start sessionId=${client.sessionId} assistant=${!!options?.assistant}`);
 
     const selfReportState = options?.selfReportState ?? createSelfReportState();
+    // B-972b: one repeat-refusal count per session; every HTTP request below builds a fresh McpServer.
+    const teamRefusals = createTeamRefusalTracker();
     // B-919: the main agent's session_wrapup / session_handoff / session_restart run on the B-915 / B-911 backends.
     const mainAgentLifecycle = isMainAgentSession(options);
     if (mainAgentLifecycle) installSessionLifecycle(createLiveMainAgentLifecycle(() => client.sessionId));
@@ -567,7 +569,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             return;
         }
         await leadBoard.ready(OWNER_BOARD_READY_MS);
-        const mcp = createMcpServer(handlers, options, client.sessionId, client, wrapupTools);
+        const mcp = createMcpServer(handlers, options, client.sessionId, client, wrapupTools, teamRefusals);
         // B-766: owner briefing board, team lead on a server that serves it (decided once per process).
         // B-916b: also the main agent (capped like the rest of its surface) once the server serves the board.
         if (isMainAgentSession(options)) {

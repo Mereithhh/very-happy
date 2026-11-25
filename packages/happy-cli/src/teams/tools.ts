@@ -81,7 +81,14 @@ export function withRequiredSchema(inner: AssistantToolRegistrar): AssistantTool
         }) as AssistantToolRegistrar['registerTool'],
     };
 }
-export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: string, client = createTeamsClient(sessionId)): void {
+/**
+ * B-972b: the repeat-refusal count. startHappyServer builds one per session and passes it in, because it creates a new
+ * McpServer for every HTTP request (stateless transport) and a count kept per registration restarts at 0 on each call.
+ * The Codex stdio bridge and `very-happy mcp` keep one server per process and let registerTeamsTools make its own.
+ */
+export interface TeamRefusalTracker { last?: { tool: string; count: number } }
+export const createTeamRefusalTracker = (): TeamRefusalTracker => ({});
+export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: string, client = createTeamsClient(sessionId), options: { refusalTracker?: TeamRefusalTracker } = {}): void {
     const register = (name: string, description: string, inputSchema: Record<string, z.ZodTypeAny>, execute: (args: any) => Promise<unknown>, required?: string[]) => {
         server.registerTool(name, { description, inputSchema, ...(required ? { requiredFields: required } : {}), annotations: { readOnlyHint: name === 'team_inspect', idempotentHint: true, openWorldHint: false, destructiveHint: ['team_cancel', 'team_handoff', 'team_return', 'team_schedule_cancel'].includes(name) } }, async (args: any) => {
             try { return { content: [{ type: 'text' as const, text: JSON.stringify(await execute(args)) }], isError: false }; }
@@ -106,11 +113,11 @@ export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: s
         },
         async (args) => { const result = await client.inspect(); return args.full ? result : args.taskId ? teamTaskToolView(result.team, args.taskId) : compact(result, { includeClosed: args.includeClosed, messagesLimit: args.messagesLimit }); });
     // B-972: the same refusal 3 times in a row means the model is looping; say so and tell it to stop. Any accepted call resets it.
-    let refusal: { tool: string; count: number } | undefined;
+    const tracker = options.refusalTracker ?? createTeamRefusalTracker();
     const guard = (name: string, raw: Record<string, unknown>, key?: string) => {
-        try { const args = normalizeTeamToolArgs(name, key === undefined ? raw : { requestId: key, ...raw }); refusal = undefined; const { requestId: _omit, ...rest } = args; return rest; }
+        try { const args = normalizeTeamToolArgs(name, key === undefined ? raw : { requestId: key, ...raw }); tracker.last = undefined; const { requestId: _omit, ...rest } = args; return rest; }
         catch (error) {
-            refusal = { tool: name, count: refusal?.tool === name ? refusal.count + 1 : 1 };
+            const refusal = tracker.last = { tool: name, count: tracker.last?.tool === name ? tracker.last.count + 1 : 1 };
             const stop = refusal.count >= TEAM_REPEAT_STOP_AFTER ? ` Refused ${refusal.count} times in a row: STOP retrying team_${name} and tell the user what is failing (which field is missing, what you sent).` : '';
             throw new Error((error instanceof Error ? error.message : String(error)) + stop);
         }
