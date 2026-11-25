@@ -3320,6 +3320,8 @@ export const en = {
             muteSubtitle: 'No push notifications, and its badge does not count toward the app badge.',
             openPanel: 'Open panel',
             reviewCta: 'Review',
+            reviewCardInstall: ({ name }: { name: string }) => `Plugin waiting for approval · ${name}`,
+            reviewCardUpdate: ({ name }: { name: string }) => `Plugin update waiting for approval · ${name}`,
             auditTitle: 'Recent activity',
             auditEmpty: 'No activity yet.',
             sensitiveReads: ({ count }: { count: number }) => `Read ${count} ${count === 1 ? 'session' : 'sessions'} in the last 24 hours`,

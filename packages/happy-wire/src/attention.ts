@@ -391,6 +391,23 @@ export function parsePluginPayload(payload: unknown): PluginPayloadView | null {
     const parsed = PluginPayloadReadSchema.safeParse(payload);
     return parsed.success ? parsed.data : null;
 }
+/**
+ * B-974f: the host's own install / update review card (source `owner-system`) carries
+ * `payload: { v: 1, type: 'plugin-review', pluginName, update }` so the Web titles it in the
+ * viewer's language. `title` stays a server-written fallback for a Web that predates this.
+ */
+export const AttentionPluginReviewPayloadSchema = z.object({
+    v: z.literal(1),
+    type: z.literal('plugin-review'),
+    pluginName: z.string().min(1).max(64),
+    update: z.boolean(),
+});
+export type AttentionPluginReviewPayload = z.infer<typeof AttentionPluginReviewPayloadSchema>;
+/** Lenient read: null when the payload is not a v1 review-card payload. */
+export function parsePluginReviewPayload(payload: unknown): AttentionPluginReviewPayload | null {
+    const parsed = z.object({ v: z.literal(1), type: z.literal('plugin-review'), pluginName: z.string().min(1), update: z.boolean().catch(false) }).passthrough().safeParse(payload);
+    return parsed.success ? { v: 1, type: 'plugin-review', pluginName: parsed.data.pluginName, update: parsed.data.update } : null;
+}
 /** Plugin items (and any item without a session) are listed only to clients that ask with `?include=plugin` (old Web expects a string `sessionId`). */
 export const ATTENTION_INCLUDE_PLUGIN = 'plugin';
 export function isAttentionPluginItem(item: { source: string; sessionId?: string | null; pluginInstallId?: string | null }): boolean {

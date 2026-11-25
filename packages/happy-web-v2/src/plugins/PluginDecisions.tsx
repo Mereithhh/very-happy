@@ -98,7 +98,7 @@ export function OwnerSystemCardView({ card }: { card: OwnerSystemCard }) {
         <Puzzle size={13} aria-hidden />
         <span>{t('plugins.title')}</span>
       </span>
-      <span className="plg-card-title">{card.title}</span>
+      <span className="plg-card-title">{card.pluginName ? t(card.update ? 'plugins.detail.reviewCardUpdate' : 'plugins.detail.reviewCardInstall', { name: card.pluginName }) : card.title}</span>
       <span className="plg-card-link">
         {t('plugins.detail.reviewCta')} <ChevronRight size={13} aria-hidden />
       </span>

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import {
     parsePluginManifest, pluginManifestHash, pluginPrivilegedHash, PLUGIN_API_FEATURES, PLUGIN_API_VERSION, PLUGIN_LIMITS,
-    type PluginInstallView, type PluginManifest,
+    type AttentionPluginReviewPayload, type PluginInstallView, type PluginManifest,
 } from '@slopus/happy-wire';
 import { db } from '@/storage/db';
 import { afterTx, inTx, isRetryableTransactionConflict, type Tx } from '@/storage/inTx';
@@ -127,21 +127,29 @@ export async function installAudit(accountId: string, id: string, limit = 100) {
     };
 }
 
+/** The review card's `plugin-review` payload (wire `AttentionPluginReviewPayloadSchema`). */
+export function reviewCardPayload(pluginName: string, update: boolean): AttentionPluginReviewPayload {
+    return { v: 1, type: 'plugin-review', pluginName: pluginName.slice(0, 64), update };
+}
+
 /** The host's own「插件安装待批准」card (design §2.2): source `owner-system`, never writable by the plugin (reserved `vh:` key). */
 async function upsertReviewCard(tx: Tx, row: InstallRow, manifest: PluginManifest, update: boolean): Promise<void> {
     const now = new Date();
+    // `title` is the fallback for a Web without `plugin-review` support; a current Web titles it from `payload` in its own language.
     const title = `${update ? '插件更新待批准' : '插件安装待批准'} · ${manifest.name}`.slice(0, 120);
+    // Prisma types `payload` as the wrap-up shape (prisma-json-types); this card stores the wire review payload there.
+    const payload = reviewCardPayload(manifest.name, update) as never;
     const links = [{ type: 'url', ref: `/settings/plugins/${row.id}/review`, label: '查看并批准' }] as never;
     const existing = await tx.attentionItem.findUnique({ where: { pluginInstallId_key: { pluginInstallId: row.id, key: REVIEW_KEY } } });
     const item = existing
         ? await tx.attentionItem.update({
             where: { id: existing.id },
-            data: { title, links, state: 'open', resolvedBy: null, resolvedAt: null, ownerChoice: null, pushedAt: null, version: { increment: 1 }, updatedAt: now },
+            data: { title, links, payload, state: 'open', resolvedBy: null, resolvedAt: null, ownerChoice: null, pushedAt: null, version: { increment: 1 }, updatedAt: now },
         })
         : await tx.attentionItem.create({
             data: {
                 id: randomUUID(), accountId: row.accountId, sessionId: null, pluginInstallId: row.id, source: 'owner-system', kind: 'todo', key: REVIEW_KEY,
-                title, links, needsOwner: true, state: 'open', createdAt: now, updatedAt: now,
+                title, links, payload, needsOwner: true, state: 'open', createdAt: now, updatedAt: now,
             },
         });
     afterTx(tx, () => {
@@ -317,19 +325,28 @@ export async function disableInstall(accountId: string, id: string, input: { rea
     });
 }
 
-/** Re-enable. A change submitted while disabled (§5.9) waits for review: the install goes to `update_pending`. */
-export async function enableInstall(accountId: string, id: string): Promise<{ install: PluginInstallView }> {
+/**
+ * Re-enable. A change submitted while disabled (§5.9) waits for review: the install goes to `update_pending`.
+ * The owner lifts any owner / machine disable. A machine (`byMachineId`) lifts only its own local disable:
+ * the install must sit on that machine and have been disabled by a machine — anything else is
+ * 403 `enable_requires_owner`. The operator's switch is lifted by nobody here (409 `disabled_by_operator`).
+ */
+export async function enableInstall(accountId: string, id: string, byMachineId?: string): Promise<{ install: PluginInstallView }> {
     assertPluginsEnabled(accountId);
+    const actor: Actor = byMachineId === undefined ? 'owner' : 'machine';
     return runPluginTx(async tx => {
         const row = await loadInstall(tx, accountId, id);
+        if (byMachineId !== undefined) requirePlugin(row.machineId === byMachineId, 'enable_requires_owner', 403);
+        requirePlugin(effectiveState(row) !== 'disabled_by_operator', 'disabled_by_operator', 409);
         requirePlugin(row.state === 'disabled', 'not_disabled', 409, { state: row.state });
+        if (byMachineId !== undefined) requirePlugin(row.disabledBy === 'machine', 'enable_requires_owner', 403);
         requirePlugin(row.manifest, 'plugin_pending', 409);
         const updated = await tx.pluginInstall.update({
             where: { id },
             data: { state: row.pendingManifest ? 'update_pending' : 'enabled', disabledBy: null, disabledReason: null, version: { increment: 1 }, updatedAt: new Date() },
         }) as InstallRow;
         if (row.pendingManifest) await upsertReviewCard(tx, updated, row.pendingManifest as PluginManifest, true);
-        await audit(tx, { accountId, installId: id, actor: 'owner', action: 'install.enabled' });
+        await audit(tx, { accountId, installId: id, actor, action: 'install.enabled' });
         await installChanged(tx, updated);
         announceInstall(tx, updated);
         return { install: view(updated) };
