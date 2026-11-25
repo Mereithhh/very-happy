@@ -29,7 +29,11 @@ describe('team tool arguments through the real MCP SDK validation', () => {
         expect((await call('team_submit', { requestId: 'r2', ...current, result: 'canonical', summary: 'ignored' })).isError).toBe(false);
         expect(action).toHaveBeenLastCalledWith({ type: 'submit', ...current, result: 'canonical' }, 'r2');
         const missing = await call('team_submit', { requestId: 'r3', ...current });
-        expect(missing).toEqual({ isError: true, text: TEAM_SUBMIT_RESULT_MISSING });
+        expect(missing.isError).toBe(true);
+        // B-972: the refusal still opens with the fixed sentence, then names the received fields and gives a call to copy.
+        expect(missing.text.startsWith(TEAM_SUBMIT_RESULT_MISSING)).toBe(true);
+        expect(missing.text).toContain('Fields received: requestId, taskId, attemptId, goalVersion');
+        expect(missing.text).toContain('team_submit {"requestId"');
         expect(action).toHaveBeenCalledTimes(2);
     });
 

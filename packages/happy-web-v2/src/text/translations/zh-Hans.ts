@@ -3672,6 +3672,13 @@ export const zhHans: TranslationStructure = {
                 shared: '别人分享给你的终端会写明是谁的哪台机器（比如「Alex 的 mac-studio」）：连接时显示正在连接，机器没连上时显示没连上，看的过程中掉线也一样。',
                 recover: '机器重新连上后，终端会自动恢复，不用刷新，也不用点重试。你自己的终端也一样。',
             },
+            nov25f: {
+                title: '团队消息不再反复报「Missing body」',
+                summary: '用 Kimi、DeepSeek 等模型的 agent 调用 team_message 时可能漏传消息正文，被反复拒绝。现在对所有模型都把正文标为必填，被拒时会说明该传什么。',
+                schema: '模型看到的工具定义里，team_message 的 `body` 和 team_submit 的 `result` 都是必填；旧名字 `message`、`summary` 仍然可用。',
+                error: '被拒时会列出实际收到的字段，并给出可以照抄的调用示例。',
+                stop: '同样的拒绝连续出现三次后，会让 agent 停止重试并向你说明哪里出了问题。需要把会话重启到 CLI 0.2.229。',
+            },
             nov25e: {
                 title: 'DeepSeek Harness：停止期间的消息、图片、自动化和项目',
                 summary: '发给已停止的 DeepSeek Harness（dsh）、pi 或 Gemini 会话的消息，会在会话恢复后交给 agent。模型支持图片时 dsh 会话可以发图；自动化可以选 dsh，项目里也能为 dsh 设置账号。',

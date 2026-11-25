@@ -28,28 +28,43 @@ const fixedId = (field: FixedField) => z.string({ error: fix(field, 'a string') 
 const fixedText = (field: FixedField) => z.string({ error: fix(field, 'a string') }).min(1).max(32000);
 const requestId = fixedId('requestId').describe('Unique operation ID. Reuse the same ID and arguments after an uncertain response.');
 const goalVersion = z.number({ error: fix('goalVersion', 'a number, not a string') }).int().positive();
-/** B-912: the aliases models reach for most (team_submit `summary`: 27 of 59 refusals). */
+/**
+ * B-912: the aliases models reach for most (team_submit `summary`: 27 of 59 refusals).
+ * B-972: the tools/list schema now lists `body` / `result` as required (a weaker model that fills only the required
+ * fields otherwise sends neither), while the aliases still pass validation and reach normalizeTeamToolArgs. The refusal
+ * names the fields it received and gives a call to copy.
+ */
 export const TEAM_SUBMIT_RESULT_MISSING = 'Missing result: pass your evidence as `result` (what you did, PR / head SHA, verification). `summary` is accepted as an alias.';
 export const TEAM_MESSAGE_BODY_MISSING = 'Missing body: pass the message text as `body` (`message` is accepted as an alias).';
+/** The same refusal this many times in a row tells the model to stop retrying. */
+export const TEAM_REPEAT_STOP_AFTER = 3;
+const TEAM_CALL_EXAMPLES = {
+    message: '{"requestId":"B-123-msg-1","taskId":"<task id from team_inspect>","body":"<your message text>"}',
+    submit: '{"requestId":"B-123-submit-1","taskId":"<task id>","attemptId":"<currentAttemptId>","goalVersion":1,"result":"<what you did, PR / head SHA, verification>"}',
+} as const;
+function missingFieldError(tool: 'message' | 'submit', raw: Record<string, unknown>): Error {
+    const received = Object.keys(raw).join(', ') || 'none besides requestId';
+    return new Error(`${tool === 'message' ? TEAM_MESSAGE_BODY_MISSING : TEAM_SUBMIT_RESULT_MISSING} Fields received: ${received}. Copy this call and fill in the values: team_${tool} ${TEAM_CALL_EXAMPLES[tool]}`);
+}
 export function normalizeTeamToolArgs(tool: string, args: Record<string, unknown>): Record<string, unknown> {
     if (tool === 'submit') {
         const { summary, ...rest } = args;
         const result = rest.result ?? summary;
-        if (typeof result !== 'string' || !result) throw new Error(TEAM_SUBMIT_RESULT_MISSING);
+        if (typeof result !== 'string' || !result) throw missingFieldError('submit', args);
         return { ...rest, result };
     }
     if (tool === 'message') {
         const { message, to, ...rest } = args;
         const body = rest.body ?? message;
-        if (typeof body !== 'string' || !body) throw new Error(TEAM_MESSAGE_BODY_MISSING);
+        if (typeof body !== 'string' || !body) throw missingFieldError('message', args);
         const recipientBotId = rest.recipientBotId ?? to;
         return { ...rest, body, ...(recipientBotId !== undefined ? { recipientBotId } : {}) };
     }
     return args;
 }
 export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: string, client = createTeamsClient(sessionId)): void {
-    const register = (name: string, description: string, inputSchema: Record<string, z.ZodTypeAny>, execute: (args: any) => Promise<unknown>) => {
-        server.registerTool(name, { description, inputSchema, annotations: { readOnlyHint: name === 'team_inspect', idempotentHint: true, openWorldHint: false, destructiveHint: ['team_cancel', 'team_handoff', 'team_return', 'team_schedule_cancel'].includes(name) } }, async (args) => {
+    const register = (name: string, description: string, inputSchema: Record<string, z.ZodTypeAny>, execute: (args: any) => Promise<unknown>, required?: string[]) => {
+        server.registerTool(name, { description, inputSchema: (required ? z.object(inputSchema).meta({ required }) : inputSchema) as any, annotations: { readOnlyHint: name === 'team_inspect', idempotentHint: true, openWorldHint: false, destructiveHint: ['team_cancel', 'team_handoff', 'team_return', 'team_schedule_cancel'].includes(name) } }, async (args: any) => {
             try { return { content: [{ type: 'text' as const, text: JSON.stringify(await execute(args)) }], isError: false }; }
             catch (error) { return { content: [{ type: 'text' as const, text: error instanceof Error ? error.message : 'Teams operation failed' }], isError: true }; }
         });
@@ -71,21 +86,31 @@ export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: s
             full: z.boolean().optional().describe('Return the whole team view (can be very large)'),
         },
         async (args) => { const result = await client.inspect(); return args.full ? result : args.taskId ? teamTaskToolView(result.team, args.taskId) : compact(result, { includeClosed: args.includeClosed, messagesLimit: args.messagesLimit }); });
-    const action = (name: string, description: string, fields: Record<string, z.ZodTypeAny>) => register(`team_${name}`, description,
-        { requestId, ...fields }, async ({ requestId: key, ...raw }) => { const args = normalizeTeamToolArgs(name, raw); return teamActionReceipt(await client.action({ type: name, ...args, ...(name === 'delegate' && args.directory === undefined ? { directory: process.cwd() } : {}) }, key), args.taskId as string | undefined); });
+    // B-972: the same refusal 3 times in a row means the model is looping; say so and tell it to stop. Any accepted call resets it.
+    let refusal: { tool: string; count: number } | undefined;
+    const guard = (name: string, raw: Record<string, unknown>, key?: string) => {
+        try { const args = normalizeTeamToolArgs(name, key === undefined ? raw : { requestId: key, ...raw }); refusal = undefined; const { requestId: _omit, ...rest } = args; return rest; }
+        catch (error) {
+            refusal = { tool: name, count: refusal?.tool === name ? refusal.count + 1 : 1 };
+            const stop = refusal.count >= TEAM_REPEAT_STOP_AFTER ? ` Refused ${refusal.count} times in a row: STOP retrying team_${name} and tell the user what is failing (which field is missing, what you sent).` : '';
+            throw new Error((error instanceof Error ? error.message : String(error)) + stop);
+        }
+    };
+    const action = (name: string, description: string, fields: Record<string, z.ZodTypeAny>, required?: string[]) => register(`team_${name}`, description,
+        { requestId, ...fields }, async ({ requestId: key, ...raw }) => { const args = guard(name, raw, key); return teamActionReceipt(await client.action({ type: name, ...args, ...(name === 'delegate' && args.directory === undefined ? { directory: process.cwd() } : {}) }, key), args.taskId as string | undefined); }, required);
     action('delegate', 'Delegate a goal with acceptance criteria. Use parentTaskId for subdelegation. Existing assigneeBotId or a managed worker may execute it.', {
         goal: fixedText('goal'), acceptance: z.array(text, { error: fix('acceptance', 'an array of strings: wrap a single criterion as ["…"]') }).min(1).max(32), parentTaskId: id.optional(), assigneeBotId: id.optional(), botName: id.optional(), directory: z.string().min(1).optional(), assistant: z.enum(['claude', 'codex', 'pi-acp']).optional(), model: z.string().trim().min(1).max(256).optional(),
         agentProfile: z.object({ id: z.string().min(1).max(64), label: z.string().min(1).max(200).optional() }).nullable().optional().describe('Account a member spawns on (id from `very-happy account list`; null = machine login; omit = team default). Unusable → the launch is refused, never the machine login.'),
     });
     const taskId = fixedId('taskId');
-    // B-912: `body` / `result` stay optional in the schema so their aliases reach normalizeTeamToolArgs, which requires one of them.
+    // B-912/B-972: `body` / `result` are optional zod fields so their aliases reach normalizeTeamToolArgs (which requires one of them), but the exported JSON schema lists them as required.
     action('message', 'Send a persistent task-related message. Delivery does not mean the model has read or acted on it. Members reach other members through their lead: send to the task owner (your lead), who forwards it.', {
-        taskId, body: text.optional().describe('Required: the message text'), recipientBotId: id.optional().describe('Omit to message the task assignee; members send to their lead (the task owner)'),
-        message: text.optional().describe('Alias of body'), to: id.optional().describe('Alias of recipientBotId'),
-    });
+        taskId, body: z.string().max(32000).optional().describe('Required: the message text'), recipientBotId: id.optional().describe('Omit to message the task assignee; members send to their lead (the task owner)'),
+        message: z.string().max(32000).optional().describe('Alias of body'), to: id.optional().describe('Alias of recipientBotId'),
+    }, ['requestId', 'taskId', 'body']);
     action('submit', 'Submit evidence for your current attempt and goal version. The owner still has to accept it.', {
-        taskId, attemptId: fixedId('attemptId'), goalVersion, result: text.optional().describe('Required: your evidence (what you did, PR / head SHA, verification)'), summary: text.optional().describe('Alias of result'),
-    });
+        taskId, attemptId: fixedId('attemptId'), goalVersion, result: z.string().max(32000).optional().describe('Required: your evidence (what you did, PR / head SHA, verification)'), summary: z.string().max(32000).optional().describe('Alias of result'),
+    }, ['requestId', 'taskId', 'attemptId', 'goalVersion', 'result']);
     const current = { attemptId: fixedId('attemptId'), goalVersion };
     action('accept', 'Accept a task you own after checking its evidence. Resource cleanup is tracked separately.', { taskId, ...current });
     action('return', 'Return your task for further work with a concrete reason.', { taskId, reason: fixedText('reason'), ...current });
