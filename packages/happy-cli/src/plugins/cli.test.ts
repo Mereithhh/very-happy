@@ -202,6 +202,11 @@ describe('B-974c server client', () => {
         expect(JSON.parse(seen[0].body)).toEqual({ manifest: { id: 'x' }, machineId: 'm-1' });
     });
 
+    it('404 plugins_disabled (switch off for the account) is server_too_old too', async () => {
+        const url = await serve(404, { error: 'plugins_disabled' });
+        await expect(new PluginServerClient(url, 't', '0', 'm-1').submitManifest({})).rejects.toMatchObject({ code: 'server_too_old' });
+    });
+
     it('a structured refusal keeps its code', async () => {
         const url = await serve(409, { error: 'already_installed', message: 'x' });
         await expect(new PluginServerClient(url, 't', '0', 'm-1').submitManifest({})).rejects.toMatchObject({ code: 'already_installed', status: 409 });

@@ -101,6 +101,26 @@ describe('B-974c runtime: capability gate, install.sync, queue replay, notices (
         s.runtime.stop();
     });
 
+    it('plugins_disabled from a plugins-v1 server (switch off for the account) = server_too_old: 503, queue dropped, nothing queued after', async () => {
+        const s = setup();
+        s.setInstalls([s.view('enabled', ['sidebar'], manifestHash(s.m))]);
+        await s.runtime.onConnected();
+        const token = s.store.readToken('hello-board')!;
+        const put = () => s.runtime.handleApi({ method: 'PUT', path: '/badge', query: {}, headers: { authorization: `Bearer ${token}` }, body: { count: 1 } });
+        s.setOnline(false);
+        await put();
+        expect(s.runtime.queue.size('pi_1')).toBe(1);
+        s.setOnline(true);
+        s.refuse.set('badge.put', 'plugins_disabled');
+        s.refuse.set('install.sync', 'plugins_disabled');
+        await s.runtime.onConnected();
+        expect(s.runtime.serverSupport()).toBe('no');
+        expect(s.runtime.queue.size('pi_1')).toBe(0);
+        expect(await put()).toMatchObject({ status: 503, body: { error: 'server_too_old' } });
+        expect(s.runtime.queue.size('pi_1')).toBe(0);
+        s.runtime.stop();
+    });
+
     it('panel RPCs only; no plugin-event RPC (r4)', () => {
         const s = setup();
         expect(Object.keys(pluginRpcHandlers(s.runtime)).sort()).toEqual(['plugin-http', 'plugin-http-body', 'plugin-http-pull']);

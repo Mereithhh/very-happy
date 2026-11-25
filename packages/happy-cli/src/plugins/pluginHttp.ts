@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { parseLoopbackUrl } from './manifest';
 import { checkAccess, type PluginRegistry } from './registry';
-import { normalizePluginRequestPath, signPluginRequest } from '@slopus/happy-wire';
+import { normalizePluginRequestPath, pluginOriginLabel, signPluginRequest } from '@slopus/happy-wire';
 import { authorityOf, loopbackRequest, type LoopbackTarget } from './loopbackHttp';
 
 export const INLINE_BODY_MAX = 256 * 1024;
@@ -72,24 +72,42 @@ export function stripHostCookies(cookie: string): string {
     return cookie.split(';').map((c) => c.trim()).filter((c) => c.length > 0 && !c.startsWith('__Host-vhp')).join('; ');
 }
 
-/** The plugin subdomain the browser used, when it is this plugin's (`<pluginId>-<h8>.<pluginHost>`). */
-export function pluginSubdomain(pluginId: string, host: string | undefined): string | null {
+/**
+ * This install's host (`<pluginId>-<h8>.<pluginHost>`) when `host` is it. The
+ * daemon does not know `pluginHost`, but the first label is fixed per install
+ * (wire `pluginOriginLabel`), so a sibling install or another site never matches.
+ */
+export function installHost(label: string, host: unknown): string | null {
     if (typeof host !== 'string') return null;
     const h = host.trim().toLowerCase();
-    if (!h.startsWith(`${pluginId}-`) || !/^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d{1,5})?$/.test(h)) return null;
+    if (!h.startsWith(`${label}.`) || !/^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d{1,5})?$/.test(h)) return null;
     return h;
+}
+
+/** `https://<this install's host>` from an Origin / Referer value, or null. */
+function installOriginOf(label: string, value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    let url: URL;
+    try { url = new URL(value); } catch { return null; }
+    if (url.protocol !== 'https:' || url.username || url.password) return null;
+    const host = installHost(label, url.host);
+    return host ? `https://${host}` : null;
 }
 
 export function buildUpstreamHeaders(inbound: Record<string, string | string[] | undefined>, ctx: {
     target: LoopbackTarget;
     pluginId: string;
+    installId: string;
     signature: Record<string, string>;
 }): Record<string, string | string[]> {
     const lower: Record<string, string | string[]> = {};
     for (const [k, v] of Object.entries(inbound)) if (v !== undefined) lower[k.toLowerCase()] = v;
     const connectionListed = new Set(String(lower['connection'] ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
-    const subdomain = pluginSubdomain(ctx.pluginId, typeof lower['host'] === 'string' ? lower['host'] : undefined);
-    const pluginOrigin = subdomain ? `https://${subdomain}` : null;
+    // The server drops Host before the RPC; Origin / Referer (already checked by the server for writes) name it.
+    const label = pluginOriginLabel(ctx.pluginId, ctx.installId);
+    const hostMatch = installHost(label, lower['host']);
+    const pluginOrigin = hostMatch ? `https://${hostMatch}` : installOriginOf(label, lower['origin']) ?? installOriginOf(label, lower['referer']);
+    const subdomain = pluginOrigin ? pluginOrigin.slice('https://'.length) : null;
     const authority = authorityOf(ctx.target);
     const out: Record<string, string | string[]> = {};
     for (const [name, value] of Object.entries(lower)) {
@@ -261,7 +279,7 @@ export class PluginHttpForwarder {
             'x-vh-viewer': 'owner',
         };
         if (entry.secretKey) signature['x-vh-signature'] = signPluginRequest(entry.secretKey, ts, reqId, method, normalized.pathWithQuery, new Uint8Array(body));
-        const headers = buildUpstreamHeaders(inbound, { target, pluginId: entry.id, signature });
+        const headers = buildUpstreamHeaders(inbound, { target, pluginId: entry.id, installId, signature });
         if (body.length > 0) headers['content-length'] = String(body.length);
         try {
             const res = await loopbackRequest(target, { method, path: normalized.pathWithQuery, headers, body, timeoutMs: this.opts.timeoutMs ?? UPSTREAM_TIMEOUT_MS });

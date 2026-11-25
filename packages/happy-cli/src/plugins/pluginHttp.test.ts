@@ -28,9 +28,9 @@ describe('B-974c plugin-http path and header rules (DESIGN §4.6)', () => {
 
     it('rewrites request headers', () => {
         const out = buildUpstreamHeaders({
-            Host: 'hello-board-abcd1234.p.example.test',
-            Origin: 'https://hello-board-abcd1234.p.example.test',
-            Referer: 'https://hello-board-abcd1234.p.example.test/page?q=1',
+            Host: 'hello-board-tuc24vyu.p.example.test',
+            Origin: 'https://hello-board-tuc24vyu.p.example.test',
+            Referer: 'https://hello-board-tuc24vyu.p.example.test/page?q=1',
             Cookie: '__Host-vhp=frame; theme=dark; __Host-vhp-2=x',
             Connection: 'keep-alive, X-Secret-Hop',
             'X-Secret-Hop': '1',
@@ -41,7 +41,7 @@ describe('B-974c plugin-http path and header rules (DESIGN §4.6)', () => {
             'X-Forwarded-For': '1.2.3.4',
             Authorization: 'Bearer plugin-own-auth',
             Accept: 'text/html',
-        }, { target: { host: '127.0.0.1', port: 4310 }, pluginId: 'hello-board', signature: { 'X-VH-Viewer': 'owner', 'X-VH-Signature': 'v1=real' } });
+        }, { target: { host: '127.0.0.1', port: 4310 }, pluginId: 'hello-board', installId: 'pi_hello-board', signature: { 'X-VH-Viewer': 'owner', 'X-VH-Signature': 'v1=real' } });
         expect(out).toEqual({
             host: '127.0.0.1:4310',
             origin: 'http://127.0.0.1:4310',
@@ -50,15 +50,22 @@ describe('B-974c plugin-http path and header rules (DESIGN §4.6)', () => {
             authorization: 'Bearer plugin-own-auth',
             accept: 'text/html',
             'x-forwarded-proto': 'https',
-            'x-forwarded-host': 'hello-board-abcd1234.p.example.test',
+            'x-forwarded-host': 'hello-board-tuc24vyu.p.example.test',
             'x-vh-viewer': 'owner',
             'x-vh-signature': 'v1=real',
         });
     });
 
-    it('drops a foreign Origin / Referer and a sibling plugin host', () => {
-        const out = buildUpstreamHeaders({ host: 'other-plugin-1234abcd.p.example.test', origin: 'https://other-plugin-1234abcd.p.example.test', referer: 'https://evil.test/' }, { target: { host: '::1', port: 5000 }, pluginId: 'hello-board', signature: {} });
-        expect(out).toEqual({ host: '[::1]:5000', 'x-forwarded-proto': 'https' });
+    it('without Host (the server drops it), a matching Origin still identifies this install', () => {
+        const out = buildUpstreamHeaders({ origin: 'https://hello-board-tuc24vyu.p.example.test', referer: 'https://hello-board-tuc24vyu.p.example.test/x' }, { target: { host: '127.0.0.1', port: 4310 }, pluginId: 'hello-board', installId: 'pi_hello-board', signature: {} });
+        expect(out).toMatchObject({ origin: 'http://127.0.0.1:4310', referer: 'http://127.0.0.1:4310/x', 'x-forwarded-host': 'hello-board-tuc24vyu.p.example.test' });
+    });
+
+    it('drops a foreign Origin / Referer, a sibling install of the same plugin, and http origins', () => {
+        for (const origin of ['https://hello-board-zzzzzzzz.p.example.test', 'https://other-plugin-tuc24vyu.p.example.test', 'http://hello-board-tuc24vyu.p.example.test', 'https://evil.test', 'https://hello-board-tuc24vyu', 'https://evil-hello-board-tuc24vyu.p.example.test']) {
+            const out = buildUpstreamHeaders({ origin, referer: `${origin}/page` }, { target: { host: '::1', port: 5000 }, pluginId: 'hello-board', installId: 'pi_hello-board', signature: {} });
+            expect(out, origin).toEqual({ host: '[::1]:5000', 'x-forwarded-proto': 'https' });
+        }
         expect(stripHostCookies('__Host-vhp=1')).toBe('');
     });
 
@@ -110,7 +117,7 @@ describe('B-974c plugin-http forwarding against a real loopback upstream', () =>
         server = null;
     });
 
-    const req = (over: Record<string, unknown> = {}) => ({ reqId: 'req_1', installId: 'pi_hello-board', panelId: 'main', method: 'POST', path: '/api/count', query: 'a=1', headers: { host: 'hello-board-abcd1234.p.example.test', 'content-type': 'application/json' }, bodyB64: b64('{"n":1}'), ...over });
+    const req = (over: Record<string, unknown> = {}) => ({ reqId: 'req_1', installId: 'pi_hello-board', panelId: 'main', method: 'POST', path: '/api/count', query: 'a=1', headers: { host: 'hello-board-tuc24vyu.p.example.test', 'content-type': 'application/json' }, bodyB64: b64('{"n":1}'), ...over });
 
     it('forwards to the declared port with a verifiable signature', async () => {
         const { fwd, secretKey } = await setup();

@@ -14,6 +14,7 @@ import { OfflineQueue, type QueuedOp } from './offlineQueue';
 import { PluginEventHub } from './events';
 import { PluginApi, type LocalSessionMessage, type LocalSessions, type ServerOp, type ServerPluginSupport, type PluginApiRequest, type PluginApiResponse } from './localApi';
 import { PluginHttpForwarder } from './pluginHttp';
+import { PLUGINS_DISABLED } from './serverOp';
 
 export type InstallView = { installId: string; pluginId: string; state: ServerInstallState; grants: PluginPermission[]; manifestHash: string | null };
 
@@ -40,6 +41,7 @@ export class PluginRuntime {
     private apiBase: string | null = null;
     private syncing: Promise<void> | null = null;
     private support: ServerPluginSupport = 'unknown';
+    private readonly serverOp: ServerOp;
 
     constructor(private readonly deps: {
         home: string;
@@ -49,11 +51,21 @@ export class PluginRuntime {
         /** r2 capability gate: does the server publish `plugins-v1`? */
         probeServerSupport: () => Promise<ServerPluginSupport>;
     }) {
+        // r4/r6: `plugins_disabled` from any op = the switch is off → same as an old server: 503, nothing queued.
+        const serverOp: ServerOp = async (installId, op, payload, requestId) => {
+            const result = await deps.serverOp(installId, op, payload, requestId);
+            if (result.kind === 'error' && result.error === PLUGINS_DISABLED) {
+                this.markUnsupported();
+                return { kind: 'error', status: 503, error: 'server_too_old', details: { queued: false } };
+            }
+            return result;
+        };
+        this.serverOp = serverOp;
         this.store = new PluginStore(deps.home);
         this.registry = new PluginRegistry(this.store);
         this.queue = new OfflineQueue((installId, items) => this.persistFor(installId, 'queue.json', items));
-        this.events = new PluginEventHub({ registry: this.registry, serverOp: deps.serverOp });
-        this.api = new PluginApi({ registry: this.registry, queue: this.queue, events: this.events, serverOp: deps.serverOp, sessions: deps.sessions, machineId: deps.machineId, serverSupport: () => this.support });
+        this.events = new PluginEventHub({ registry: this.registry, serverOp });
+        this.api = new PluginApi({ registry: this.registry, queue: this.queue, events: this.events, serverOp, sessions: deps.sessions, machineId: deps.machineId, serverSupport: () => this.support });
         this.forwarder = new PluginHttpForwarder(this.registry);
     }
 
@@ -121,14 +133,7 @@ export class PluginRuntime {
 
     private async connectSequence(): Promise<void> {
         this.support = await this.deps.probeServerSupport().catch(() => 'unknown' as const);
-        if (this.support === 'no') {
-            // r2: an old server (or plugins switched off) never takes plugin writes; do not pile them up.
-            for (const entry of this.registry.list()) if (this.queue.size(entry.record.installId) > 0) {
-                logger.debug(`[PLUGINS] server has no plugins-v1; dropping ${this.queue.size(entry.record.installId)} queued writes of ${entry.id}`);
-                this.queue.clear(entry.record.installId);
-            }
-            return;
-        }
+        if (this.support === 'no') { this.markUnsupported(); return; }
         if (this.store.listIds().length === 0) return;
         // r2 order: state first (disable / revoke / approve), then the queue.
         if (!await this.syncInstalls()) return;
@@ -136,7 +141,7 @@ export class PluginRuntime {
             const installId = entry.record.installId;
             if (!isLiveState(entry.state)) { this.queue.clear(installId); continue; }
             await this.queue.drain(installId, async (item) => {
-                const r = await this.deps.serverOp(installId, item.op, item.payload, `q_${installId}_${item.queuedAt}_${item.key}`.slice(0, 128));
+                const r = await this.serverOp(installId, item.op, item.payload, `q_${installId}_${item.queuedAt}_${item.key}`.slice(0, 128));
                 if (r.kind === 'offline') return 'offline';
                 if (r.kind === 'error') logger.warn(`[PLUGINS] ${entry.id}: queued ${item.op} (${item.key}) ${DROP_ON_REPLAY.has(r.error) ? 'refused' : 'failed'} by the server (${r.error}); dropped`);
                 return 'sent';
@@ -145,9 +150,18 @@ export class PluginRuntime {
         for (const entry of this.registry.list()) if (isLiveState(entry.state)) void this.events.onDue(entry.record.installId);
     }
 
+    /** r2: an old server (or plugins switched off) never takes plugin writes; do not pile them up. */
+    private markUnsupported(): void {
+        this.support = 'no';
+        for (const entry of this.registry.list()) if (this.queue.size(entry.record.installId) > 0) {
+            logger.debug(`[PLUGINS] server has no plugins-v1; dropping ${this.queue.size(entry.record.installId)} queued writes of ${entry.id}`);
+            this.queue.clear(entry.record.installId);
+        }
+    }
+
     /** `install.sync` and apply; false when the server could not be asked. */
     private async syncInstalls(): Promise<boolean> {
-        const res = await this.deps.serverOp(null, 'install.sync', {}, `sync_${Date.now()}`);
+        const res = await this.serverOp(null, 'install.sync', {}, `sync_${Date.now()}`);
         if (res.kind !== 'ok') { logger.debug(`[PLUGINS] install sync skipped (${res.kind === 'error' ? res.error : 'offline'})`); return false; }
         const views = Array.isArray(res.result.installs) ? res.result.installs.map(parseInstallView).filter((v): v is InstallView => v !== null) : [];
         const seen = new Set<string>();

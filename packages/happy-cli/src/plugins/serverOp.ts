@@ -8,6 +8,8 @@ import type { ServerOpResult } from './localApi';
 
 export type PluginServerOpResult = ServerOpResult;
 export const PLUGIN_OP_TIMEOUT_MS = 10_000;
+/** What a plugins-v1 server answers while plugins are off for the account (404, same as an older server). */
+export const PLUGINS_DISABLED = 'plugins_disabled';
 
 /** `plugin-op` ack: `{ ok: true, result }` | `{ ok: false, error, status?, ...details }`. */
 export function parsePluginOpAnswer(answer: unknown): ServerOpResult {
@@ -48,6 +50,9 @@ export class PluginServerClient {
         const data = res.data && typeof res.data === 'object' ? res.data as Record<string, unknown> : {};
         if (res.status === 404 && (data.error === undefined || data.error === 'Not Found' || res.data === '' || typeof res.data === 'string')) {
             throw new PluginServerError('server_too_old', 'this server does not support plugins yet (no /v1/plugins); update the server first', 404);
+        }
+        if (res.status === 404 && data.error === PLUGINS_DISABLED) {
+            throw new PluginServerError('server_too_old', 'plugins are switched off on this server for this account', 404);
         }
         if (res.status >= 400) {
             const code = typeof data.error === 'string' ? data.error : `http_${res.status}`;
