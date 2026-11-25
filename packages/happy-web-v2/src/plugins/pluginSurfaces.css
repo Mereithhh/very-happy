@@ -1,0 +1,104 @@
+/* B-974d: plugin surfaces — sidebar group, panel page, header chips + card,
+   decision cards. Everything is host-drawn; no plugin styles reach here. */
+
+/* ── sidebar group (E1) ─────────────────────────────────────────────── */
+.plg-sb { display: flex; flex-direction: column; gap: 2px; padding: 0 var(--sp-2) var(--sp-2); }
+.plg-sb-title { padding: var(--sp-1) var(--sp-2) 2px; font-size: var(--fs-11); color: var(--text-faint); }
+.plg-sb-row[data-offline] { opacity: 0.55; }
+.plg-sb-row .plg-icon-emoji { flex: none; width: 18px; text-align: center; }
+.sb-nav-attn.plg-sb-badge--quiet { color: var(--text-dim); border-color: transparent; background: var(--fill-soft); }
+
+/* ── panel page (E2) ────────────────────────────────────────────────── */
+.plg-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; background: var(--bg-0); }
+.plg-panel-bar { flex: none; display: flex; align-items: center; gap: var(--sp-2); min-height: 44px; padding: var(--sp-1) var(--sp-3); border-bottom: 1px solid var(--line); }
+.plg-panel-source { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-2); color: var(--text-dim); font-size: var(--fs-13); }
+.plg-panel-source > svg, .plg-panel-source > .plg-icon-emoji { flex: none; }
+.plg-panel-source-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plg-panel-kind { color: var(--text-faint); }
+.plg-panel-name { color: var(--text); font-weight: 500; }
+.plg-panel-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: var(--sp-2); border-left: 1px solid var(--line); color: var(--text-dim); }
+.plg-panel-btn { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: var(--r-sm); color: var(--text-dim); }
+.plg-panel-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+@media (hover: hover) and (pointer: fine) { .plg-panel-btn:hover { background: var(--fill-hover); color: var(--text); } }
+.plg-panel-frame { flex: 1; width: 100%; min-height: 0; border: 0; background: var(--bg-0); }
+.plg-panel-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-3); padding: var(--sp-6); text-align: center; color: var(--text-dim); font-size: var(--fs-14); }
+.plg-panel-empty p { margin: 0; max-width: 420px; text-wrap: pretty; }
+@media (pointer: coarse) {
+  .plg-panel-btn { width: 44px; height: 44px; }
+  .plg-panel-bar { padding: var(--sp-1) var(--sp-2); }
+}
+@media (max-width: 520px) {
+  .plg-panel-machine, .plg-panel-machine + span, .plg-panel-title { display: none; }
+}
+
+/* ── header chips + card (E4) ───────────────────────────────────────── */
+.plg-chips { display: inline-flex; align-items: center; gap: var(--sp-1); min-width: 0; }
+.plg-chip { position: relative; display: inline-flex; align-items: center; gap: 4px; flex: none; max-width: 160px; height: 24px; padding: 0 8px; border-radius: var(--r-pill); background: var(--fill-soft); color: var(--text-dim); font-size: var(--fs-12); }
+.plg-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plg-chip-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); }
+[data-tone='info'] > .plg-chip-dot { background: var(--text-dim); }
+[data-tone='success'] > .plg-chip-dot { background: var(--accent); }
+[data-tone='warning'] > .plg-chip-dot { background: var(--warn); }
+[data-tone='danger'] > .plg-chip-dot { background: var(--danger); }
+.plg-chip:focus-visible, .plg-chip[data-state='open'] { outline: none; background: var(--fill-selected); color: var(--text); }
+.plg-chip:focus-visible { box-shadow: var(--focus-ring); }
+@media (hover: hover) and (pointer: fine) { .plg-chip:hover { background: var(--fill-soft-hover); color: var(--text); } }
+@media (pointer: coarse) { .plg-chip::after { content: ''; position: absolute; inset: -10px -2px; } }
+
+.plg-widget-card { z-index: 60; width: min(320px, calc(100vw - 24px)); padding: var(--sp-3); border-radius: var(--r-md); background: var(--surface-popover); box-shadow: var(--shadow-popover); color: var(--text); }
+.plg-widget-body { display: flex; flex-direction: column; gap: var(--sp-2); }
+.plg-widget-status { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; font-size: var(--fs-14); overflow-wrap: anywhere; }
+.plg-widget-text { margin: 0; font-size: var(--fs-13); line-height: 1.5; color: var(--text-dim); white-space: pre-wrap; overflow-wrap: anywhere; }
+.plg-widget-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); padding-top: var(--sp-1); }
+@media (pointer: coarse) { .plg-widget-actions > * { min-height: 44px; } }
+
+/* the host-drawn source mark (T6): always first, never styled by the plugin */
+.plg-source { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-12); color: var(--text-faint); }
+.plg-source > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── decision cards (E3) ────────────────────────────────────────────── */
+.plg-dec { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.plg-dec-head { display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-1); }
+.plg-dec-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--fs-13); color: var(--text); }
+.plg-dec-count { font-size: var(--fs-11); font-weight: 400; padding: 1px 7px; border-radius: var(--r-pill); color: var(--warn); background: var(--warn-dim); }
+.plg-dec-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+.plg-card { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; padding: var(--sp-3); border-radius: var(--r-md); background: var(--bg-1); box-shadow: var(--panel-shadow); }
+.plg-card[data-state='responded'] { opacity: 0.85; }
+.plg-card-top { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.plg-card-top .plg-source { flex: 1; }
+.plg-card-more { position: relative; display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: var(--r-sm); color: var(--text-faint); }
+.plg-card-more:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+@media (hover: hover) and (pointer: fine) { .plg-card-more:hover { background: var(--fill-hover); color: var(--text); } }
+@media (pointer: coarse) { .plg-card-more::after { content: ''; position: absolute; inset: -10px; } }
+.plg-card-title { margin: 0; font-size: var(--fs-14); font-weight: 600; line-height: 1.4; text-wrap: balance; overflow-wrap: anywhere; }
+.plg-card-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.plg-card-input { display: flex; flex-direction: column; gap: var(--sp-2); }
+.plg-card-input input, .plg-card-input textarea { width: 100%; min-width: 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--r-btn); background: var(--bg-2); color: var(--text); font: inherit; font-size: var(--fs-14); resize: vertical; }
+.plg-card-input input:focus, .plg-card-input textarea:focus { outline: none; border-color: var(--line-heavy); }
+.plg-card-input > button { align-self: flex-end; }
+.plg-card-answered { display: flex; flex-wrap: wrap; gap: var(--sp-2); font-size: var(--fs-13); color: var(--text-dim); }
+.plg-card-warn { color: var(--warn); }
+.plg-card-link { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; font-size: var(--fs-12); color: var(--text-dim); }
+.plg-card-link:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-xs); }
+@media (hover: hover) and (pointer: fine) { .plg-card-link:hover { color: var(--text); text-decoration: underline; } }
+@media (pointer: coarse) {
+  .plg-card-actions > *, .plg-card-input > button { min-height: 44px; }
+  .plg-card-input input, .plg-card-input textarea { font-size: 16px; min-height: 44px; }
+  .plg-card-link { min-height: 44px; }
+}
+
+/* restricted markdown: text, lists, code; links show their host */
+.plg-md { font-size: var(--fs-13); line-height: 1.55; color: var(--text-dim); overflow-wrap: anywhere; }
+.plg-md > :first-child { margin-top: 0; }
+.plg-md > :last-child { margin-bottom: 0; }
+.plg-md p, .plg-md ul, .plg-md ol { margin: 0 0 var(--sp-2); }
+.plg-md ul, .plg-md ol { padding-left: 1.3em; }
+.plg-md code { font-family: var(--font-mono); font-size: 0.92em; padding: 0 3px; border-radius: var(--r-xs); background: var(--fill-soft); }
+.plg-md pre { margin: 0 0 var(--sp-2); padding: var(--sp-2); border-radius: var(--r-sm); background: var(--surface-code); overflow-x: auto; }
+.plg-md pre code { padding: 0; background: none; }
+.plg-md-link { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+.plg-md-host { color: var(--text-faint); font-size: 0.92em; }
+.plg-md-img { color: var(--text-faint); }
+.plg-card--system { width: 100%; text-align: left; color: var(--text); cursor: pointer; }
+.plg-card--system:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+@media (hover: hover) and (pointer: fine) { .plg-card--system:hover { box-shadow: var(--panel-shadow-hover); } }

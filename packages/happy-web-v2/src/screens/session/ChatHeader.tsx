@@ -1,3 +1,4 @@
+import { PluginWidgetChips } from '@/plugins/PluginWidgets';
 import { ClaudeRuntimeDialog } from './ClaudeRuntimeDialog';
 import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
 import { useLocalSetting } from '@/sync/storage';
@@ -338,6 +339,8 @@ export function ChatHeader({
                     {sessionIssue && !foldIdentity && <SessionIssueChip issue={sessionIssue} />}
                     {canShare && <OperatorPresenceChip sessionId={sessionId} compact={compact} />}
                     <PrStatusChip sessionId={sessionId} compact={compact} />
+                    {/* B-974d: plugin widgets (≤ 3, this machine's live installs only) */}
+                    <PluginWidgetChips sessionId={sessionId} compact={compact} />
                     {!foldIdentity && <RelayBadge status={relayStatus} />}
                 </div>
             )}
