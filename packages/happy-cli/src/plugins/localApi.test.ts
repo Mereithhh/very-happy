@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PluginApi, type ServerOpResult, type LocalSessionInfo, type ServerPluginSupport } from './localApi';
 import { OfflineQueue } from './offlineQueue';
 import { PluginEventHub } from './events';
-import { installApproved, registryFor, sampleManifest, tempHome } from './testFixtures';
+import { assertWirePluginOp, installApproved, registryFor, sampleManifest, tempHome } from './testFixtures';
 import type { PluginPermission } from './manifest';
 import type { PluginStore } from './store';
 import type { PluginRegistry } from './registry';
@@ -31,7 +31,8 @@ describe('B-974c /plugin/v1 (DESIGN §5)', () => {
         ({ token } = installApproved(store, m, { grants }));
         registry.reload();
         queue = new OfflineQueue();
-        serverOp = vi.fn(async (_i: string | null, op: string, payload: Record<string, unknown>): Promise<ServerOpResult> => {
+        serverOp = vi.fn(async (_i: string | null, op: string, payload: Record<string, unknown>, requestId: string): Promise<ServerOpResult> => {
+            assertWirePluginOp(_i, op, payload, requestId);
             if (!online) return { kind: 'offline' };
             if (op === 'decision.post') return { kind: 'ok', result: { item: { key: payload.key }, created: true } };
             if (op === 'audit.sensitiveRead') return auditOk ? { kind: 'ok', result: {} } : { kind: 'error', status: 403, error: 'permission_denied' };

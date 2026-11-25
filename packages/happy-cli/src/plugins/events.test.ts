@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { PLUGIN_EVENT_GIVE_UP_MS, verifyPluginEvent } from '@slopus/happy-wire';
 import { GAVE_UP, PluginEventHub } from './events';
 import type { ServerOpResult } from './localApi';
-import { installApproved, registryFor, sampleManifest, tempHome } from './testFixtures';
+import { assertWirePluginOp, installApproved, registryFor, sampleManifest, tempHome } from './testFixtures';
 
 describe('B-974c events: notify + pull, signed push, retries, pull API (r4 §5.10, r5)', () => {
     let cleanup = () => {};
@@ -28,7 +28,8 @@ describe('B-974c events: notify + pull, signed push, retries, pull API (r4 §5.1
         let status = 200;
         const hub = new PluginEventHub({
             registry,
-            serverOp: async (installId, op, payload): Promise<ServerOpResult> => {
+            serverOp: async (installId, op, payload, requestId): Promise<ServerOpResult> => {
+                assertWirePluginOp(installId, op, payload, requestId);
                 ops.push([installId, op, payload]);
                 if (!online) return { kind: 'offline' };
                 if (op === 'events.pull') return { kind: 'ok', result: { events: serverEvents, cursor: serverEvents.length ? 'c2' : null } };

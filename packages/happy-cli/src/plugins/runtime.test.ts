@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PluginRuntime, messageFromLogEntry, parseInstallView, pluginRpcHandlers, trackedPluginSessions } from './runtime';
 import type { ServerOpResult, ServerPluginSupport } from './localApi';
 import { manifestHash } from './manifest';
-import { sampleManifest, tempHome } from './testFixtures';
+import { assertWirePluginOp, sampleManifest, tempHome } from './testFixtures';
 import { PluginStore } from './store';
 
 describe('B-974c runtime: capability gate, install.sync, queue replay, notices (r2/r4)', () => {
@@ -20,7 +20,8 @@ describe('B-974c runtime: capability gate, install.sync, queue replay, notices (
         let installs: unknown[] = [];
         const refuse = new Map<string, string>();
         const ops: Array<[string | null, string, Record<string, unknown>]> = [];
-        const serverOp = vi.fn(async (installId: string | null, op: string, payload: Record<string, unknown>): Promise<ServerOpResult> => {
+        const serverOp = vi.fn(async (installId: string | null, op: string, payload: Record<string, unknown>, requestId: string): Promise<ServerOpResult> => {
+            assertWirePluginOp(installId, op, payload, requestId);
             ops.push([installId, op, payload]);
             if (!online) return { kind: 'offline' };
             if (refuse.has(op)) return { kind: 'error', status: 403, error: refuse.get(op)! };

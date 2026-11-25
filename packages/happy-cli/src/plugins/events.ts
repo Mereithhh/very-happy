@@ -96,7 +96,7 @@ export class PluginEventHub {
     stop(): void { if (this.timer) clearInterval(this.timer); this.timer = null; }
 
     private report(installId: string, eventId: string, status: 'delivered' | 'failed', attempt: number, error?: string): void {
-        void this.deps.serverOp(installId, 'events.result', { eventId, status, attempt, ...(error ? { error: error.slice(0, 500) } : {}) }, `evr_${eventId}_${attempt}`)
+        void this.deps.serverOp(installId, 'events.result', { eventId, status, attempt, ...(error ? { error: error.slice(0, 500) } : {}) }, `evr_${attempt}_${eventId}`.slice(0, 128))
             .catch(() => undefined);
     }
 

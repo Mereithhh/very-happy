@@ -5,6 +5,15 @@ import { join } from 'node:path';
 import { PluginStore, applyServerInstall, type ServerInstallState } from './store';
 import { PluginManifestSchema, manifestHash, type PluginManifest, type PluginPermission } from './manifest';
 import { PluginRegistry } from './registry';
+import { PLUGIN_OP_PAYLOAD_SCHEMAS, PluginOpRequestSchema, type PluginOp } from '@slopus/happy-wire';
+
+/** Contract check: every `plugin-op` the daemon emits must pass the wire schemas the server validates with. */
+export function assertWirePluginOp(installId: string | null, op: string, payload: Record<string, unknown>, requestId: string): void {
+    const envelope = PluginOpRequestSchema.safeParse({ installId, op, payload, requestId });
+    if (!envelope.success) throw new Error(`plugin-op envelope rejected by wire: ${op} ${JSON.stringify(envelope.error.issues)}`);
+    const body = PLUGIN_OP_PAYLOAD_SCHEMAS[op as PluginOp].safeParse(payload);
+    if (!body.success) throw new Error(`plugin-op payload rejected by wire: ${op} ${JSON.stringify(body.error.issues)}`);
+}
 
 export function tempHome(): { home: string; cleanup: () => void } {
     const home = mkdtempSync(join(tmpdir(), 'vh-plugins-'));
