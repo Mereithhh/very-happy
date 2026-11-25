@@ -30,6 +30,8 @@ export * from './promptQueue';
 
 export * from './migrationProtocol';
 export * from './attention';
+export * from './plugins';
+export * from './pluginCrypto';
 export * from './promptProvenance';
 export * from './wrapup';
 export * from './issues';

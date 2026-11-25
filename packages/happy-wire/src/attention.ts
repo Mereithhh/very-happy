@@ -39,6 +39,24 @@ export const ATTENTION_SOURCES = ['lead', 'agent', 'owner', 'automation', 'team'
 export type AttentionSource = typeof ATTENTION_SOURCES[number];
 /** `wrapup` (B-915) = a session's wrap-up / handoff card; its structured body lives in `payload` (`AttentionWrapupPayloadSchema`). */
 export const ATTENTION_KINDS = ['decision', 'todo', 'blocked', 'report', 'answer', 'question', 'request', 'pin', 'wrapup'] as const;
+
+/**
+ * B-974 plugin items. Written by the server from `plugin-op` only, so they are
+ * deliberately **not** in `ATTENTION_SOURCES` / `ATTENTION_KINDS` (the
+ * `POST /v1/attention-items` enums, which agents use). `source: 'plugin'`;
+ * kind `input` = a card the owner answers with text (`owner-respond` `submit`),
+ * `choice` maps to `decision` and `notice` to `report`. A plugin item may have
+ * `sessionId: null` (`AttentionItemAnySchema`) and is listed only with
+ * `?include=plugin`.
+ */
+export const ATTENTION_PLUGIN_SOURCE = 'plugin' as const;
+export const ATTENTION_INPUT_KIND = 'input' as const;
+/** Every source an item can carry (agents' `ATTENTION_SOURCES` + `plugin`). */
+export const ATTENTION_ITEM_SOURCES = [...ATTENTION_SOURCES, ATTENTION_PLUGIN_SOURCE] as const;
+export type AttentionItemSource = typeof ATTENTION_ITEM_SOURCES[number];
+/** Every kind an item can carry (agents' `ATTENTION_KINDS` + `input`). */
+export const ATTENTION_ITEM_KINDS = [...ATTENTION_KINDS, ATTENTION_INPUT_KIND] as const;
+export type AttentionItemKind = typeof ATTENTION_ITEM_KINDS[number];
 export type AttentionKind = typeof ATTENTION_KINDS[number];
 /** `answered` is a settled question/request that stays visible (latest 2 per session, D2); `resolved`/`dismissed` are closed. */
 export const ATTENTION_STATES = ['open', 'in_progress', 'answered', 'resolved', 'dismissed'] as const;
@@ -70,7 +88,7 @@ export function isAttentionBoardLocalId(localId: string | null | undefined): boo
 
 /** Badge + push: only these kinds wait on the owner (§6.1). */
 export function attentionKindNeedsOwner(kind: string): boolean {
-    return kind === 'decision' || kind === 'todo' || kind === 'blocked' || kind === 'wrapup';
+    return kind === 'decision' || kind === 'todo' || kind === 'blocked' || kind === 'wrapup' || kind === 'input';
 }
 
 /**
@@ -299,11 +317,81 @@ export function applySelectCheck(payload: unknown, checkId: string, checked: boo
     return { ...p, items: p.items.map(x => x.id === checkId ? { ...x, checked } : x) };
 }
 
+// ─── B-974 plugin decision payload ───────────────────────────────────────────
+
+/**
+ * A `source: 'plugin'` item carries `payload: { v: 1, type: 'plugin', … }`
+ * (server-written). `options` stay on the item (`decision` kind); per-option
+ * `style`, the `input` spec, the panel deep link, the plugin's delivery state
+ * and the owner's response live here. The Web renders the source tag
+ * 「插件 · name · machine」 from `pluginName` / `machineId`, never from item text.
+ */
+export const AttentionPluginPayloadSchema = z.object({
+    v: z.literal(1),
+    type: z.literal('plugin'),
+    pluginId: z.string().min(1).max(64),
+    pluginName: z.string().min(1).max(64),
+    pluginIcon: z.string().max(32).optional(),
+    machineId: z.string().min(1).max(128),
+    /** Plugin-side kind (`choice` | `input` | `notice`). */
+    decisionKind: z.enum(['choice', 'input', 'notice']),
+    optionStyles: z.record(z.string(), z.enum(['default', 'primary', 'danger'])).optional(),
+    input: z.object({
+        placeholder: z.string().max(80).optional(),
+        maxLength: z.number().int().min(1).max(2000).optional(),
+        multiline: z.boolean().optional(),
+    }).optional(),
+    panelPath: z.string().max(512).optional(),
+    /** Plugin-side state: `responded` waits for the plugin to close or reopen it. */
+    pluginState: z.enum(['open', 'responded', 'closed']),
+    delivery: z.enum(['pending', 'delivered', 'failed']).optional(),
+    response: z.object({
+        action: z.enum(['choose', 'submit', 'dismiss']),
+        choice: z.string().max(16).optional(),
+        text: z.string().max(2000).optional(),
+        note: z.string().max(2000).optional(),
+        at: z.number(),
+    }).optional(),
+    /** Set when the plugin has not acknowledged the response within 24 h (「插件未确认」). */
+    unacknowledged: z.boolean().optional(),
+});
+export type AttentionPluginPayload = z.infer<typeof AttentionPluginPayloadSchema>;
+const PluginPayloadReadSchema = z.object({
+    v: z.literal(1),
+    type: z.literal('plugin'),
+    pluginId: z.string(),
+    pluginName: z.string(),
+    pluginIcon: z.string().optional(),
+    machineId: z.string(),
+    decisionKind: z.string(),
+    optionStyles: z.record(z.string(), z.string()).optional(),
+    input: z.object({ placeholder: z.string().optional(), maxLength: z.number().optional(), multiline: z.boolean().optional() }).passthrough().optional(),
+    panelPath: z.string().optional(),
+    pluginState: z.string(),
+    delivery: z.string().optional(),
+    response: z.object({ action: z.string(), choice: z.string().optional(), text: z.string().optional(), note: z.string().optional(), at: z.number() }).passthrough().optional(),
+    unacknowledged: z.boolean().optional(),
+}).passthrough();
+export type PluginPayloadView = z.infer<typeof PluginPayloadReadSchema>;
+/** Lenient read: null when the payload is not a v1 plugin payload. */
+export function parsePluginPayload(payload: unknown): PluginPayloadView | null {
+    const parsed = PluginPayloadReadSchema.safeParse(payload);
+    return parsed.success ? parsed.data : null;
+}
+/** Plugin items (and any item without a session) are listed only to clients that ask with `?include=plugin` (old Web expects a string `sessionId`). */
+export const ATTENTION_INCLUDE_PLUGIN = 'plugin';
+export function isAttentionPluginItem(item: { source: string; sessionId?: string | null; pluginInstallId?: string | null }): boolean {
+    return item.source === 'plugin' || !!item.pluginInstallId || item.sessionId === null;
+}
+
 // ─── Item (response / update payload) ────────────────────────────────────────
 
 export const AttentionItemSchema = z.object({
     id: z.string(),
+    /** Always set on session items. Plugin items may have none: read those with `AttentionItemAnySchema`. */
     sessionId: z.string(),
+    /** B-974: the plugin install that owns the item; absent from older servers. */
+    pluginInstallId: z.string().nullable().optional(),
     teamId: z.string().nullable(),
     projectId: z.string().nullable(),
     source: z.string(),
@@ -338,6 +426,18 @@ export const AttentionItemSchema = z.object({
     payload: z.unknown().nullable().optional(),
 });
 export type AttentionItem = z.infer<typeof AttentionItemSchema>;
+/**
+ * B-974: any item, including a plugin item with `sessionId: null`. The server
+ * stores these; clients that send `?include=plugin` read lists with it. The
+ * session-scoped `AttentionItemSchema` (and so an old Web's socket parser)
+ * rejects a null `sessionId`, so a plugin item never reaches session code by accident.
+ */
+export const AttentionItemAnySchema = AttentionItemSchema.extend({ sessionId: z.string().nullable() });
+export type AttentionItemAny = z.infer<typeof AttentionItemAnySchema>;
+/** Narrow an item to the session-scoped shape (non-null `sessionId`). */
+export function isSessionAttentionItem(item: AttentionItemAny): item is AttentionItem {
+    return typeof item.sessionId === 'string';
+}
 
 /** Socket `update` body sent to the account after every item mutation (full item snapshot; items are never hard-deleted). */
 export const UpdateAttentionItemBodySchema = z.object({
@@ -424,6 +524,8 @@ export const AttentionItemOwnerRespondSchema = z.discriminatedUnion('action', [
     z.object({ action: z.literal('choose'), choice: z.string().trim().min(1).max(ATTENTION_LIMITS.optionIdChars), note: note.optional() }),
     z.object({ action: z.literal('resolve'), note: note.optional() }),
     z.object({ action: z.literal('reopen'), note: note.optional() }),
+    /** B-974: answer a plugin `input` card (length capped by the card's `input.maxLength`, server-checked). */
+    z.object({ action: z.literal('submit'), text: z.string().trim().min(1).max(2000), note: note.optional() }),
     /** B-915: tick / untick one `payload.pending` entry of a `wrapup` item; B-924: one `payload.items` entry of a select decision (state unchanged). */
     z.object({ action: z.literal('check'), checkId: z.string().trim().min(1).max(WRAPUP_LIMITS.idChars), checked: z.boolean() }),
 ]);
@@ -438,7 +540,13 @@ export const AttentionItemListQuerySchema = z.object({
     /** Epoch ms; only items updated after it. */
     since: z.coerce.number().int().nonnegative().optional(),
     limit: z.coerce.number().int().min(1).max(ATTENTION_LIMITS.listMax).optional(),
+    /** B-974: `plugin` also lists plugin items (sessionId may be null). Old clients omit it and never see them. */
+    include: z.string().max(64).optional(),
 });
+/** True when a list query opted into plugin items (`include=plugin` or a comma list containing it). */
+export function attentionQueryIncludesPlugin(include: string | undefined | null): boolean {
+    return !!include && include.split(',').map(s => s.trim()).includes(ATTENTION_INCLUDE_PLUGIN);
+}
 export type AttentionItemListQuery = z.infer<typeof AttentionItemListQuerySchema>;
 
 export type AttentionItemPostResponse = { item: AttentionItem; created: boolean };
