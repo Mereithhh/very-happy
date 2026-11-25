@@ -47,6 +47,7 @@ import {
     codexModelGate,
 } from '@/components/modelModeOptions';
 import { checkCustomModelName, recentCustomModelsStore, useRecentCustomModels } from '@/sync/customModelInput';
+import { isPartialPiCatalog, piDraftThoughtLevels } from '@/sync/piModelTable';
 import { machineAgentUpdateHref, readAgentVersions } from '@/app/agentVersions';
 import { isImeGuardedEvent, useImeGuard } from '@/utils/ime';
 import { insertComposerNewline, insertComposerText, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
@@ -514,6 +515,9 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     const catalogCodes = catalogModels?.length ? new Set(catalogModels.map((model) => model.code)) : null;
     // B-894b: rows B-893 marks as needing a newer Codex get 「更新」 beside them.
     const codexGatedKeys = new Set<string>();
+    // B-978: the machine's pi list came from models.json (pi could not list its
+    // registry) — pi's built-in providers are missing, so the default row says so.
+    const piPartialList = !session && isPiAgent(flavor) && isPartialPiCatalog(launcherCatalogs[0]);
     const listedModels = localizeModelDescriptions(flavor, withLongContextTwins(flavor, withTypedModels, t('session.chat.modelPicker.longContext')), {
         resolved: resolvedModelOf,
         keep: new Set([LATEST_MODEL_MODE, 'default', ...customModels, ...typedModels]),
@@ -522,6 +526,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     }).map((option) => {
         const gate = normalizeAgentKey(flavor) === 'codex' ? codexModelGate(option.key, { catalogCodes, agentVersion: codexVersion }) : null;
         if (gate) codexGatedKeys.add(option.key);
+        if (piPartialList && option.key === 'default') return { ...option, description: t('session.chat.modelPicker.piPartialList') };
         return gate ? { ...option, description: t('session.chat.modelPicker.codexNeedsUpdate', { version: gate.since }) } : option;
     });
     // B-849b2 (QA28 P2-3): a model the picker does not list is shown as itself
@@ -538,9 +543,14 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
     const isCodex = normalizeAgentKey(flavor) === 'codex';
     // B-975: a Codex draft judges levels by the machine's own catalog; one that
     // cannot tell its model yet gives no verdict (the landing re-checks).
-    const draftCatalog = isCodex && !session && launcherCatalogs[0]?.models?.length
+    // B-978: a pi draft does the same — its models and thinking levels come from
+    // the machine's `pi --list-models` table before any pi session exists.
+    const piDraftCatalog = !session && isPiAgent(flavor) && launcherCatalogs[0]?.models?.length
+        ? { ...launcherCatalogs[0], thoughtLevels: piDraftThoughtLevels(launcherCatalogs[0], modelKey ?? 'default') } as unknown as typeof metadata
+        : null;
+    const draftCatalog = piDraftCatalog ?? (isCodex && !session && launcherCatalogs[0]?.models?.length
         ? { models: launcherCatalogs[0].models, defaultModelCode: launcherContext?.configuredModel ?? undefined } as unknown as typeof metadata
-        : metadata;
+        : metadata);
     const listedEfforts = getEffortLevelsForModel(flavor, modelKey ?? 'default', draftCatalog);
     const accountEffort = getAgentDefaultOverride(agentDefaultOverrides, flavor).effortLevel;
     const runSettings = { agentDefaultOverrides, claudeLongContextOptOut: longContextOptOut };

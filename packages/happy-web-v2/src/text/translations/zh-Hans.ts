@@ -1321,6 +1321,7 @@ export const zhHans: TranslationStructure = {
                 longContextRefusedHint: '这台机器的账号或供应商拒绝了 1M 上下文，跟随最新改用标准上下文；打开则仍按 1M 请求。',
                 unknownModel: ({ model }: { model: string }) => `${model} · 未知模型`,
                 unknownModelHint: '不在这台机器上报的模型列表里，消息仍按这个 id 发出',
+                piPartialList: '这台机器上的 pi 没能列出自己的模型，下面只有 models.json 里配置的模型，pi 内置 provider 的模型缺失。在那台机器上升级 pi 后会显示全部',
                 // B-894b: beside a codexNeedsUpdate mark → the machine page's Update.
                 updateCodex: '更新',
                 codexNeedsUpdate: ({ version }: { version: string }) => `较新版 Codex（${version}+）才内置 · 可直接试`,
@@ -3896,6 +3897,14 @@ export const zhHans: TranslationStructure = {
                 summary: 'Claude 会话的模型列表里新增 Kimi K3.1 Pro 和 DeepSeek V4.1 Flash，不用再手动填自定义模型。',
                 models: '这两个模型都需要 Anthropic 兼容网关，比如填了自定义 Base URL 的 API 账号。Claude 订阅账号和走 Anthropic 官方地址的 API 账号不显示；不知道用的是哪个账号时照常列出，并附上这条说明。默认模型不变。',
                 tools: 'deepseek-v4.1-flash 可以带完整工具集使用。',
+            },
+            nov26a: {
+                title: '新建 pi 会话时可以选择模型',
+                summary: '以前新建 pi 会话只能用它自己配置的模型。现在和 Codex、DeepSeek Harness 会话一样，可以选这台电脑上的 pi 报出的模型，也能选思考档位。',
+                models: '会话开始前，模型列表来自你选的那台机器上的 pi，所以从没用过 pi 会话的电脑也能选。选中的模型就是会话启动时用的模型，重启或恢复会话后保持不变。',
+                thinking: 'pi 报告某个模型支持思考时才显示档位；否则新建前只显示「默认」，会话开始后按会话自己的档位来，和 DeepSeek Harness 一样。那台电脑上的 pi 列不出模型时，列表只有 models.json 里的模型，并注明缺少内置 provider 的模型。',
+                settings: '设置 → Agents、Issues 和团队表单用同一份列表，和其他 agent 一样按机器取。DeepSeek Harness 会话没有模型列表时，也不会再列出 Claude 的模型。',
+                upgrade: '需要 CLI 0.2.232。旧版 CLI 下选择器仍然只显示「机器默认」，pi 会话行为不变。',
             },
             nov25a: {
                 title: 'DeepSeek Harness：权限请求写明要执行什么，自动执行立即生效',

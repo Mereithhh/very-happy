@@ -33,7 +33,7 @@ export const SKILL_AREAS: readonly SkillArea[] = [
 An agent session is a Claude / Codex / pi / Gemini / OpenClaw process run by a machine's daemon and mirrored to the Web.
 
 ## CLI
-- \`very-happy spawn --dir <path> --prompt <text> [--agent claude|codex|pi] [--model <id>] [--permission-mode <m>] [--project <id>] [--json]\`: new session through this machine's daemon; \`--fork <sessionId>\` copies an existing one.
+- \`very-happy spawn --dir <path> --prompt <text> [--agent claude|codex|pi] [--model <id>] [--permission-mode <m>] [--project <id>] [--json]\`: new session through this machine's daemon; \`--fork <sessionId>\` copies an existing one. For pi the model id is \`provider/id\` as \`pi --list-models\` on that machine prints it; the daemon publishes that table so the Web picker offers the models before a pi session exists.
 - \`very-happy send --session <id> --prompt <text> [--resume]\`: message an existing session; exit 3 when it is not live.
 - \`very-happy sessions list [--all]\`, \`sessions read <id> [--answer] [--wait]\`, \`sessions stop|archive <id>\`.
 - \`very-happy sessions approve|deny <id> <requestId>\`: answer a pending permission card (only sessions this machine's daemon spawned).

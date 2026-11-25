@@ -19,7 +19,7 @@ import { useIssuesStore } from '@/sync/issuesStore';
 import { useProjects } from '@/sync/projects';
 import { collectRecentCatalogs } from '@/sync/launcherModels';
 import { getLauncherModelModes } from '@/components/modelModeOptions';
-import { collectPiModelOptions } from '@/sync/piModelOptions';
+import { withPiDefaults } from '@/sync/piModelOptions';
 import { useLatestModelTable } from '@/sync/latestModels';
 import { isAgentOffered, resolveAgentAvailability } from '@/utils/agentAvailability';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
@@ -113,13 +113,14 @@ export function AssigneeFields({ draft, onChange, copy, status, projectId, idPre
     const machine = machines.find((m) => m.id === draft.machineId);
     const translate = useCallback((key: string) => t(key as TranslationKey), [t]);
     const modelOptions: SelectOption[] = useMemo(() => {
-        const catalogs = draft.agent === 'pi' ? [] : collectRecentCatalogs(sessions, draft.agent, draft.machineId || null);
-        const modes = draft.agent === 'pi' ? collectPiModelOptions(sessions, [draft.model]) : getLauncherModelModes(draft.agent, catalogs, translate as never, latestTable);
+        // B-978: pi goes through the same per-machine catalogs (its daemon's `pi --list-models` table first).
+        const catalogs = collectRecentCatalogs(sessions, draft.agent, draft.machineId || null, machines);
+        const modes = draft.agent === 'pi' ? withPiDefaults(catalogs, [draft.model]) : getLauncherModelModes(draft.agent, catalogs, translate as never, latestTable);
         const list: SelectOption[] = [{ value: '', label: copy.modelDefault }];
         for (const mode of modes) if (mode.key !== 'default' && !list.some((o) => o.value === mode.key)) list.push({ value: mode.key, label: mode.name, ...(mode.description ? { description: mode.description } : {}) });
         if (draft.model && !list.some((o) => o.value === draft.model)) list.push({ value: draft.model, label: draft.model });
         return list;
-    }, [sessions, draft.agent, draft.machineId, draft.model, translate, latestTable, copy]);
+    }, [sessions, machines, draft.agent, draft.machineId, draft.model, translate, latestTable, copy]);
 
     const kinds = [
         { value: 'none' as const, label: copy.kindNone },

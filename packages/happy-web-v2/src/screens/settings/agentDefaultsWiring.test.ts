@@ -12,17 +12,23 @@ const agentInput = readFileSync(new URL('../session/AgentInput.tsx', import.meta
 describe('Settings → Agents renders pi as its own row', () => {
     it('iterates agentKeys (which now include pi) and feeds pi the published model list, not Claude aliases', () => {
         expect(settings).toContain('{agentKeys.map((agent) => {');
-        expect(settings).toContain("import { collectPiModelOptions } from '@/sync/piModelOptions';");
+        expect(settings).toContain("import { withPiDefaults } from '@/sync/piModelOptions';");
         expect(settings).toContain("const modelOptions = localizeModelDescriptions(agent, localizeModelNames(agent, agent === 'pi' ? piModelOptions : getLauncherModelModes(agent, catalogs, translate, latestTable), t)");
-        expect(settings).toContain('collectPiModelOptions(allSessions, [piModelOverride])');
+        // B-978: pi goes through the per-machine catalogs (daemon `pi --list-models` tables first).
+        expect(settings).toContain("collectRecentCatalogs(allSessions, 'pi', undefined, allMachines)");
+        expect(settings).toContain('withPiDefaults(piCatalogs, [piModelOverride])');
     });
 });
 
 describe('B-975b: Settings → Codex effort', () => {
     it('lists settingsCodexEffort levels from the machine catalogs and selects the saved one', () => {
         expect(settings).toContain("settingsCodexEffort({ modelMode: resolved.modelMode, catalogs, table: latestTable, saved: savedEffort })");
-        expect(settings).toContain('namedEffortOptions(codexEffort?.levels ?? getEffortLevelsForModel(agent, effectiveModel), t)');
+        expect(settings).toContain('namedEffortOptions(codexEffort?.levels ?? getEffortLevelsForModel(agent, effectiveModel, piEffortCatalog), t)');
         expect(settings).toContain("value={savedEffort ?? '__code_default__'}");
+    });
+
+    it('B-978: pi levels come from the machines’ thinking-capable models', () => {
+        expect(settings).toContain('piCatalogs.map((catalog) => piDraftThoughtLevels(catalog, effectiveModel))');
     });
 });
 

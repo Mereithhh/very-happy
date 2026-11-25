@@ -1,41 +1,34 @@
 import type { ModelMode } from '@/components/modelModeOptions';
-import { getPiModelModes, mapMetadataOptions } from '@/components/modelModeOptions';
-import { isPiAgent } from './agentDefaults';
+import {
+    collectRecentCatalogs,
+    type LauncherCatalogSource,
+    type MachineCatalogSource,
+} from './launcherModels';
+import { getPiModelModes } from '@/components/modelModeOptions';
+import { mapMetadataOptions } from '@/components/modelModeOptions';
 
 /**
- * Model options Settings → Agents can offer for pi (B-370).
+ * pi's model list (B-370, B-978).
  *
- * pi has no hardcodable model list — its registry is whatever providers the
- * machine's pi is configured with — and there is no session on the settings
- * page to ask. What we do have is every pi session on the account: pi-acp
- * publishes the registry it started with in `metadata.models` (probed 23/23
- * sessions on 2026-09-07: e.g. `zai/glm-5.3`, `llm-hub/claude-fable-5-1`). So
- * the picker is `default` (don't send a model; the machine's own pi config
- * applies) followed by the union of those lists, most recently updated session
- * first so a machine whose registry changed wins over stale ones.
+ * There is no hardcodable registry: a machine's pi has whatever providers it is
+ * configured with, and the model ids are pi-acp's `provider/id`. B-978 folds pi
+ * into the same source every other agent uses — `collectRecentCatalogs`: the
+ * machine's daemon reports its own `pi --list-models` table, and sessions that
+ * already ran contribute theirs as the fallback for older daemons. This module
+ * only turns those catalogs into picker rows and keeps `default` first.
  *
- * Pure so it can be tested without the store; the settings page feeds it
- * `useAllSessions()` (already newest-first) and memoises.
+ * Pure so it can be tested without the store.
  */
-export type PiModelSource = {
-    updatedAt: number;
-    metadata?: {
-        flavor?: string | null;
-        models?: Array<{ code: string; value: string; description?: string | null }> | null;
-    } | null;
-};
 
-export function collectPiModelOptions(
-    sessions: readonly PiModelSource[],
-    /** Keys that must stay pickable even if no session published them (the saved override). */
+/** `default` (don't send a model) first, then each catalog's models, then any saved key that must stay pickable. */
+export function withPiDefaults(
+    catalogs: ReadonlyArray<{ models?: Array<{ code: string; value: string; description?: string | null }> | null } | null | undefined>,
     keep: readonly (string | null | undefined)[] = [],
 ): ModelMode[] {
     const out: ModelMode[] = [...getPiModelModes()];
     const seen = new Set(out.map((option) => option.key));
-    const ordered = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
-    for (const session of ordered) {
-        if (!isPiAgent(session.metadata?.flavor)) continue;
-        for (const option of mapMetadataOptions(session.metadata?.models)) {
+    for (const catalog of catalogs) {
+        for (const option of mapMetadataOptions(catalog?.models)) {
             if (seen.has(option.key)) continue;
             seen.add(option.key);
             out.push(option);
@@ -47,4 +40,17 @@ export function collectPiModelOptions(
         out.push({ key, name: key, description: null });
     }
     return out;
+}
+
+/**
+ * The account-wide pi list, deduplicated per machine. `machines` carries the
+ * daemons' reported tables (see `collectRecentCatalogs`); without them the list
+ * is whatever pi sessions published, which is all an old daemon can offer.
+ */
+export function collectPiModelOptions(
+    sessions: readonly LauncherCatalogSource[],
+    keep: readonly (string | null | undefined)[] = [],
+    machines: readonly MachineCatalogSource[] = [],
+): ModelMode[] {
+    return withPiDefaults(collectRecentCatalogs(sessions, 'pi', undefined, machines), keep);
 }

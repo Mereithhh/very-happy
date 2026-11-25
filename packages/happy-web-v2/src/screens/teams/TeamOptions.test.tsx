@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, vi } from 'vitest';
 const machine = { id: 'm', active: true, metadata: { host: 'computer', cliAvailability: { codex: true, pi: true } } };
-vi.mock('@/sync/storage', () => ({ useMachine: () => machine, useAllSessions: () => [{ updatedAt: 1, metadata: { flavor: 'acp', models: [{ code: 'gw/m1', value: 'm1' }] } }] }));
+vi.mock('@/sync/storage', () => ({ useMachine: () => machine, useAllSessions: () => [{ updatedAt: 1, metadata: { flavor: 'acp', machineId: 'm', models: [{ code: 'gw/m1', value: 'm1' }] } }] }));
 vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ lang: 'en', t: (key: string) => key }) }));
 import { TeamOptions } from './TeamOptions';
 

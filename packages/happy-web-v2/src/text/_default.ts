@@ -1114,6 +1114,7 @@ export const en = {
                 longContextRefusedHint: 'This machine\'s account or provider refused 1M context, so following latest uses the standard window. Turning it on asks for 1M anyway.',
                 unknownModel: ({ model }: { model: string }) => `${model} · unknown model`,
                 unknownModelHint: 'Not in the models this machine reported; messages still send this id',
+                piPartialList: 'Only models from pi\'s models.json are listed: pi could not list its own models on this machine, so built-in providers are missing. Update pi there to see them all',
                 // B-894b: beside a codexNeedsUpdate mark → the machine page's Update.
                 updateCodex: 'Update',
                 codexNeedsUpdate: ({ version }: { version: string }) => `Built into Codex ${version}+ · you can try it now`,
@@ -3668,6 +3669,14 @@ export const en = {
                 summary: 'When an agent tries to preview a file that does not exist (or a folder), it is told so instead of being told the preview went out, so it stops saying "preview opened" for nothing.',
                 agent: 'Applies to Claude, Codex and pi sessions. The agent is asked to create the file or check the path first; a relative path is read from the session\'s folder.',
                 notice: 'If a preview you open is missing, it now shows the full path (with a copy button), the machine it looked on, and the likely causes: not generated yet, cleaned up, or on another machine.',
+            },
+            nov26a: {
+                title: 'Starting a pi session lets you pick its model',
+                summary: 'A new pi session could only start on the model pi itself was configured with. It now offers the models this computer\'s pi reports, plus its thinking levels, the same way a Codex or DeepSeek Harness session does.',
+                models: 'Before the session starts, the model list comes from pi on the machine you picked, so it works on a computer that has never run a pi session. The model you choose is what the session starts on, and restarting or restoring the session keeps it.',
+                thinking: 'Thinking levels are offered when pi reports the model as reasoning; otherwise only Default shows until the session starts and lists its own, as for DeepSeek Harness. If pi on that computer cannot list its models, the list holds only models.json entries and says that built-in providers are missing.',
+                settings: 'Settings → Agents, Issues and Teams offer the same list, one per computer, like the other agents. A DeepSeek Harness session without a model list no longer offers Claude models.',
+                upgrade: 'Needs CLI 0.2.232. On an older CLI the picker keeps showing only the machine default, and pi sessions behave as before.',
             },
             nov25j: {
                 title: 'The 「new release notes」 prompt stays until you look',

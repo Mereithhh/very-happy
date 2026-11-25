@@ -158,6 +158,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-26-pi-model-picker',
+    cliVersion: '0.2.232',
+    date: '2026-11-26',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov26a.title',
+    summaryKey: 'changelog.releases.nov26a.summary',
+    itemKeys: ['changelog.releases.nov26a.models', 'changelog.releases.nov26a.thinking', 'changelog.releases.nov26a.settings', 'changelog.releases.nov26a.upgrade'],
+  },
+  {
     id: '2026-11-25-release-notes-hint-stays',
     date: '2026-11-25',
     buildVersion: __APP_VERSION__,

@@ -726,6 +726,10 @@ same configuration applies when you run the agent in a terminal there:
   prints `$NAME`. Sessions inherit the daemon's environment, so set the variable
   where the daemon starts (the page says whether it is present). Gemini has no
   env-reference form; set `GEMINI_API_KEY` in the daemon environment instead.
+- B-978: the model list a new pi session offers is the table the machine's
+  daemon reads from `pi --list-models` (`daemonState.piModels`), so models
+  configured above appear in the picker before any pi session runs; sessions
+  that already ran still contribute their own list for older daemons.
 - Changes apply to **new** sessions; running sessions keep their configuration
   until restarted. A Claude change re-runs the auth preflight
   (`daemonState.claudeAuth`). The model ids you configure are added to that

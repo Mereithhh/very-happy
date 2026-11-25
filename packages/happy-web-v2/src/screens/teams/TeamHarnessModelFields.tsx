@@ -5,7 +5,8 @@
  */
 import { useEffect, useId, useMemo } from 'react';
 import { getHardcodedModelModes } from '@/components/modelModeOptions';
-import { collectPiModelOptions } from '@/sync/piModelOptions';
+import { withPiDefaults } from '@/sync/piModelOptions';
+import { collectRecentCatalogs } from '@/sync/launcherModels';
 import { useAllSessions, useMachine } from '@/sync/storage';
 import { modelConfigStore, useCustomPickerModels } from '@/sync/modelConfigStore';
 import { machineSupportsModelConfig } from '@/sync/modelConfigModel';
@@ -36,8 +37,11 @@ export function TeamHarnessModelFields({ machineId, assistant, model, onAssistan
     const harnesses = teamHarnessChoices(machine?.metadata, assistant);
     const catalog = useMemo(() => {
         const agent = teamAssistantAgent(assistant);
-        return agent === 'pi' ? collectPiModelOptions(sessions) : getHardcodedModelModes(agent, (key) => key);
-    }, [assistant, sessions]);
+        // B-978: the team machine's pi catalog (its daemon's `pi --list-models` table first).
+        return agent === 'pi'
+            ? withPiDefaults(collectRecentCatalogs(sessions, 'pi', machineId, machine ? [machine] : []))
+            : getHardcodedModelModes(agent, (key) => key);
+    }, [assistant, sessions, machineId, machine]);
     const { choices, savedMissing } = teamModelChoices({ catalog, custom, saved: model, labels: { followDefault: c.modelDefault, custom: c.modelCustom, missing: c.modelNotListed } });
     const current = harnesses.find((h) => h.value === assistant);
     // default + catalog lead ungrouped; custom / missing rows sit under their own heading instead of a label suffix
