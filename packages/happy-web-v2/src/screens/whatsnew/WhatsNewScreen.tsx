@@ -11,7 +11,8 @@ import { ArrowDown, ArrowRight, Check, ChevronLeft, Clipboard, PackageOpen } fro
 import { useTranslation } from '@/i18n/useTranslation';
 import { usePublicI18n } from '@/i18n/publicI18n';
 import { ChangelogShotImage, ChangelogTopics } from '@/app/ChangelogHighlights';
-import { whatsNewReleases } from '@/app/changelogRelease';
+import { visibleChangelogReleases, whatsNewReleases } from '@/app/changelogRelease';
+import { useServerFeatures } from '@/sync/serverFeatures';
 import { MajorBadge } from '@/app/MajorBadge';
 import { cliUpdateInstallCommand } from '@/app/cliUpdatePolicy';
 import { PublicFooter, PublicHeader } from '@/screens/public/PublicShell';
@@ -23,7 +24,7 @@ export function WhatsNewScreen() {
   const { t, lang } = useTranslation();
   const { copy } = usePublicI18n();
   const c = copy.whatsNew;
-  const pair = whatsNewReleases();
+  const pair = whatsNewReleases(visibleChangelogReleases(useServerFeatures()));
   const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
   // B-796: opened from inside the app (or the installed app) → a way back; a shared link keeps the public header only.

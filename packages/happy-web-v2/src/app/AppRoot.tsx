@@ -34,6 +34,7 @@ import { subscribeFirstMachineConnected } from '@/screens/onboarding/firstMachin
 import { TerminalConnectScreen } from '@/screens/auth/TerminalConnectScreen';
 import { BRAND } from './brand';
 import { CliUpdateBanner } from './CliUpdateBanner';
+import { ServerFeaturesSync } from './ServerFeaturesSync';
 import { MigrationBanner } from './MigrationBanner';
 import { useTranslation } from '@/i18n/useTranslation';
 import { RouteLoading } from './RouteLoading';
@@ -583,6 +584,7 @@ export function AppRoot() {
             <Splash />
           ) : (
             <AuthProvider initialCredentials={creds}>
+              <ServerFeaturesSync />
               <RouterProvider router={router} />
             </AuthProvider>
           )}
