@@ -42,7 +42,7 @@ export { AgentDefaultOverrideSchema, AgentDefaultOverridesSchema };
 
 export type AgentDefaultOverride = z.infer<typeof AgentDefaultOverrideSchema>;
 export type AgentDefaultOverrides = z.infer<typeof AgentDefaultOverridesSchema>;
-export type AgentDefaultField = keyof Pick<AgentDefaultOverride, 'permissionMode' | 'modelMode' | 'effortLevel'>;
+export type AgentDefaultField = keyof Pick<AgentDefaultOverride, 'permissionMode' | 'modelMode' | 'effortLevel' | 'contextMode'>;
 
 export function isPiAgent(flavor: string | null | undefined): boolean {
     return normalizeAgentKey(flavor) === 'pi';
@@ -279,7 +279,7 @@ export function setAgentDefaultOverride(
         current[field] = value;
     }
 
-    if (current.permissionMode === undefined && current.modelMode === undefined && current.effortLevel === undefined) {
+    if (current.permissionMode === undefined && current.modelMode === undefined && current.effortLevel === undefined && current.contextMode === undefined) {
         delete next[key];
     } else {
         next[key] = current;

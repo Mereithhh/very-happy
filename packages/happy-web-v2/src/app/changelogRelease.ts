@@ -158,6 +158,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-26-codex-extended-context',
+    cliVersion: '0.2.232',
+    date: '2026-11-26',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov26b.title',
+    summaryKey: 'changelog.releases.nov26b.summary',
+    itemKeys: ['changelog.releases.nov26b.picker', 'changelog.releases.nov26b.meter'],
+  },
+  {
     id: '2026-11-26-pi-model-picker',
     cliVersion: '0.2.232',
     date: '2026-11-26',

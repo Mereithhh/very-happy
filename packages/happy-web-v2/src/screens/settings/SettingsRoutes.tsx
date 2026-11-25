@@ -73,10 +73,13 @@ import {
   setAgentDefaultOverride,
 } from '@/sync/agentDefaults';
 import { layoutModelPicker } from '@/screens/session/modelPickerLayout';
-import { autoEffortName, effortLevelName, localizeModelDescriptions, localizeModelNames, namedEffortOptions } from '@/screens/session/runSetupCopy';
+import { autoEffortName, effortLevelName, localizeModelDescriptions, localizeModelNames, namedContextOptions, namedEffortOptions } from '@/screens/session/runSetupCopy';
 import { withPiDefaults } from '@/sync/piModelOptions';
 import { piDraftThoughtLevels } from '@/sync/piModelTable';
 import { settingsCodexEffort } from '@/sync/settingsEffort';
+import { settingsCodexContextOptions } from '@/sync/codexContextMode';
+import { followEntryModel, followLatestState } from '@/sync/followLatestDisplay';
+import { resolveLatestForAgent } from '@/sync/agentDefaults';
 import { collectRecentCatalogs, runnableFromCatalogs } from '@/sync/launcherModels';
 import { machineLabel } from '@/utils/machineUtils';
 import { useLatestModelTable } from '@/sync/latestModels';
@@ -1318,6 +1321,16 @@ function AgentDefaults() {
           const savedEffort = getAgentDefaultOverrideValue(overrides, agent, 'effortLevel');
           // B-975b: Codex levels come from the machines' reported catalogs, as in the composer.
           const codexEffort = agent === 'codex' ? settingsCodexEffort({ modelMode: resolved.modelMode, catalogs, table: latestTable, saved: savedEffort }) : null;
+          // B-977: the account-wide Codex 「上下文」 default, offered only for a model the machines report as able to run larger.
+          const codexContext = agent === 'codex' ? settingsCodexContextOptions({
+            modelMode: resolved.modelMode,
+            catalogs,
+            followedModelOf: (catalog) => {
+              const followed = catalog ? followEntryModel(followLatestState(resolveLatestForAgent(latestTable, 'codex', catalog), true)) : null;
+              return followed ?? catalog?.configuredModel ?? catalog?.defaultModelCode;
+            },
+          }) : null;
+          const savedContext = getAgentDefaultOverrideValue(overrides, agent, 'contextMode');
           // B-978: pi levels only for a model a machine reported as reasoning;
           // otherwise 「默认」 alone, and the session's own levels apply once it runs.
           const piEffortCatalog = agent === 'pi'
@@ -1364,6 +1377,19 @@ function AgentDefaults() {
                   onPick={(v) => pick(agent, 'modelMode', v)}
                   followLatest={followsLatestByDefault ? { summary: followSummary, machines: perMachine } : undefined}
                   moreKeys={moreKeys}
+                />
+              )}
+              {codexContext && (
+                <Item
+                  title={t('session.chat.contextLabel')}
+                  subtitle={<EffortSegments
+                    labelHidden
+                    className="set-effort"
+                    label={t('session.chat.contextLabel')}
+                    options={namedContextOptions(codexContext.options, t)}
+                    value={savedContext ?? 'standard'}
+                    onChange={(v) => pick(agent, 'contextMode', v === 'standard' ? null : v)}
+                  />}
                 />
               )}
               {effortOptions.length > 0 && (

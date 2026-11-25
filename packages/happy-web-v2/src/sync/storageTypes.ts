@@ -18,6 +18,9 @@ export const MetadataSchema = z.object({
     currentModelCode: z.string().optional(),
     // B-908: the window Claude Code measures the running model against (wrapper-reported).
     currentContextWindow: z.number().optional().catch(undefined),
+    // B-977: Codex — the context mode the wrapper runs and, per model, the windows of both modes (read through happy-wire).
+    codexContextMode: z.string().optional().catch(undefined),
+    codexContextWindows: z.unknown().optional(),
     defaultModelCode: z.string().optional(),
     // B-844: model the machine's own agent config pins (Codex config/read,
     // Gemini settings); null = none; absent = older wrapper (unknown).
@@ -337,6 +340,7 @@ export interface Session {
     permissionMode?: string | null; // Pending local mode, rehydrated cross-device from latest sent message meta
     modelMode?: string | null; // Local model key, not synced to server
     effortLevel?: string | null; // Local effort level key, not synced to server
+    contextMode?: string | null; // B-977: local Codex context window pick ('standard' | 'extended'), not synced to server
     // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
     // We store it directly on Session to ensure it's available immediately on load.
     // Do NOT store reducerState itself on Session - it's mutable and should only exist in SessionMessages.

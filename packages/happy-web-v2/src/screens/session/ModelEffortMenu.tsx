@@ -57,7 +57,7 @@ export type MenuAccountSection = {
  * unknown running model; `footer` says the scope and offers the explicit
  * 「设为新会话默认」 (a pick here never writes the account default, B-848).
  */
-export function ModelEffortMenu({ label, modelLabel, options, layout, value, onChange, subtitle, notice, readOnly, effort, longContextLabel, longContextHint, longContextLockedHint, moreLabel, footer, customize, onOpen, triggerLabel, account, triggerPrefix, customModel, rowExtra, pickRow, onLongContextToggle }: {
+export function ModelEffortMenu({ label, modelLabel, options, layout, value, onChange, subtitle, notice, readOnly, effort, context, longContextLabel, longContextHint, longContextLockedHint, moreLabel, footer, customize, onOpen, triggerLabel, account, triggerPrefix, customModel, rowExtra, pickRow, onLongContextToggle }: {
     label: string;
     modelLabel: string;
     options: ModeOption[];
@@ -68,6 +68,8 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
     notice?: { text: string; action?: MenuAction; extra?: ReactNode };
     readOnly?: { value: string; hint: string };
     effort: { label: string; options: ModeOption[]; value: string | null; onChange: (key: string) => void };
+    /** B-977: Codex 「上下文」 (standard / extended); absent = this model has one window. */
+    context?: { label: string; options: ModeOption[]; value: string | null; onChange: (key: string) => void };
     longContextLabel?: string;
     longContextHint?: string;
     /** B-908: hint under a locked 1M switch (「这个模型默认 1M 上下文」). */
@@ -108,7 +110,7 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
 
     const body = <ModelEffortBody
         modelLabel={modelLabel} layout={resolvedLayout} selectedKey={listedKey} onChoose={chooseRow}
-        subtitle={subtitle} notice={notice} readOnly={readOnly} effort={effort}
+        subtitle={subtitle} notice={notice} readOnly={readOnly} effort={effort} context={context}
         longContext={resolvedLayout.longContext && longContextLabel ? { ...resolvedLayout.longContext, label: longContextLabel, hint: resolvedLayout.longContext.locked ? longContextLockedHint ?? longContextHint : longContextHint, onToggle: (on) => { onLongContextToggle?.(on); onChange(on ? resolvedLayout.longContext!.onKey : resolvedLayout.longContext!.offKey); } } : null}
         more={moreLabel ? { label: moreLabel, open: moreOpen, onToggle: () => setMoreOpen((v) => !v) } : null}
         footer={footer} customize={customize} runAction={runAction} account={account} rowExtra={rowExtra}
@@ -152,7 +154,7 @@ export function ModelEffortMenu({ label, modelLabel, options, layout, value, onC
     </Popover.Root>;
 }
 
-function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, notice, readOnly, effort, longContext, more, footer, customize, runAction, account, customModel, rowExtra }: {
+function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, notice, readOnly, effort, context, longContext, more, footer, customize, runAction, account, customModel, rowExtra }: {
     modelLabel: string;
     layout: ModelPickerLayout;
     selectedKey: string | null;
@@ -161,6 +163,7 @@ function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, 
     notice?: { text: string; action?: MenuAction; extra?: ReactNode };
     readOnly?: { value: string; hint: string };
     effort: { label: string; options: ModeOption[]; value: string | null; onChange: (key: string) => void };
+    context?: { label: string; options: ModeOption[]; value: string | null; onChange: (key: string) => void };
     longContext: { on: boolean; locked?: boolean; label: string; hint?: string; onToggle: (on: boolean) => void } | null;
     more: { label: string; open: boolean; onToggle: () => void } | null;
     footer?: { note: string; action?: MenuAction };
@@ -247,6 +250,8 @@ function ModelEffortBody({ modelLabel, layout, selectedKey, onChoose, subtitle, 
             {notice.extra}
         </div>}
         <EffortSegments {...effort} />
+        {/* B-977: the window each mode really runs; Codex is the only agent with two. */}
+        {context && !readOnly && <EffortSegments {...context} className="effort-seg--context" />}
         {customize && <button type="button" className="me-customize" onClick={() => runAction(customize)}>
             <SlidersHorizontal size={14} aria-hidden="true" />
             <span>{customize.label}</span>

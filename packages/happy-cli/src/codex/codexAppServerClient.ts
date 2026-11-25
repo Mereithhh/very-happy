@@ -299,6 +299,49 @@ export class CodexAppServerClient {
         this.accountOverrides = overrides;
     }
 
+    /**
+     * B-977: the context window config (`model_context_window` /
+     * `model_auto_compact_token_limit`) every thread/start, resume and fork
+     * carries. Codex keeps it per loaded thread and never persists it, so it
+     * goes out on each of the three.
+     */
+    private contextConfig: Record<string, number> = {};
+
+    get threadContextConfig(): Record<string, number> {
+        return this.contextConfig;
+    }
+
+    /** For the next thread/start, resume or fork; a loaded thread keeps its own (see applyThreadContextConfig). */
+    setThreadContextConfig(config: Record<string, number>): void {
+        this.contextConfig = { ...config };
+    }
+
+    /**
+     * B-977: switch the loaded thread to `config` between turns. A loaded
+     * thread ignores a resume's config (Codex 0.171, measured), so it is
+     * unloaded (`thread/unsubscribe`) and resumed with the new one: same
+     * thread id, same history. True when the thread was reloaded.
+     */
+    async applyThreadContextConfig(config: Record<string, number>): Promise<boolean> {
+        if (sameContextConfig(config, this.contextConfig)) return false;
+        this.contextConfig = { ...config };
+        const threadId = this._threadId;
+        if (!threadId || !this.connected || this.pendingTurnCompletion) return false;
+        await this.request('thread/unsubscribe', { threadId });
+        await this.resumeThread({ threadId });
+        return true;
+    }
+
+    /** The env and leading args the app-server runs with (for `codex debug models`). */
+    codexProcessEnv(): { env: Record<string, string>; args: string[] } {
+        const env: Record<string, string> = {};
+        for (const [key, value] of Object.entries(process.env)) {
+            if (typeof value === 'string') env[key] = value;
+        }
+        Object.assign(env, this.accountOverrides.env);
+        return { env, args: codexProcessProviderArgs(this.accountOverrides) };
+    }
+
     constructor(sandboxConfig?: SandboxConfig) {
         this.sandboxConfig = sandboxConfig;
     }
@@ -994,7 +1037,7 @@ export class CodexAppServerClient {
     }
 
     private buildThreadConfig(mcpServers?: Record<string, unknown>): Record<string, unknown> | null {
-        const config = { ...(mcpServers ? { mcp_servers: mcpServers } : {}), ...this.accountOverrides.config };
+        const config = { ...(mcpServers ? { mcp_servers: mcpServers } : {}), ...this.accountOverrides.config, ...this.contextConfig };
         return Object.keys(config).length > 0 ? config : null;
     }
 
@@ -1222,7 +1265,8 @@ export class CodexAppServerClient {
             cwd: opts.cwd,
             approvalPolicy: 'never' as ApprovalPolicy,
             sandbox: 'read-only' as SandboxMode,
-            config: { ...this.accountOverrides.config, 'features.hooks': false },
+            // B-977: a fork of an extended thread holds more than the standard window.
+            config: { ...this.accountOverrides.config, ...this.contextConfig, 'features.hooks': false },
             baseInstructions: null,
             developerInstructions: opts.developerInstructions,
             ephemeral: true,
@@ -2204,4 +2248,10 @@ export class CodexAppServerClient {
 
         logger.debug(`[CodexAppServer] Notification: ${method}`);
     }
+}
+
+function sameContextConfig(a: Record<string, number>, b: Record<string, number>): boolean {
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+    for (const key of keys) if (a[key] !== b[key]) return false;
+    return true;
 }

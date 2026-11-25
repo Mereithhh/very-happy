@@ -317,6 +317,21 @@ export function saveSessionEffortLevels(levels: Record<string, string>) {
     mmkv.set('session-effort-levels', JSON.stringify(levels));
 }
 
+/** B-977: per session, the Codex 「上下文」 this device picked ('standard' | 'extended'). */
+export function loadSessionContextModes(): Record<string, string> {
+    try {
+        const raw = mmkv.getString('session-context-modes');
+        return raw ? JSON.parse(raw) as Record<string, string> : {};
+    } catch (e) {
+        console.error('Failed to parse session context modes', e);
+        return {};
+    }
+}
+
+export function saveSessionContextModes(modes: Record<string, string>) {
+    mmkv.set('session-context-modes', JSON.stringify(modes));
+}
+
 /**
  * B-849b: per session, the recorded intent this device saw when its user
  * picked (`m` model, `e` effort; a missing key = the wrapper recorded none).

@@ -21,6 +21,8 @@ export const AgentDefaultOverrideSchema = z.object({
     permissionMode: z.string().optional(),
     modelMode: z.string().optional(),
     effortLevel: z.string().optional(),
+    // B-977: Codex 「上下文」 for new sessions ('standard' | 'extended'); read through readCodexContextMode.
+    contextMode: z.string().optional(),
 }).passthrough();
 
 export const AgentDefaultOverridesSchema = z.object({

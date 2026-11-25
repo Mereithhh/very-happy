@@ -77,6 +77,8 @@ export interface PendingSessionRecord {
     /** undefined = not chosen on the pending page (the agent default applies). */
     modelMode?: string | null;
     effortLevel?: string | null;
+    /** B-977: Codex 「上下文」 chosen before the first message. */
+    contextMode?: string | null;
     /** B-850c: the account the session starts on — undefined = the machine's default, null = machine login. */
     agentProfileId?: string | null;
     /** Task Board dispatch: attach the new session to this task on success. */
@@ -136,6 +138,8 @@ export interface PendingSessionDeps {
     writePermissionMode(sessionId: string, mode: string | null): void;
     writeModelMode(sessionId: string, mode: string | null): void;
     writeEffortLevel(sessionId: string, level: string | null): void;
+    /** B-977: the Codex 「上下文」 chosen on the pending page. */
+    writeContextMode?(sessionId: string, mode: string | null): void;
     /**
      * Hand text back to whoever edits `sessionId`: the composer mounted for
      * `composerId` (the pending page's composer, which becomes the real one),
@@ -349,7 +353,7 @@ export interface PendingCreateInput {
     agentProfileId?: string | null;
 }
 
-export type PendingModeField = 'permissionMode' | 'modelMode' | 'effortLevel';
+export type PendingModeField = 'permissionMode' | 'modelMode' | 'effortLevel' | 'contextMode';
 
 /** B-801: what a draft page may still change before the first send. */
 export interface PendingTargetChange {
@@ -571,6 +575,7 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                 deps.writePermissionMode(realId, ready.permissionMode);
                 if (ready.modelMode !== undefined) deps.writeModelMode(realId, ready.modelMode);
                 if (ready.effortLevel !== undefined) deps.writeEffortLevel(realId, ready.effortLevel);
+                if (ready.contextMode !== undefined) deps.writeContextMode?.(realId, ready.contextMode);
             }
             if (ready.outbox.length > 0 && deps.holdForEffort?.(realId)) {
                 landAsDraft(pendingId);
@@ -741,6 +746,7 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
             if (field === 'permissionMode') deps.writePermissionMode(current.realId, value);
             else if (deps.hasSession(current.realId)) {
                 if (field === 'modelMode') deps.writeModelMode(current.realId, value);
+                else if (field === 'contextMode') deps.writeContextMode?.(current.realId, value);
                 else deps.writeEffortLevel(current.realId, value);
             }
         },
@@ -772,7 +778,7 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
             if (change.path !== undefined) next.path = change.path;
             if (change.agent !== undefined && change.agent !== current.agent) {
                 // Model / effort keys belong to one agent; the new one starts from its defaults.
-                Object.assign(next, { agent: change.agent, modelMode: undefined, effortLevel: undefined });
+                Object.assign(next, { agent: change.agent, modelMode: undefined, effortLevel: undefined, contextMode: undefined });
                 if (change.permissionMode !== undefined) next.permissionMode = change.permissionMode;
             }
             // B-850c: an account belongs to one machine and one agent — either changing drops the pick.

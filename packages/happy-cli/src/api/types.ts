@@ -621,6 +621,8 @@ export const MessageMetaSchema = z.object({
    */
   modelIntent: z.string().optional(),
   effortIntent: z.string().optional(),
+  /** B-977: Codex 「上下文」 ('standard' | 'extended'); plain string (AGENTS #14), whitelisted by runCodex. */
+  codexContext: z.string().optional(),
   /** Omitted/queue waits for the current turn; steer targets the live turn. */
   delivery: z.enum(['queue', 'steer']).optional()
 })
@@ -766,6 +768,10 @@ export type Metadata = {
    */
   agentProfile?: SessionAgentProfile | null,
   effortIntent?: string | null,
+  /** B-977: Codex — the context mode this session runs ('standard' | 'extended'); absent = older wrapper. */
+  codexContextMode?: string,
+  /** B-977: Codex — per model, the window each mode runs (effective tokens); only models that can run larger. */
+  codexContextWindows?: Record<string, { standard: number; extended: number }>,
   operatingModes?: Array<{ code: string; value: string; description?: string | null }>,
   currentOperatingModeCode?: string,
   thoughtLevels?: Array<{ code: string; value: string; description?: string | null }>,

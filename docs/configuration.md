@@ -902,6 +902,28 @@ very-happy account bind <sessionId> <id|machine> [--model <id>]
 - Same limits as Claude: the agent runs as the same OS user, so it could read
   the key files, or the environment the daemon itself was started with.
 
+### Codex context window: standard or extended (B-977)
+
+Codex sizes a new thread from its own model catalog, well under what the model
+accepts: most gpt-6 / gpt-5.6 models get 272k → 258,400 effective tokens, the
+sol family 500k → 475,000, and it compacts at 90% of that. The catalog's
+`max_context_window` is 872k for the gpt-6 family — Codex 0.171 has no 1M tier,
+so a request for 1M lands at 872k × 95% = 828,400.
+
+A Codex session's model menu has a **Context** row, and Settings → Agents →
+Codex sets the default for new sessions:
+
+- **Standard** — Codex's own default for the model (258,400 / 475,000).
+- **Extended** — the model's catalog maximum (828,400). Shown only for models
+  the machine reports as able to run larger.
+
+Both are passed as thread config (`model_context_window`, plus
+`model_auto_compact_token_limit` at 90% of it), never written into the user's
+`~/.codex/config.toml`. Codex keeps them per loaded thread and does not persist
+them, so they go out on every `thread/start`, resume and fork; switching on a
+running session unloads and resumes the same thread id (history kept) before the
+next turn, and a wrapper restart re-applies the session's choice.
+
 ### Machine web panels and "needs you" (B-510)
 
 A machine can declare local web pages a person may need to look at — a noVNC
