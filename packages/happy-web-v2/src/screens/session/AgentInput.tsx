@@ -552,7 +552,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         ? { ...launcherCatalogs[0], thoughtLevels: piDraftThoughtLevels(launcherCatalogs[0], modelKey ?? 'default') } as unknown as typeof metadata
         : null;
     const draftCatalog = piDraftCatalog ?? (isCodex && !session && launcherCatalogs[0]?.models?.length
-        ? { models: launcherCatalogs[0].models, defaultModelCode: launcherContext?.configuredModel ?? undefined } as unknown as typeof metadata
+        ? { flavor: launcherCatalogs[0].flavor, models: launcherCatalogs[0].models, defaultModelCode: launcherContext?.configuredModel ?? undefined, codexContextWindows: launcherCatalogs[0].codexContextWindows } as unknown as typeof metadata
         : metadata);
     const listedEfforts = getEffortLevelsForModel(flavor, modelKey ?? 'default', draftCatalog);
     const accountEffort = getAgentDefaultOverride(agentDefaultOverrides, flavor).effortLevel;
@@ -628,7 +628,7 @@ export function AgentInput({ sessionId, agentFlavor, pending, sideChat = false }
         : null;
     const contextOptions = contextChoices ? namedContextOptions(contextChoices, t) : [];
     const contextKey = contextOptions.length === 0 ? null
-        : resolveCodexContextMode(metadata, pending ? pending.contextMode : runSession?.contextMode, getAgentDefaultOverride(agentDefaultOverrides, flavor).contextMode);
+        : resolveCodexContextMode(isCodex && !session ? draftCatalog : metadata, pending ? pending.contextMode : runSession?.contextMode, getAgentDefaultOverride(agentDefaultOverrides, flavor).contextMode);
     const setContext = (key: string) => {
         setMode('updateSessionContextMode', 'contextMode', key);
     };
