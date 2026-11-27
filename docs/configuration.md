@@ -240,6 +240,46 @@ sections keep working. Spec: [model feedback](../specs/2026-11-model-feedback.md
   the rater's account and timestamps — never the text of the conversation.
   Rate limit: `MAX_MODEL_FEEDBACK_PER_ACCOUNT_PER_MINUTE` (default 30).
 
+- **`globalModelChannels`**: model gateways offered to every account as ready-to-pick accounts; see [Global model channels](#global-model-channels-b-981).
+- **`notices`**: notices shown in the Web app; see below.
+
+### `notices` — global notices (B-982)
+
+Notices every signed-in user, or only the listed accounts, sees as a small card
+in the Web app (fetched on load, every 10 minutes and when the app comes back).
+
+```json
+{
+  "notices": [
+    {
+      "id": "maint-2026-12-01",
+      "title": "Maintenance on Dec 1",
+      "body": "The server restarts at 02:00 UTC. Status: https://status.example.com",
+      "level": "warning",
+      "audience": "all",
+      "startsAt": "2026-11-28T00:00:00Z",
+      "endsAt": "2026-12-01T03:00:00Z",
+      "dismissible": true
+    },
+    { "id": "beta-invite", "title": "You are in the beta", "audience": { "accounts": ["<account-id>", "<username>"] } }
+  ]
+}
+```
+
+| Field | Rule |
+| --- | --- |
+| `id` | Required, 1–64 of `A-Z a-z 0-9 . _ -`, unique. Dismissals are remembered per id, so use a new id for new content. |
+| `title` / `body` | Title required (≤120). Body plain text (≤2000); `http(s)://` URLs become links. |
+| `level` | `info` (default) or `warning` (warn-colored card). |
+| `audience` | `"all"` (default) or `{ "accounts": [...] }` with account ids or usernames. |
+| `startsAt` / `endsAt` | Optional ISO times; shown from `startsAt` until (not including) `endsAt`. |
+| `dismissible` | Default `true`: 「知道了 / Got it」 hides it on every device of that account (synced setting `dismissedNoticeIds`, last 100 kept). `false`: it can only be closed until the next page load. |
+
+At most 50 entries; an invalid entry is dropped with a warning naming its id,
+the others still show. The app shows the newest open notice (latest `startsAt`;
+undated ones after, later in the file first), one at a time. A server without
+this feature answers 404 and the app shows nothing.
+
 ## Google login
 
 Set `GOOGLE_CLIENT_ID` and `GOOGLE_ALLOWED_ORIGINS` together. Create your own Web

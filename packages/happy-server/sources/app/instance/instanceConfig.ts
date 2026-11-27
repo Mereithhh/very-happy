@@ -1,6 +1,9 @@
 import { readFileSync, statSync } from 'node:fs';
 import { z } from 'zod';
-import { HttpHeaderNameSchema, ModelChannelIdSchema, ModelFeedbackScopeSchema, ModelRequestTaggingSchema, type InstanceClientConfig } from '@slopus/happy-wire';
+import {
+    HttpHeaderNameSchema, ModelChannelIdSchema, ModelFeedbackScopeSchema, ModelRequestTaggingSchema, NOTICE_BODY_MAX, NOTICE_TITLE_MAX, NoticeIdSchema,
+    NoticeLevelSchema, type InstanceClientConfig,
+} from '@slopus/happy-wire';
 
 /**
  * Operator instance config (B-980, `specs/2026-11-model-feedback.md` §Config).
@@ -81,6 +84,55 @@ export function parseGlobalModelChannels(value: unknown, problems: string[]): Gl
     return out;
 }
 
+const IsoTimeSchema = z.string().max(64).refine(v => !Number.isNaN(Date.parse(v)), 'not an ISO time');
+
+/**
+ * B-982: one operator notice. `audience` is `'all'` or a list of account ids
+ * (an entry may also be a username). Times are ISO strings; the notice shows
+ * from `startsAt` (inclusive) until `endsAt` (exclusive).
+ */
+export const NoticeConfigSchema = z.object({
+    id: NoticeIdSchema,
+    title: z.string().trim().min(1).max(NOTICE_TITLE_MAX),
+    body: z.string().max(NOTICE_BODY_MAX).default(''),
+    level: NoticeLevelSchema.default('info'),
+    audience: z.union([z.literal('all'), z.object({ accounts: z.array(z.string().min(1).max(128)).min(1).max(1000) })]).default('all'),
+    startsAt: IsoTimeSchema.optional(),
+    endsAt: IsoTimeSchema.optional(),
+    dismissible: z.boolean().default(true),
+}).refine(n => !n.startsAt || !n.endsAt || Date.parse(n.startsAt) < Date.parse(n.endsAt), { message: 'endsAt must be after startsAt', path: ['endsAt'] });
+export type NoticeConfig = z.infer<typeof NoticeConfigSchema>;
+
+export const NOTICES_MAX = 50;
+
+/** Each notice is parsed on its own: a bad one is dropped (and named), the rest stay. */
+function noticesSection(value: unknown, problems: string[]): NoticeConfig[] {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value)) {
+        problems.push('notices: must be an array');
+        return [];
+    }
+    if (value.length > NOTICES_MAX) problems.push(`notices: ${value.length} entries, only the first ${NOTICES_MAX} are used`);
+    const out: NoticeConfig[] = [];
+    const seen = new Set<string>();
+    value.slice(0, NOTICES_MAX).forEach((entry, index) => {
+        const rawId = entry && typeof entry === 'object' ? (entry as { id?: unknown }).id : undefined;
+        const name = typeof rawId === 'string' && NoticeIdSchema.safeParse(rawId).success ? `"${rawId}"` : `#${index}`;
+        const parsed = NoticeConfigSchema.safeParse(entry);
+        if (!parsed.success) {
+            problems.push(`notices[${name}] dropped: ${parsed.error.issues.map(i => `${i.path.join('.') || '(root)'} ${i.message}`).join('; ')}`);
+            return;
+        }
+        if (seen.has(parsed.data.id)) {
+            problems.push(`notices[${name}] dropped: duplicate id`);
+            return;
+        }
+        seen.add(parsed.data.id);
+        out.push(parsed.data);
+    });
+    return out;
+}
+
 export interface InstanceConfig {
     /** Accounts allowed to export feedback and see admin views. Empty = only `VH_FEEDBACK_ADMIN_ACCOUNT_IDS`. */
     admins: string[];
@@ -88,11 +140,13 @@ export interface InstanceConfig {
     modelFeedback: ModelFeedbackConfig | null;
     /** B-981: every configured channel, disabled ones included (routes filter). */
     globalModelChannels: GlobalModelChannelConfig[];
+    /** B-982 operator notices, valid entries only, in file order. */
+    notices: NoticeConfig[];
     /** Raw sections owned by other modules; each parses its own. */
     raw: Record<string, unknown>;
 }
 
-export const EMPTY_INSTANCE_CONFIG: InstanceConfig = { admins: [], modelRequestTagging: null, modelFeedback: null, globalModelChannels: [], raw: {} };
+export const EMPTY_INSTANCE_CONFIG: InstanceConfig = { admins: [], modelRequestTagging: null, modelFeedback: null, globalModelChannels: [], notices: [], raw: {} };
 
 const ENV_REF = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
@@ -137,7 +191,8 @@ export function parseInstanceConfig(text: string, env: Record<string, string | u
     const modelRequestTagging = section(ModelRequestTaggingSchema, raw.modelRequestTagging, 'modelRequestTagging', problems);
     const modelFeedback = section(ModelFeedbackConfigSchema, raw.modelFeedback, 'modelFeedback', problems);
     const globalModelChannels = parseGlobalModelChannels(raw.globalModelChannels, problems);
-    return { config: { admins, modelRequestTagging, modelFeedback, globalModelChannels, raw }, problems };
+    const notices = noticesSection(raw.notices, problems);
+    return { config: { admins, modelRequestTagging, modelFeedback, globalModelChannels, notices, raw }, problems };
 }
 
 export function createInstanceConfigSource(opts: {

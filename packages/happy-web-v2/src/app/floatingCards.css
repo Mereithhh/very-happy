@@ -45,4 +45,4 @@ body:has(.sd-foot, .term-screen, .mri) .fb-prompt {
 @media (max-width: 520px), (pointer: coarse) {
   body:has(.sd-foot, .term-screen, .mri) .fb-prompt { top: calc(var(--sa-t) + 68px); }
 }
-body:has(.pwa-install, .notif-optin, .signin-nudge, .cli-update, .mrb) .fb-prompt { display: none; }
+body:has(.pwa-install, .notif-optin, .signin-nudge, .cli-update, .mrb, .gn-card) .fb-prompt { display: none; }

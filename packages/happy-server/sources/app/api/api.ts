@@ -11,6 +11,7 @@ import { issueRoutes } from './routes/issueRoutes';
 import { feedbackRoutes } from './routes/feedbackRoutes';
 import { modelFeedbackRoutes } from './routes/modelFeedbackRoutes';
 import { modelChannelsRoutes } from './routes/modelChannelsRoutes';
+import { noticesRoutes } from './routes/noticesRoutes';
 import { promptQueueRoutes } from './routes/promptQueueRoutes';
 import fastify from "fastify";
 import { log, logger } from "@/utils/log";
@@ -167,6 +168,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     feedbackRoutes(typed);
     modelFeedbackRoutes(typed);
     modelChannelsRoutes(typed);
+    noticesRoutes(typed);
     automationRoutes(typed);
     promptQueueRoutes(typed);
     accountRoutes(typed);
