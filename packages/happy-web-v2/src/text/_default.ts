@@ -3758,6 +3758,11 @@ export const en = {
                 models: 'Both need an Anthropic-compatible gateway, such as an API account with a custom Base URL. They are not shown for a Claude subscription or an API account on Anthropic’s own endpoint; where the account is not known they are listed with that note. Defaults are unchanged.',
                 tools: 'deepseek-v4.1-flash works in sessions with the full tool set.',
             },
+            nov27c: {
+                title: 'Teams: cancelled launches no longer hold parallel slots',
+                summary: 'A member launch that failed (for example, its worktree could not be created) kept counting toward the team\'s parallel limit even after you cancelled or handed off that task, so busy teams sat at the limit and new tasks stayed queued.',
+                slots: 'Only work that can still run counts now: running members, submissions waiting for review, launches in progress, and failed launches whose task is still queued for a retry. Tasks queued behind the old count start on their own. No CLI update needed.',
+            },
             nov27a: {
                 title: 'Rate a model\'s answers, matched to the gateway\'s request log',
                 summary: 'When your server\'s operator turns it on, each answer in a chat gets 👍 and 👎. Ratings are kept on your Very Happy server and can also go to a service the operator chooses.',

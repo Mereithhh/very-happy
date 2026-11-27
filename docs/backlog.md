@@ -24,6 +24,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-984 | Team 并行名额泄漏：启动失败（failed）的 spawn 在任务取消/转交后仍永久占 maxParallel 名额，团队卡在上限、新任务排队（C-85，生产 tbs dpsk 2.0 实测 16/16 其中 9 个是泄漏） | bug | Chris 11-27 | doing | server-only |
 | B-982 | 全局通知：运营方在实例配置里写通知，发给全部或指定账号，Web 通知卡、已读跨设备同步 | feat | Owner 11-27 | done | 依赖 B-980 实例配置；server/Web e8bffae2 上线 2026-11-27，CLI 0.2.233 |
 | B-981 | 全局模型渠道：运营方配置一次，所有账号的模型/账号列表自动出现，可开关；关掉后手动添加链路照常 | feat | Owner 11-27 | done | 依赖 B-980 实例配置与打标；server/Web e8bffae2 上线 2026-11-27，CLI 0.2.233 |
 | B-980 | 模型回答 👍/👎 反馈（存本库 + 可转发 + 管理员导出）与模型请求打标（会话 id / 请求 id header，名字与网关 host 来自实例配置 `VH_INSTANCE_CONFIG_FILE`） | feat | Owner 11-27 | done | [spec](../specs/2026-11-model-feedback.md)；server/Web e8bffae2 上线 2026-11-27，CLI 0.2.233 |
