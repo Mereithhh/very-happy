@@ -17,6 +17,7 @@ import {
     AGENT_PROFILE_FEATURE_DSH_BASE_URL,
     AGENT_PROFILE_FEATURE_LAUNCH,
     AgentProfileSummarySchema,
+    isGlobalAgentProfile,
     readSessionAgentProfile as readWireSessionAgentProfile,
     machineLoginFallbackAccount,
     resolveLaunchAgentProfile,
@@ -232,6 +233,20 @@ export function daysUntil(expiresAt: number, now = Date.now()): number {
 /** Re-login fixes an expired / rejected subscription; an API account needs its key fixed. */
 export function accountNeedsRelogin(kind: string, status: AccountDisplayStatus | string): boolean {
     return accountKindTag(kind) === 'subscription' && (status === 'expired' || status === 'invalid' || status === 'missing-secret' || status === 'expiring');
+}
+
+/** B-981: a channel the server admin configured for everyone (wire `scope: 'global'`). */
+export function isGlobalAccount(account: Pick<AgentProfileSummary, 'scope'> | null | undefined): boolean {
+    return isGlobalAgentProfile(account);
+}
+
+/**
+ * Can this account be renamed / removed / re-signed-in from the Web? Not a
+ * legacy providers.json entry (edit that file) and not a global channel (the
+ * admin owns it). Testing and 「设为默认」 stay available for both.
+ */
+export function accountEditable(account: Pick<AgentProfileSummary, 'legacy' | 'scope'>): boolean {
+    return !account.legacy && !isGlobalAccount(account);
 }
 
 export function accountsForAgent(state: AgentProfilesState | null, agent: string): AgentProfileSummary[] {

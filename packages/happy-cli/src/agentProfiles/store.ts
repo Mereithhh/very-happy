@@ -13,12 +13,21 @@
  * entry in `session-accounts.json`. Neither v1 file is ever rewritten; a v2
  * entry `{ account: null }` is how a v1-bound session goes back to the machine
  * login.
+ *
+ * B-981 global model channels (read-only, written only by globalAccounts.ts):
+ *
+ *   $HAPPY_HOME_DIR/global-accounts.json                the server's channels (0600, NO secrets)
+ *   $HAPPY_HOME_DIR/global-accounts/<channel>/secret     channel key (0600, dir 0700)
+ *
+ * They are merged like legacy entries (`global: true`, id `global-<channel>`,
+ * a v2 account with the same id wins) and writers drop them.
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { AGENT_PROFILE_KINDS, type AgentProfileSummary, type AgentProfilesState } from '@slopus/happy-wire';
+import { AGENT_PROFILE_KINDS, AGENT_PROFILE_SCOPE_GLOBAL, GLOBAL_ACCOUNT_ID_PREFIX, type AgentProfileSummary, type AgentProfilesState } from '@slopus/happy-wire';
 import { parseProvidersFile, parseSessionProvidersFile, providersPath, sessionProvidersPath } from '@/claude/providerBinding';
+import { globalAccountsFromFile, globalAccountsPath } from './globalAccounts';
 
 export type AccountKey =
     | { source: 'file'; path: string }
@@ -67,6 +76,8 @@ export type AccountRecord = {
     check?: AccountCheck;
     /** Set on entries synthesized from providers.json — never written to accounts.json. */
     legacy?: true;
+    /** B-981: synthesized from global-accounts.json (an operator's channel) — never written to accounts.json. */
+    global?: true;
 };
 
 export type AccountsFile = {
@@ -208,9 +219,9 @@ export function legacyAccountsFromProviders(raw: unknown): Record<string, Accoun
     return out;
 }
 
-/** Pure: v2 accounts over v1 legacy ones (same id → v2 wins). */
-export function mergeAccounts(v2: AccountsFile, legacy: Record<string, AccountRecord>): AccountsFile {
-    return { ...v2, accounts: { ...legacy, ...v2.accounts } };
+/** Pure: v2 accounts over global channels over v1 legacy ones (same id → v2 wins). */
+export function mergeAccounts(v2: AccountsFile, legacy: Record<string, AccountRecord>, global: Record<string, AccountRecord> = {}): AccountsFile {
+    return { ...v2, accounts: { ...legacy, ...global, ...v2.accounts } };
 }
 
 /** The v2 file only (what writers edit). */
@@ -220,12 +231,12 @@ export function readAccountsFileV2(home: string): AccountsFile {
 
 /** v2 + read-only v1 view (what resolution and listing use). */
 export function readAccounts(home: string): AccountsFile {
-    return mergeAccounts(readAccountsFileV2(home), legacyAccountsFromProviders(readJson(providersPath(home))));
+    return mergeAccounts(readAccountsFileV2(home), legacyAccountsFromProviders(readJson(providersPath(home))), globalAccountsFromFile(home, readJson(globalAccountsPath(home))));
 }
 
 export function writeAccountsFile(home: string, file: AccountsFile): void {
     const accounts: Record<string, AccountRecord> = {};
-    for (const [id, a] of Object.entries(file.accounts)) if (!a.legacy) accounts[id] = a;
+    for (const [id, a] of Object.entries(file.accounts)) if (!a.legacy && !a.global) accounts[id] = a;
     writeJson0600(accountsPath(home), { version: 2, accounts, defaults: file.defaults });
 }
 
@@ -303,7 +314,8 @@ export function newAccountId(label: string, kind: AccountKind, taken: Iterable<s
     const used = new Set(taken);
     const ascii = /^[\x20-\x7e]*$/.test(label);
     const slug = ascii ? label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) : '';
-    const base = slug && /^[a-z0-9]/.test(slug) ? slug : KIND_ID_BASE[kind];
+    // B-981: `global-…` ids belong to the server's channels.
+    const base = slug && /^[a-z0-9]/.test(slug) && !slug.startsWith(GLOBAL_ACCOUNT_ID_PREFIX) ? slug : slug.startsWith(GLOBAL_ACCOUNT_ID_PREFIX) ? `my-${slug}`.slice(0, 40) : KIND_ID_BASE[kind];
     if (!used.has(base)) return base;
     for (let n = 2; ; n++) if (!used.has(`${base}-${n}`)) return `${base}-${n}`;
 }
@@ -337,8 +349,9 @@ export function accountStatus(home: string, id: string, a: AccountRecord, probe:
 
 export function summarizeAccount(home: string, id: string, a: AccountRecord, probe: SecretProbe, now: number): AgentProfileSummary {
     const { status, detail, reason } = accountStatus(home, id, a, probe, now);
-    const keySource = a.kind === 'claude-subscription' || a.kind === 'codex-chatgpt' ? 'stored' : a.key?.source;
-    const keyRef = a.key?.source === 'file' ? a.key.path : a.key?.source === 'env' ? a.key.name : undefined;
+    // B-981: a global channel's key is delivered by the server and kept 0600 like a pasted one.
+    const keySource = a.kind === 'claude-subscription' || a.kind === 'codex-chatgpt' || a.global ? 'stored' : a.key?.source;
+    const keyRef = a.global ? undefined : a.key?.source === 'file' ? a.key.path : a.key?.source === 'env' ? a.key.name : undefined;
     return {
         id,
         label: a.label,
@@ -355,6 +368,7 @@ export function summarizeAccount(home: string, id: string, a: AccountRecord, pro
         ...(keySource ? { keySource } : {}),
         ...(keyRef ? { keyRef } : {}),
         ...(a.legacy ? { legacy: true } : {}),
+        ...(a.global ? { scope: AGENT_PROFILE_SCOPE_GLOBAL } : {}),
         ...(a.provider ? { provider: a.provider } : {}),
         ...(a.email ? { email: a.email } : {}),
         ...(a.planType ? { planType: a.planType } : {}),

@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from 'node:fs';
 import { z } from 'zod';
-import { HttpHeaderNameSchema, ModelFeedbackScopeSchema, ModelRequestTaggingSchema, type InstanceClientConfig } from '@slopus/happy-wire';
+import { HttpHeaderNameSchema, ModelChannelIdSchema, ModelFeedbackScopeSchema, ModelRequestTaggingSchema, type InstanceClientConfig } from '@slopus/happy-wire';
 
 /**
  * Operator instance config (B-980, `specs/2026-11-model-feedback.md` §Config).
@@ -33,16 +33,66 @@ export const ModelFeedbackConfigSchema = z.object({
 });
 export type ModelFeedbackConfig = z.infer<typeof ModelFeedbackConfigSchema>;
 
+/**
+ * B-981 global model channels (`docs/configuration.md` §globalModelChannels).
+ * `apiKey` is normally `${ENV}`; it is delivered to member machines only.
+ */
+export const GlobalModelChannelConfigSchema = z.object({
+    id: ModelChannelIdSchema,
+    enabled: z.boolean().default(true),
+    label: z.string().trim().min(1).max(60),
+    agent: z.enum(['claude', 'codex']),
+    baseUrl: z.string().regex(/^https?:\/\/[^\s]+$/i).max(2048).transform(u => u.replace(/\/+$/, '')),
+    apiKey: z.string().trim().min(1).max(4096),
+    models: z.array(z.string().trim().min(1).max(200)).min(1).max(50),
+    contextWindows: z.record(z.string(), z.number().int().positive()).optional(),
+    wireApi: z.enum(['responses', 'chat']).optional(),
+    audience: z.union([z.literal('all'), z.object({ accounts: z.array(z.string().min(1).max(128)).max(10_000) })]).default('all'),
+});
+export type GlobalModelChannelConfig = z.infer<typeof GlobalModelChannelConfigSchema>;
+
+/**
+ * Each channel is parsed on its own: a broken one is dropped (and reported by
+ * id and field names only — never values, the key may be among them), the
+ * rest stay available. A repeated id keeps the first.
+ */
+export function parseGlobalModelChannels(value: unknown, problems: string[]): GlobalModelChannelConfig[] {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value)) {
+        problems.push('globalModelChannels: must be an array');
+        return [];
+    }
+    const out: GlobalModelChannelConfig[] = [];
+    value.forEach((entry, index) => {
+        const rawId = entry && typeof entry === 'object' ? (entry as { id?: unknown }).id : undefined;
+        const name = typeof rawId === 'string' && ModelChannelIdSchema.safeParse(rawId).success ? rawId : `#${index}`;
+        const parsed = GlobalModelChannelConfigSchema.safeParse(entry);
+        if (!parsed.success) {
+            const fields = [...new Set(parsed.error.issues.map(i => i.path.join('.') || '(root)'))];
+            problems.push(`globalModelChannels[${name}]: dropped (invalid ${fields.join(', ')})`);
+            return;
+        }
+        if (out.some(c => c.id === parsed.data.id)) {
+            problems.push(`globalModelChannels[${name}]: dropped (duplicate id)`);
+            return;
+        }
+        out.push(parsed.data);
+    });
+    return out;
+}
+
 export interface InstanceConfig {
     /** Accounts allowed to export feedback and see admin views. Empty = only `VH_FEEDBACK_ADMIN_ACCOUNT_IDS`. */
     admins: string[];
     modelRequestTagging: z.infer<typeof ModelRequestTaggingSchema> | null;
     modelFeedback: ModelFeedbackConfig | null;
+    /** B-981: every configured channel, disabled ones included (routes filter). */
+    globalModelChannels: GlobalModelChannelConfig[];
     /** Raw sections owned by other modules; each parses its own. */
     raw: Record<string, unknown>;
 }
 
-export const EMPTY_INSTANCE_CONFIG: InstanceConfig = { admins: [], modelRequestTagging: null, modelFeedback: null, raw: {} };
+export const EMPTY_INSTANCE_CONFIG: InstanceConfig = { admins: [], modelRequestTagging: null, modelFeedback: null, globalModelChannels: [], raw: {} };
 
 const ENV_REF = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
@@ -86,7 +136,8 @@ export function parseInstanceConfig(text: string, env: Record<string, string | u
     const admins = section(z.array(z.string().min(1).max(128)).max(200), raw.admins, 'admins', problems) ?? [];
     const modelRequestTagging = section(ModelRequestTaggingSchema, raw.modelRequestTagging, 'modelRequestTagging', problems);
     const modelFeedback = section(ModelFeedbackConfigSchema, raw.modelFeedback, 'modelFeedback', problems);
-    return { config: { admins, modelRequestTagging, modelFeedback, raw }, problems };
+    const globalModelChannels = parseGlobalModelChannels(raw.globalModelChannels, problems);
+    return { config: { admins, modelRequestTagging, modelFeedback, globalModelChannels, raw }, problems };
 }
 
 export function createInstanceConfigSource(opts: {

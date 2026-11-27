@@ -10,6 +10,7 @@ import { attentionRoutes } from './routes/attentionRoutes';
 import { issueRoutes } from './routes/issueRoutes';
 import { feedbackRoutes } from './routes/feedbackRoutes';
 import { modelFeedbackRoutes } from './routes/modelFeedbackRoutes';
+import { modelChannelsRoutes } from './routes/modelChannelsRoutes';
 import { promptQueueRoutes } from './routes/promptQueueRoutes';
 import fastify from "fastify";
 import { log, logger } from "@/utils/log";
@@ -165,6 +166,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     issueRoutes(typed);
     feedbackRoutes(typed);
     modelFeedbackRoutes(typed);
+    modelChannelsRoutes(typed);
     automationRoutes(typed);
     promptQueueRoutes(typed);
     accountRoutes(typed);

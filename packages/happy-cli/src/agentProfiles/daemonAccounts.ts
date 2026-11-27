@@ -6,6 +6,7 @@ import { unwatchFile, watchFile } from 'node:fs';
 import * as pty from 'node-pty';
 import type { PtyLike } from './setupTokenLogin';
 import { accountsPath } from './store';
+import { globalAccountsPath } from './globalAccounts';
 import { providersPath } from '@/claude/providerBinding';
 
 export { SPAWN_ACCOUNT_ENV } from './store';
@@ -21,7 +22,7 @@ export const ACCOUNT_REPUBLISH_INTERVAL_MS = 60 * 60_000;
 
 /** Republish on edits made outside the daemon (`very-happy account …`, a hand edit). */
 export function watchAccountFiles(home: string, onChange: () => void): () => void {
-    const paths = [accountsPath(home), providersPath(home)];
+    const paths = [accountsPath(home), providersPath(home), globalAccountsPath(home)];
     const listener = (curr: { mtimeMs: number }, prev: { mtimeMs: number }) => {
         if (curr.mtimeMs !== prev.mtimeMs) onChange();
     };

@@ -759,6 +759,69 @@ refused by the new account. If it is, the session shows *This session's history
 cannot continue on the new account — start a new session* with **New session**
 (same directory, on that account) and **Switch back**.
 
+### Global model channels (B-981)
+
+An operator can list model endpoints once on the server and every member gets
+them as ready-to-pick accounts. Add a `globalModelChannels` array to the server's
+instance config file (`VH_INSTANCE_CONFIG_FILE`, re-read on change):
+
+```json
+{
+  "globalModelChannels": [
+    {
+      "id": "team-gateway",
+      "label": "Team gateway",
+      "agent": "claude",
+      "baseUrl": "https://gateway.example.com",
+      "apiKey": "${TEAM_GATEWAY_KEY}",
+      "models": ["model-a", "model-b"],
+      "contextWindows": { "model-a": 200000 },
+      "audience": "all"
+    },
+    {
+      "id": "team-codex",
+      "enabled": false,
+      "label": "Team Codex",
+      "agent": "codex",
+      "baseUrl": "https://gateway.example.com/v1",
+      "wireApi": "responses",
+      "apiKey": "${TEAM_GATEWAY_KEY}",
+      "models": ["model-c"],
+      "audience": { "accounts": ["<account id>"] }
+    }
+  ]
+}
+```
+
+- `id` is `[a-z0-9-]`, at most 32 characters; the account on each machine is
+  `global-<id>`. `enabled` defaults to `true`; `audience` to `"all"` (or a list
+  of account ids). `agent` is `claude` or `codex`; `wireApi` is Codex only.
+- `apiKey` should be a `${NAME}` reference to a server environment variable.
+  An invalid channel is dropped on its own; the warning names its id and the
+  broken fields, never values.
+- `GET /v1/model-channels` returns the caller's visible channels. Only machine
+  (CLI / daemon) tokens get the key; Web sign-ins never do. Each daemon polls it
+  at start and every 5 minutes (a failed request keeps the last good set; an
+  older server means no channels) and lists the channels with a **Global** chip
+  in the account pickers and on **Settings → Models & accounts**. They can be
+  tested and set as the machine default, but not renamed or deleted there.
+- Disabling or removing a channel removes it from every machine within one
+  poll. Sessions bound to it then run no turns until switched to another account
+  — they never fall back to the machine login. A machine default pointing at it
+  is cleared.
+- With `modelRequestTagging` configured, requests of Claude sessions on a global
+  channel are always tagged, whatever `hosts` says. (Codex sessions are not
+  tagged.)
+- With no channels configured (or the section switched off), members add their
+  own **API** accounts as before; that path is unchanged.
+
+**Security.** The key is delivered to every member machine and stored there in
+a 0600 file (`$HAPPY_HOME_DIR/global-accounts/<id>/secret`). Anyone who can
+read files as that user on that machine can read the key. Use a dedicated
+gateway key you can rotate (rotation reaches machines on the next poll), not a
+personal or admin key. All members share it, so the gateway cannot meter usage
+per person; for that, have people add their own accounts.
+
 ### Custom models and providers (B-688)
 
 **Settings → Models & accounts → Machine config** (and **Custom…** at the bottom of the composer's

@@ -148,7 +148,10 @@ export class AccountService {
         const file = readAccountsFileV2(this.home);
         const record = file.accounts[id];
         if (!record) {
-            if (readAccounts(this.home).accounts[id]?.legacy) throw new AccountError('legacy-readonly', `"${id}" comes from providers.json; edit or remove it there`);
+            const merged = readAccounts(this.home).accounts[id];
+            if (merged?.legacy) throw new AccountError('legacy-readonly', `"${id}" comes from providers.json; edit or remove it there`);
+            // B-981: the server's operator owns a global channel; it goes away when they remove or disable it.
+            if (merged?.global) throw new AccountError('global-readonly', `"${id}" is a global model channel set up on the server; it cannot be renamed or removed here`);
             throw new AccountError('not-found', `no account "${id}"`);
         }
         return { file, record };
@@ -285,6 +288,34 @@ export class AccountService {
         return this.state();
     }
 
+    /**
+     * B-981: the server's channel set changed (globalChannelSync.ts). A removed
+     * channel that was a machine default stops being one — exactly what
+     * `remove` does for a local account — then the state is republished.
+     * Sessions bound to it stay bound and restart in place now (as `remove
+     * --force` does): they come back `unavailable` and refuse turns (Q3) instead
+     * of failing on a deleted key file, and never move to the machine login.
+     */
+    async globalChannelsChanged(removed: readonly string[]): Promise<Record<string, string>> {
+        const restarts: Record<string, string> = {};
+        if (removed.length === 0) {
+            this.changed();
+            return restarts;
+        }
+        const file = readAccountsFileV2(this.home);
+        let dirty = false;
+        for (const [agent, id] of Object.entries(file.defaults)) {
+            if (removed.includes(id) && !file.accounts[id]) { delete file.defaults[agent]; dirty = true; }
+        }
+        if (dirty) writeAccountsFile(this.home, file);
+        this.changed();
+        if (!this.deps.restartSession) return restarts;
+        const bindings = readSessionBindings(this.home);
+        const sessions = removed.filter((id) => !file.accounts[id]).flatMap((id) => sessionsBoundTo(bindings, id));
+        await Promise.all(sessions.map(async (sessionId) => { restarts[sessionId] = await this.restartWithinBudget(sessionId); }));
+        return restarts;
+    }
+
     // ---- check ---------------------------------------------------------------
 
     private readSecretFor(id: string, record: AccountRecord): string | null {
@@ -323,8 +354,8 @@ export class AccountService {
                             ? await checkDshAccount(secret, this.now, fetch, record.baseUrl)
                             : await checkApiAccount(record, secret, this.now);
         }
-        // Legacy (providers.json) accounts are read-only: report, do not persist.
-        if (!record.legacy) {
+        // Legacy (providers.json) and global (B-981) accounts are read-only: report, do not persist.
+        if (!record.legacy && !record.global) {
             const file = readAccountsFileV2(this.home);
             if (file.accounts[accountId]) {
                 file.accounts[accountId].check = check;

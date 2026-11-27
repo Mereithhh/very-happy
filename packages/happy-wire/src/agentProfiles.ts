@@ -86,6 +86,13 @@ export const AgentProfileSummarySchema = z.object({
     keyRef: z.string().optional(),
     /** Read from the B-794 `providers.json` (v1): listed and usable, but edit/remove it in that file. */
     legacy: z.boolean().optional(),
+    /**
+     * B-981: 'global' = a channel the server's operator configured for every
+     * member (`modelChannels.ts`). Read-only on the machine: no rename / remove;
+     * it disappears when the operator removes or disables it. Open string; absent
+     * = a machine-local account.
+     */
+    scope: z.string().optional(),
     /** B-850b codex-provider: the `[model_providers.<id>]` of ~/.codex/config.toml it is based on. */
     provider: z.string().optional(),
     /** B-850b codex-chatgpt: from Codex `account/read` after sign-in. */

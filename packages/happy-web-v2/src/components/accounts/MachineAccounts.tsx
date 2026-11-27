@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FlaskConical, KeyRound, LogIn, MoreHorizontal, Pencil, Plus, Star, Trash2 } from 'lucide-react';
-import { ActionDropdownMenu, Badge, Button, Item, ItemGroup, toast, type MenuItemDef } from '@/ui';
+import { ActionDropdownMenu, Badge, Button, Chip, Item, ItemGroup, toast, type MenuItemDef } from '@/ui';
 import { Combobox } from '@/ui/Combobox';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -19,10 +19,12 @@ import {
     SESSION_ACCOUNT_AGENTS,
     accountAddressFailed,
     accountDisplayStatus,
+    accountEditable,
     accountKindTag,
     accountNeedsRelogin,
     accountStatusTone,
     accountsForAgent,
+    isGlobalAccount,
     machineHasAgentAccounts,
     machineLoginFallback,
     machineTakesDshBaseUrl,
@@ -98,7 +100,8 @@ export function MachineAccounts({ machine }: { machine: Machine }) {
     const test = (account: AgentProfileSummary) => run(`test:${account.id}`, async () => {
         const result = await agentProfileTest(machine.id, account.id);
         if (!result.ok) { toast.error(accountErrorText(result, t)); return; }
-        if (account.legacy) setLegacyTests((prev) => ({ ...prev, [account.id]: result.data }));
+        // B-981: a global channel's test is not persisted either.
+        if (account.legacy || isGlobalAccount(account)) setLegacyTests((prev) => ({ ...prev, [account.id]: result.data }));
         if (result.data.status === 'ok') toast.success(t('accounts.testOk', { label: result.data.label }));
         else toast.error(t('accounts.testFailed', { label: result.data.label, detail: accountTestFailureText(result.data, accountDisplayStatus(result.data), t) }));
         await refresh();
@@ -192,7 +195,7 @@ export function machineLoginSubtitleText(state: AgentProfilesState, agent: strin
 
 /** Pure: a legacy account shows its last test result (the daemon keeps it 'unverified'). */
 export function withLegacyTest(account: AgentProfileSummary, tested: AgentProfileSummary | undefined): AgentProfileSummary {
-    if (!account.legacy || !tested) return account;
+    if (!(account.legacy || isGlobalAccount(account)) || !tested) return account;
     return { ...account, status: tested.status, statusDetail: tested.statusDetail, checkedAt: tested.checkedAt };
 }
 
@@ -212,22 +215,27 @@ function AccountRow({ account, isDefault, isFallback, now, online, busy, onTest,
 }) {
     const { t } = useTranslation();
     const status = accountDisplayStatus(account, now);
-    const editable = online && !account.legacy;
+    const global = isGlobalAccount(account);
+    const editable = online && accountEditable(account);
     const needsRelogin = accountNeedsRelogin(account.kind, status);
     const items: MenuItemDef[] = useMemo(() => [
         { key: 'test', label: t('accounts.test'), icon: FlaskConical, disabled: !online, onSelect: () => onTest(account) },
         ...(needsRelogin && editable ? [{ key: 'relogin', label: t('accounts.relogin'), icon: LogIn, onSelect: () => onRelogin(account) }] : []),
         ...(isDefault ? [] : [{ key: 'default', label: t('accounts.setDefault'), icon: Star, disabled: !online, onSelect: () => onSetDefault(account) }]),
-        { key: 'rename', label: t('accounts.rename'), icon: Pencil, disabled: !editable, onSelect: () => onRename(account) },
-        { key: 'remove', label: t('accounts.remove'), icon: Trash2, danger: true, separatorBefore: true, disabled: !editable, onSelect: () => onRemove(account) },
-    ], [t, online, editable, needsRelogin, isDefault, account, onTest, onRelogin, onSetDefault, onRename, onRemove]);
-    const detail = [accountDetailText(account, t), account.legacy ? t('accounts.legacy') : null, account.statusDetail && status !== 'ok' ? account.statusDetail : null].filter(Boolean).join(' · ');
+        // B-981: the admin owns a global channel — no rename / delete here at all.
+        ...(global ? [] : [
+            { key: 'rename', label: t('accounts.rename'), icon: Pencil, disabled: !editable, onSelect: () => onRename(account) },
+            { key: 'remove', label: t('accounts.remove'), icon: Trash2, danger: true, separatorBefore: true, disabled: !editable, onSelect: () => onRemove(account) },
+        ]),
+    ], [t, online, editable, global, needsRelogin, isDefault, account, onTest, onRelogin, onSetDefault, onRename, onRemove]);
+    const detail = [accountDetailText(account, t), account.legacy ? t('accounts.legacy') : null, global ? t('accounts.globalHint') : null, account.statusDetail && status !== 'ok' ? account.statusDetail : null].filter(Boolean).join(' · ');
     return <Item
         settingId={`models.account.${account.id}`}
         left={<KeyRound size={16} aria-hidden="true" />}
         title={<span className="acc-title" data-testid="account-row" data-account-id={account.id} data-status={status}>
             <span className="acc-name">{account.label}</span>
             <span className="acc-tag">{accountKindText(account.kind, t)}</span>
+            {global && <span data-testid="account-global-chip"><Chip>{t('accounts.globalBadge')}</Chip></span>}
             {isDefault && <span className="acc-tag">{t('accounts.defaultBadge')}</span>}
             {isFallback && <span className="acc-tag" data-testid="account-fallback-badge">{t('accounts.fallbackBadge')}</span>}
         </span>}
