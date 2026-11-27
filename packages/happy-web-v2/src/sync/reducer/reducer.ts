@@ -176,6 +176,9 @@ type ReducerMessage = {
     costUsd?: number;
     totalDurationMs?: number;
     numTurns?: number;
+    /** B-980: stamped from turn-end with the per-turn metadata. */
+    turnId?: string;
+    modelRequestIds?: string[];
 }
 
 type StoredPermission = {
@@ -1084,6 +1087,7 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
                         event: null,
                         meta: msg.meta,
                         usage: msgUsage,
+                        ...(msg.turn ? { turnId: msg.turn } : {}),
                     });
                     changed.add(mid);
                 }
@@ -1582,6 +1586,11 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
             if (typeof turnMeta.totalDurationMs === 'number') target.totalDurationMs = turnMeta.totalDurationMs;
             if (typeof turnMeta.numTurns === 'number') target.numTurns = turnMeta.numTurns;
             if (turnMeta.usage) target.usage = turnMeta.usage;
+            // B-980: request ids belong to the answer of the SAME turn. A turn without text of its own
+            // would otherwise pin its ids on the previous turn's answer.
+            const sameTurn = !turnMeta.turnId || !target.turnId || target.turnId === turnMeta.turnId;
+            if (sameTurn && turnMeta.turnId) target.turnId = turnMeta.turnId;
+            if (sameTurn && turnMeta.modelRequestIds?.length) target.modelRequestIds = turnMeta.modelRequestIds;
             changed.add(target.id);
         }
     }
@@ -1977,6 +1986,8 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             ...(typeof reducerMsg.costUsd === 'number' && { costUsd: reducerMsg.costUsd }),
             ...(typeof reducerMsg.totalDurationMs === 'number' && { totalDurationMs: reducerMsg.totalDurationMs }),
             ...(typeof reducerMsg.numTurns === 'number' && { numTurns: reducerMsg.numTurns }),
+            ...(reducerMsg.turnId && { turnId: reducerMsg.turnId }),
+            ...(reducerMsg.modelRequestIds?.length && { modelRequestIds: reducerMsg.modelRequestIds }),
             meta: reducerMsg.meta
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.tool !== null) {

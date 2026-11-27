@@ -601,6 +601,37 @@ describe('reducer', () => {
             }
         });
 
+        it('B-980: stamps the turn id and tagged request ids onto the final answer', () => {
+            const state = createReducer();
+            const result = reducer(state, [
+                { id: 'agent1', localId: null, createdAt: 1000, role: 'agent', isSidechain: false, content: [{ type: 'text', text: 'Answer', uuid: 'u1', parentUUID: null }] } as NormalizedMessage,
+                { id: 'ready1', localId: null, createdAt: 2000, role: 'event', isSidechain: false, content: { type: 'ready', turnMeta: { costUsd: 0.1, turnId: 'turn-9', modelRequestIds: ['r1', 'r2'] } } } as NormalizedMessage,
+            ]);
+            const textMsg = result.messages.find(m => m.kind === 'agent-text');
+            expect(textMsg && textMsg.kind === 'agent-text' && [textMsg.turnId, textMsg.modelRequestIds]).toEqual(['turn-9', ['r1', 'r2']]);
+        });
+
+        it('B-980: a turn without text never pins its request ids on the previous turn\'s answer', () => {
+            const state = createReducer();
+            const result = reducer(state, [
+                { id: 'agent1', localId: null, createdAt: 1000, role: 'agent', isSidechain: false, turn: 'turn-1', content: [{ type: 'text', text: 'Answer', uuid: 'u1', parentUUID: null }] } as NormalizedMessage,
+                { id: 'ready1', localId: null, createdAt: 2000, role: 'event', isSidechain: false, content: { type: 'ready', turnMeta: { turnId: 'turn-1', modelRequestIds: ['r1'] } } } as NormalizedMessage,
+                { id: 'ready2', localId: null, createdAt: 3000, role: 'event', isSidechain: false, content: { type: 'ready', turnMeta: { turnId: 'turn-2', modelRequestIds: ['r2'] } } } as NormalizedMessage,
+            ]);
+            const textMsg = result.messages.find(m => m.kind === 'agent-text');
+            expect(textMsg && textMsg.kind === 'agent-text' && [textMsg.turnId, textMsg.modelRequestIds]).toEqual(['turn-1', ['r1']]);
+        });
+
+        it('B-980: an answer knows its turn from its own envelope (Codex / ACP turn-ends carry no metadata)', () => {
+            const state = createReducer();
+            const result = reducer(state, [
+                { id: 'agent1', localId: null, createdAt: 1000, role: 'agent', isSidechain: false, turn: 'turn-7', content: [{ type: 'text', text: 'Answer', uuid: 'u1', parentUUID: null }] } as NormalizedMessage,
+                { id: 'ready1', localId: null, createdAt: 2000, role: 'event', isSidechain: false, content: { type: 'ready', status: 'completed' } } as NormalizedMessage,
+            ]);
+            const textMsg = result.messages.find(m => m.kind === 'agent-text');
+            expect(textMsg && textMsg.kind === 'agent-text' && textMsg.turnId).toBe('turn-7');
+        });
+
         it('associates ready metadata across reducer calls (streaming)', () => {
             const state = createReducer();
             reducer(state, [{

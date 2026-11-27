@@ -76,9 +76,11 @@ describe('B-823 deferred mounts wiring', () => {
     expect(root).toMatch(/function DeferredPwaInstallPrompt\(\) \{\n  if \(!useAfterFirstScreen\(\)\) return null;/);
     // B-836: the feedback prompt card, too (lazy chunk, after the first screen).
     expect(root).toMatch(/function DeferredFeedbackPrompt\(\) \{\n  if \(!useAfterFirstScreen\(\)\) return null;/);
+    // B-982: the operator notice card, too.
+    expect(root).toMatch(/function DeferredGlobalNotice\(\) \{\n  if \(!useAfterFirstScreen\(\)\) return null;/);
     // Both signed-in shells (deep link / home) mount the deferred notice, never the eager one.
-    expect(root).toContain('return <><Outlet /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><DeferredFeedbackPrompt /><BundleUpdatedNotice />');
-    expect(root).toContain('return <><AppLayout /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><DeferredFeedbackPrompt /><BundleUpdatedNotice />');
+    expect(root).toContain('return <><Outlet /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><DeferredFeedbackPrompt /><DeferredGlobalNotice /><BundleUpdatedNotice />');
+    expect(root).toContain('return <><AppLayout /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><DeferredFeedbackPrompt /><DeferredGlobalNotice /><BundleUpdatedNotice />');
     expect(root).toContain('<DeferredPwaInstallPrompt />\n          <VhDiagGate />');
     expect(root).not.toMatch(/^import .*(ChangelogNotice|PwaInstallPrompt|FeedbackPrompt|LandingScreen|DocsScreen|PublicLegalScreen)'/m);
     expect(read('../screens/AppLayout.tsx')).toContain('{afterFirstScreen && <NotificationOptInCard />}');

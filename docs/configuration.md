@@ -82,6 +82,7 @@ state. Never commit production values.
 | `VH_PLUGIN_HOST` | Parent host of the plugin panel origins (e.g. `p.example.com`; wildcard DNS and TLS for `*.p.example.com`). Also `VH_PLUGIN_HOST_SCHEME` (`http`, local development only) and `VH_PLUGIN_WEB_ORIGINS` | Unset (no panels) |
 | `VH_PLUGINS_DISABLED` / `VH_PLUGIN_DENYLIST` | Operator kill switch: every plugin / the listed plugin ids or manifest sha256 hashes | Unset |
 | `VH_FEEDBACK_ADMIN_ACCOUNT_IDS` | Who can read in-app feedback (B-836, [spec](../specs/2026-10-feedback.md)): comma- or space-separated account ids. Those accounts see **Settings → Send feedback → Feedback received** and get a Web Push for new feedback (at most one per 5 minutes, the rest counted into the next). Everyone can send feedback; with the variable unset nobody can read it and `/v1/feedback/admin*` answers 404. Feedback rows live only in this server's database — nothing is sent to veryhappy.dev or any other service. Limits: `MAX_FEEDBACK_PER_ACCOUNT_PER_HOUR` (default 5) and `MAX_FEEDBACK_PER_ACCOUNT_PER_DAY` (default 20); a resend of the same text within 10 minutes is free. Find an account id with `SELECT id, username FROM "Account"` | unset (nobody); set the owner's account id on the owner's deployment |
+| `VH_INSTANCE_CONFIG_FILE` | Path to the operator's [instance config file](#instance-config-file-b-980) (JSON, re-read within 10 s of a change, `${NAME}` values expand from the server environment). It switches model-answer feedback, model-request tagging and related operator features; unset = all of them off | unset |
 | `MAX_AUTOMATIONS_PER_ACCOUNT` | Automations one account may hold, active and paused together; a create beyond it fails with 429 `automation_count_quota_exceeded` | `100`; `0` disables the cap |
 
 `SIGNUP_CLOSED` remains a legacy fallback only. Prefer explicit `SIGNUP_MODE`.
@@ -181,6 +182,106 @@ agent」) lets the daemon update an outdated Codex CLI by itself while no Codex
 turn runs (B-894; `HAPPY_AGENT_AUTO_UPDATE_TICK_MS` shortens the 5-minute
 re-check for tests). Claude needs no setting: Web sessions use the SDK bundled
 with the CLI.
+
+## Instance config file (B-980)
+
+One JSON file, named by `VH_INSTANCE_CONFIG_FILE`, holds what an operator
+turns on for every account of this server. The server re-reads it within 10 s
+of a change, so editing it needs no release or restart. Any string may contain
+`${NAME}`: it is replaced by that server environment variable, which keeps
+credentials out of the file (an unset variable is logged by name and becomes
+empty). A section with a mistake is switched off and logged by key; the other
+sections keep working. Spec: [model feedback](../specs/2026-11-model-feedback.md).
+
+```json
+{
+  "admins": ["<account id>"],
+  "modelRequestTagging": {
+    "sessionHeader": "X-Example-Session-Id",
+    "requestHeader": "X-Example-Request-Id",
+    "hosts": ["gateway.example.com", "*.models.example.org"]
+  },
+  "modelFeedback": {
+    "enabled": true,
+    "scope": "tagged",
+    "forward": {
+      "url": "https://collector.example.com/v1/feedback",
+      "headers": { "Authorization": "Bearer ${FEEDBACK_FORWARD_TOKEN}" }
+    }
+  }
+}
+```
+
+- **`admins`**: account ids that may export model feedback (in addition to
+  `VH_FEEDBACK_ADMIN_ACCOUNT_IDS`).
+- **`modelRequestTagging`**: when a Claude session's API base URL
+  (`ANTHROPIC_BASE_URL`, from a per-session account or the daemon environment)
+  is on one of `hosts` (exact name or `*.suffix`), the session's wrapper sends
+  its model requests through a loopback forwarder that adds two headers:
+  `sessionHeader` = the Very Happy session id, `requestHeader` = a new id per
+  request. The ids sent during a turn go out with the turn's end, so feedback
+  on that answer carries them. Bodies and credentials pass through untouched
+  and are never logged. Needs CLI ≥ the release that ships B-980; the wrapper
+  reads the config at session start (a running session keeps its setting until
+  restarted) and caches the last good answer in `$HAPPY_HOME_DIR/instance-config.json`.
+- **`modelFeedback`**: 👍/👎 under each turn's final answer in the Web. `scope`
+  `tagged` (default) shows them only on turns whose requests were tagged, so
+  every rating joins the gateway's request log; `all` shows them on every
+  answer. Ratings are stored in this server's database (one per account ×
+  session × turn; tapping again changes or removes it). With `forward`, each
+  rating is also POSTed as `{"type":"model-feedback","record":{…}}` to `url`
+  with the given headers; failures are retried with backoff (8 attempts) and
+  never block the user; taking a rating back sends
+  `{"type":"model-feedback-deleted","id":…}` the same way. A JSON mistake in
+  the file keeps the last good config (logged); removing the file switches
+  everything off. Admins export from **Settings → Send feedback → Model
+  answer feedback**, or with a token:
+  `curl -H "Authorization: Bearer <token>" "$SERVER/v1/model-feedback/export?format=jsonl&since=<ms>"`
+  (`format` `jsonl` | `csv` | `json`; filters `since`, `until` in epoch ms,
+  `model`, `rating`). Each record has `sessionId`, `turnId`, `requestIds`,
+  `model`, `reportedModel`, `agent`, `accountProfile`, `rating`, `comment`,
+  the rater's account and timestamps — never the text of the conversation.
+  Rate limit: `MAX_MODEL_FEEDBACK_PER_ACCOUNT_PER_MINUTE` (default 30).
+
+- **`globalModelChannels`**: model gateways offered to every account as ready-to-pick accounts; see [Global model channels](#global-model-channels-b-981).
+- **`notices`**: notices shown in the Web app; see below.
+
+### `notices` — global notices (B-982)
+
+Notices every signed-in user, or only the listed accounts, sees as a small card
+in the Web app (fetched on load, every 10 minutes and when the app comes back).
+
+```json
+{
+  "notices": [
+    {
+      "id": "maint-2026-12-01",
+      "title": "Maintenance on Dec 1",
+      "body": "The server restarts at 02:00 UTC. Status: https://status.example.com",
+      "level": "warning",
+      "audience": "all",
+      "startsAt": "2026-11-28T00:00:00Z",
+      "endsAt": "2026-12-01T03:00:00Z",
+      "dismissible": true
+    },
+    { "id": "beta-invite", "title": "You are in the beta", "audience": { "accounts": ["<account-id>", "<username>"] } }
+  ]
+}
+```
+
+| Field | Rule |
+| --- | --- |
+| `id` | Required, 1–64 of `A-Z a-z 0-9 . _ -`, unique. Dismissals are remembered per id, so use a new id for new content. |
+| `title` / `body` | Title required (≤120). Body plain text (≤2000); `http(s)://` URLs become links. |
+| `level` | `info` (default) or `warning` (warn-colored card). |
+| `audience` | `"all"` (default) or `{ "accounts": [...] }` with account ids or usernames. |
+| `startsAt` / `endsAt` | Optional ISO times; shown from `startsAt` until (not including) `endsAt`. |
+| `dismissible` | Default `true`: 「知道了 / Got it」 hides it on every device of that account (synced setting `dismissedNoticeIds`, last 100 kept). `false`: it can only be closed until the next page load. |
+
+At most 50 entries; an invalid entry is dropped with a warning naming its id,
+the others still show. The app shows the newest open notice (latest `startsAt`;
+undated ones after, later in the file first), one at a time. A server without
+this feature answers 404 and the app shows nothing.
 
 ## Google login
 
@@ -700,6 +801,69 @@ account's server, and a switch across types (ChatGPT ↔ API ↔ machine login) 
 refused by the new account. If it is, the session shows *This session's history
 cannot continue on the new account — start a new session* with **New session**
 (same directory, on that account) and **Switch back**.
+
+### Global model channels (B-981)
+
+An operator can list model endpoints once on the server and every member gets
+them as ready-to-pick accounts. Add a `globalModelChannels` array to the server's
+instance config file (`VH_INSTANCE_CONFIG_FILE`, re-read on change):
+
+```json
+{
+  "globalModelChannels": [
+    {
+      "id": "team-gateway",
+      "label": "Team gateway",
+      "agent": "claude",
+      "baseUrl": "https://gateway.example.com",
+      "apiKey": "${TEAM_GATEWAY_KEY}",
+      "models": ["model-a", "model-b"],
+      "contextWindows": { "model-a": 200000 },
+      "audience": "all"
+    },
+    {
+      "id": "team-codex",
+      "enabled": false,
+      "label": "Team Codex",
+      "agent": "codex",
+      "baseUrl": "https://gateway.example.com/v1",
+      "wireApi": "responses",
+      "apiKey": "${TEAM_GATEWAY_KEY}",
+      "models": ["model-c"],
+      "audience": { "accounts": ["<account id>"] }
+    }
+  ]
+}
+```
+
+- `id` is `[a-z0-9-]`, at most 32 characters; the account on each machine is
+  `global-<id>`. `enabled` defaults to `true`; `audience` to `"all"` (or a list
+  of account ids). `agent` is `claude` or `codex`; `wireApi` is Codex only.
+- `apiKey` should be a `${NAME}` reference to a server environment variable.
+  An invalid channel is dropped on its own; the warning names its id and the
+  broken fields, never values.
+- `GET /v1/model-channels` returns the caller's visible channels. Only machine
+  (CLI / daemon) tokens get the key; Web sign-ins never do. Each daemon polls it
+  at start and every 5 minutes (a failed request keeps the last good set; an
+  older server means no channels) and lists the channels with a **Global** chip
+  in the account pickers and on **Settings → Models & accounts**. They can be
+  tested and set as the machine default, but not renamed or deleted there.
+- Disabling or removing a channel removes it from every machine within one
+  poll. Sessions bound to it then run no turns until switched to another account
+  — they never fall back to the machine login. A machine default pointing at it
+  is cleared.
+- With `modelRequestTagging` configured, requests of Claude sessions on a global
+  channel are always tagged, whatever `hosts` says. (Codex sessions are not
+  tagged.)
+- With no channels configured (or the section switched off), members add their
+  own **API** accounts as before; that path is unchanged.
+
+**Security.** The key is delivered to every member machine and stored there in
+a 0600 file (`$HAPPY_HOME_DIR/global-accounts/<id>/secret`). Anyone who can
+read files as that user on that machine can read the key. Use a dedicated
+gateway key you can rotate (rotation reaches machines on the next poll), not a
+personal or admin key. All members share it, so the gateway cannot meter usage
+per person; for that, have people add their own accounts.
 
 ### Custom models and providers (B-688)
 

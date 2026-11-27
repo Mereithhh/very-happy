@@ -36,6 +36,7 @@ import {
     type ClaudeInterruptReceipt,
     type ClaudeUnconfirmedCommand,
 } from './claudeCommandLifecycle';
+import { conversationEnvOverride } from '@/modelTagging/conversationBaseUrl';
 
 type Query = ReturnType<typeof query>;
 
@@ -273,6 +274,8 @@ export async function claudeRemote(opts: {
             // transcript; they are split off below and relayed on a side channel.
             // Only pay for them when someone is listening.
             includePartialMessages: opts.onStreamFrame ? true : undefined,
+            // B-980: the conversation's own requests go through the tracked forwarder path.
+            env: conversationEnvOverride(),
         };
         if(sdkOptions.canCallTool) sdkOptions.canCallTool=guardCallback(sdkOptions.canCallTool);
         if(sdkOptions.onElicitation) sdkOptions.onElicitation=guardCallback(sdkOptions.onElicitation);

@@ -23,6 +23,8 @@ export type WrapperAccount = {
     pinnedModel?: string;
     /** Bound but unusable: refuse turns, never run on the machine login. */
     unavailable: boolean;
+    /** B-981: the bound account is a server-configured global model channel (its requests are always tagged). */
+    global?: boolean;
     /** One-line notices for the session (unavailable reason, overriding user settings). */
     notices: string[];
     cleanup: () => void;
@@ -71,9 +73,10 @@ export function loadWrapperAccount(happyHome: string, sessionId: string, spawnAc
         bindings = { ...bindings, [sessionId]: { account: spawnAccountId! } };
     }
     const probe = defaultSecretProbe(env);
+    const accounts = readAccounts(happyHome);
     const resolution: ClaudeAccountResolution = resolveClaudeAccount(sessionId, {
         home: happyHome,
-        accounts: readAccounts(happyHome),
+        accounts,
         bindings,
         fileReadable: probe.fileReadable,
         env,
@@ -115,6 +118,7 @@ export function loadWrapperAccount(happyHome: string, sessionId: string, spawnAc
         settings: resolution.settings,
         ...(resolution.pinnedModel ? { pinnedModel: resolution.pinnedModel } : {}),
         unavailable: false,
+        ...(accounts.accounts[resolution.id]?.global ? { global: true } : {}),
         notices,
         cleanup,
     };

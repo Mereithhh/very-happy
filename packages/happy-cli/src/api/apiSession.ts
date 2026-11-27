@@ -1370,6 +1370,11 @@ export class ApiSessionClient extends EventEmitter {
      * B-495: close the turn a fork backfill left open. History, not a live
      * turn end — so no `turn-ended` tap (board analyzer, completion hooks).
      */
+    /** B-980: where turn-end gets the request ids this session's tagging forwarder sent. */
+    setModelRequestIdSource(take: (() => string[]) | undefined): void {
+        this.claudeSessionProtocolState.takeModelRequestIds = take;
+    }
+
     closeReplayedClaudeTurn(): void {
         const mapped = closeClaudeTurnWithStatus(this.claudeSessionProtocolState, 'completed');
         this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;

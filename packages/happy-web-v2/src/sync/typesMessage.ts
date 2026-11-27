@@ -122,6 +122,10 @@ export type AgentTextMessage = MessageOrdering & {
     costUsd?: number;
     totalDurationMs?: number;
     numTurns?: number;
+    /** B-980: session-protocol turn id of the turn this answer ended. */
+    turnId?: string;
+    /** B-980: ids the CLI put on this turn's model requests (only for tagged gateways). */
+    modelRequestIds?: string[];
 }
 
 /** B-260-P2: lifecycle of the sub-agent an Agent/Task call launched (from CLI task_* events). */

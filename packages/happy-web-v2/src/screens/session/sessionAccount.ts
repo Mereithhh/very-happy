@@ -30,7 +30,7 @@ import {
     type AgentProfilesState,
     type SessionAgentProfile,
 } from '@/sync/agentProfiles';
-import { accountErrorText, accountKindText, accountStatusText } from '@/components/accounts/accountText';
+import { accountErrorText, accountKindText, accountStatusText, accountTagText } from '@/components/accounts/accountText';
 import type { useTranslation } from '@/i18n/useTranslation';
 
 type T = ReturnType<typeof useTranslation>['t'];
@@ -107,7 +107,7 @@ export function buildAccountSection(facts: SessionAccountFacts, t: T, actions: {
         return {
             key: account.id,
             name: account.label,
-            tag: accountKindText(account.kind, t),
+            tag: accountTagText(account, t),
             status: status === 'ok' ? undefined : { text: accountStatusText(status, account, t, now), tone: accountStatusTone(status) },
             disabled: !usable,
             action: !usable && accountNeedsRelogin(account.kind, status) ? { label: t('accounts.relogin'), onSelect: () => actions.openSettings(account.id) } : undefined,

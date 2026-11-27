@@ -108,6 +108,7 @@ import { ClaudeAuthService } from './claudeAuth/claudeAuthService';
 import { AccountService } from '@/agentProfiles/accountService';
 import { forkSpawnAccount } from '@/agentProfiles/launchAccount';
 import { SPAWN_ACCOUNT_ENV, spawnSetupTokenPty, watchAccountFiles } from '@/agentProfiles/daemonAccounts';
+import { startGlobalChannelSync } from '@/agentProfiles/globalChannelSync';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager';
 import { createDaemonControlToken } from './controlAuth';
@@ -2493,6 +2494,14 @@ export async function startDaemon(): Promise<void> {
     accountServiceRef = accountService;
     apiMachine.setAgentProfileService(accountService);
     const stopAccountWatch = watchAccountFiles(configuration.happyHomeDir, () => { void apiMachine.publishAgentProfiles(); });
+    // B-981: the server's global model channels → read-only `global-<id>` accounts (start + every 5 min).
+    const globalChannelSync = startGlobalChannelSync({
+      home: configuration.happyHomeDir,
+      serverUrl: configuration.serverUrl,
+      token: () => credentials.token,
+      onChanged: (result) => { accountService.globalChannelsChanged(result.removed).catch((error) => logger.debug(`[B-981] applying removed global channels failed: ${error instanceof Error ? error.message : String(error)}`)); },
+      log: (message) => logger.debug(message),
+    });
 
     // B-510: mirror the local `webPanels` declaration (settings.json) into
     // daemonState. Started before connect so the connect snapshot carries it.
@@ -2801,6 +2810,7 @@ export async function startDaemon(): Promise<void> {
         clearInterval(piModelsInterval);
         claudeAuthService.stop();
         stopAccountWatch();
+        globalChannelSync.stop();
         accountService.dispose();
 
         // Release ownership BEFORE spawning the new daemon. Otherwise the spawned
@@ -3067,6 +3077,7 @@ export async function startDaemon(): Promise<void> {
 
       // B-850a: a pending remote login's `claude setup-token` pty dies with us.
       stopAccountWatch();
+      globalChannelSync.stop();
       accountService.dispose();
 
       pluginRuntime.stop();

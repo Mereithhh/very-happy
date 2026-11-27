@@ -22,7 +22,7 @@ import './feedback.css';
 export const FEEDBACK_PROMPT_DELAY_MS = 20_000;
 const TYPING_RETRY_MS = 5_000;
 /** Same set floatingCards.css hides the card behind. */
-const CORNER_OWNERS = '.pwa-install, .notif-optin, .signin-nudge, .cli-update, .mrb';
+const CORNER_OWNERS = '.pwa-install, .notif-optin, .signin-nudge, .cli-update, .mrb, .gn-card';
 
 function usePromptState(): FeedbackPromptState {
   return {

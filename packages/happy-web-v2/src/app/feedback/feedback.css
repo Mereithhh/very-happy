@@ -168,3 +168,5 @@
 .fb-inbox-meta { margin-left: auto; color: var(--text-faint); }
 .fb-inbox-text { margin: 0; color: var(--text); font-size: var(--fs-13); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .fb-inbox-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+/* B-980 model-answer feedback export (admins) */
+.fb-model-export { display: flex; flex-wrap: wrap; gap: var(--sp-2); padding: var(--sp-3); }

@@ -9,6 +9,7 @@ import {
     baseUrlHost,
     codexAccountFacts,
     daysUntil,
+    isGlobalAccount,
     type AccountDisplayStatus,
     type AgentProfileSummary,
 } from '@/sync/agentProfiles';
@@ -21,6 +22,12 @@ export function accountKindText(kind: string, t: T): string {
         case 'local-provider': return t('accounts.kindLocalProvider');
         default: return t('accounts.kindApi');
     }
+}
+
+/** B-981: the kind tag in one-line lists (picker meta, account menu): 「全局 · API」 for a global channel. */
+export function accountTagText(account: Pick<AgentProfileSummary, 'kind' | 'scope'>, t: T): string {
+    const kind = accountKindText(account.kind, t);
+    return isGlobalAccount(account) ? `${t('accounts.globalBadge')} · ${kind}` : kind;
 }
 
 export function accountStatusText(status: AccountDisplayStatus, account: Pick<AgentProfileSummary, 'expiresAt'> & Partial<Pick<AgentProfileSummary, 'status' | 'statusReason'>>, t: T, now = Date.now()): string {

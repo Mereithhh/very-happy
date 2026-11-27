@@ -16,6 +16,9 @@ import { FeedbackForm } from '@/app/feedback/FeedbackForm';
 import { fetchFeedbackAdminAccess, listFeedback, markFeedbackRead, type FeedbackAdminItem } from '@/sync/apiFeedback';
 import type { FeedbackRating } from '@/app/feedback/feedbackPolicy';
 import '@/app/feedback/feedback.css';
+import { downloadModelFeedbackExport, useInstanceConfig } from '@/sync/apiModelFeedback';
+import { modelFeedbackCopy } from '@/screens/session/modelFeedback/modelFeedbackCopy';
+import { toast } from '@/ui';
 
 function useFeedbackAdmin(): boolean {
     const [admin, setAdmin] = useState(false);
@@ -48,8 +51,36 @@ export function FeedbackSettings() {
                         <Item left={<Inbox size={16} />} title={t('feedback.inboxEntry', { count: unread })} onClick={() => navigate('/settings/feedback/inbox')} />
                     </ItemGroup>
                 )}
+                <ModelFeedbackExport />
             </ItemList>
         </Page>
+    );
+}
+
+/** B-980: model-answer feedback export, for the instance's feedback admins only. */
+function ModelFeedbackExport() {
+    const config = useInstanceConfig();
+    const { lang } = useTranslation();
+    const copy = modelFeedbackCopy(lang);
+    const [busy, setBusy] = useState<'jsonl' | 'csv' | null>(null);
+    if (!config?.modelFeedbackAdmin) return null;
+    const run = async (format: 'jsonl' | 'csv') => {
+        setBusy(format);
+        try {
+            toast.success(copy.exported(await downloadModelFeedbackExport(format)));
+        } catch {
+            toast.error(copy.failed);
+        } finally {
+            setBusy(null);
+        }
+    };
+    return (
+        <ItemGroup title={copy.exportTitle} footer={copy.exportHint}>
+            <div className="fb-model-export">
+                <Button size="sm" loading={busy === 'jsonl'} disabled={busy !== null} onClick={() => void run('jsonl')}>{copy.exportJsonl}</Button>
+                <Button size="sm" loading={busy === 'csv'} disabled={busy !== null} onClick={() => void run('csv')}>{copy.exportCsv}</Button>
+            </div>
+        </ItemGroup>
     );
 }
 
