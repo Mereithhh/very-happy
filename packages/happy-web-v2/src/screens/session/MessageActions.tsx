@@ -9,7 +9,8 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
 import { Button } from '@/ui/Button';
 import { useSession, useSetting } from '@/sync/storage';
-import type { UserTextMessage } from '@/sync/typesMessage';
+import type { AgentTextMessage, UserTextMessage } from '@/sync/typesMessage';
+import { ModelFeedbackButtons } from './modelFeedback/ModelFeedbackButtons';
 import type { ReusableAttachment } from '@/sync/attachmentTypes';
 import { useImeGuard } from '@/utils/ime';
 import { insertComposerNewline, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
@@ -43,8 +44,10 @@ import './messageActions.css';
  * `thread/revert`. B-961 retry = edit with the same text: drop this prompt's
  * replies and everything after, then send it again.
  */
-export function MessageActions({ text, sessionId, userMessage, createdAt = userMessage?.createdAt, hasAttachments = false, attachments, send = null, status, retryOf, retryHasAttachments = false, retryAttachments, children }: {
+export function MessageActions({ text, sessionId, userMessage, createdAt = userMessage?.createdAt, hasAttachments = false, attachments, send = null, status, retryOf, retryHasAttachments = false, retryAttachments, answer, children }: {
     text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments?: boolean;
+    /** B-980: a turn's final answer — offers 👍/👎 when the operator turned model feedback on. */
+    answer?: AgentTextMessage;
     /** B-961b: this prompt's uploaded files — edit and retry re-send them by reference. */
     attachments?: ReusableAttachment[];
     /** B-961: on the latest agent reply — the prompt a retry resends (the turn's first one). */
@@ -58,11 +61,12 @@ export function MessageActions({ text, sessionId, userMessage, createdAt = userM
     children?: ReactNode;
 }) {
     if (useReadOnlyTranscript()) return <>{children}</>;
-    return <EditableMessageActions text={text} sessionId={sessionId} userMessage={userMessage} createdAt={createdAt} hasAttachments={hasAttachments} attachments={attachments} send={send} status={status} retryOf={retryOf} retryHasAttachments={retryHasAttachments} retryAttachments={retryAttachments}>{children}</EditableMessageActions>;
+    return <EditableMessageActions text={text} sessionId={sessionId} userMessage={userMessage} createdAt={createdAt} hasAttachments={hasAttachments} attachments={attachments} send={send} status={status} retryOf={retryOf} retryHasAttachments={retryHasAttachments} retryAttachments={retryAttachments} answer={answer}>{children}</EditableMessageActions>;
 }
 
-function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAttachments, attachments, send, status, retryOf, retryHasAttachments, retryAttachments, children }: {
+function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAttachments, attachments, send, status, retryOf, retryHasAttachments, retryAttachments, answer, children }: {
     text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments: boolean; send: TurnSendStatus | null; status?: ReactNode;
+    answer?: AgentTextMessage;
     retryOf?: UserTextMessage; retryHasAttachments: boolean;
     attachments?: ReusableAttachment[]; retryAttachments?: ReusableAttachment[]; children?: ReactNode;
 }) {
@@ -249,6 +253,7 @@ function EditableMessageActions({ text, sessionId, userMessage, createdAt, hasAt
                             openAnnotationEditor({ sessionId, kind: 'new', anchor, place: null });
                         }}
                     ><MessageSquarePlus size={14} aria-hidden /><span>{t('session.chat.annotations.annotate')}</span></button>}
+                    {!send && answer && <ModelFeedbackButtons session={session} sessionId={sessionId} message={answer} />}
                     {canFork && <ForkFromHereButton session={session} message={userMessage} hasAttachments={hasAttachments} onNote={setForkNote} />}
                     {canEdit && <button ref={editButton} type="button" className="msg-action" aria-label={copy.edit} title={copy.edit} onClick={openEditor}><Pencil size={14} aria-hidden /></button>}
                     {follower && !send && <span className="msg-action msg-action--hint" role="note" aria-label={copy.followerHint} title={copy.followerHint}><Info size={14} aria-hidden /></span>}

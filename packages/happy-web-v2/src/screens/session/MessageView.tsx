@@ -270,7 +270,7 @@ function AgentText({
                     <DraftScopeProvider sessionId={sessionId} seq={message.seq}>
                         <Markdown text={prose} onOption={offerOptions ? onOption : undefined} hideOptions={!offerOptions} />
                     </DraftScopeProvider>
-                    {showActions && <MessageActions text={text} sessionId={sessionId} createdAt={message.createdAt} retryOf={retryOf} retryHasAttachments={retryHasAttachments} retryAttachments={retryAttachments} />}
+                    {showActions && <MessageActions text={text} sessionId={sessionId} createdAt={message.createdAt} retryOf={retryOf} retryHasAttachments={retryHasAttachments} retryAttachments={retryAttachments} answer={showMeta ? message : undefined} />}
                 </div>
             )}
             {showMeta && (

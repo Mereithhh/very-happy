@@ -167,6 +167,10 @@ export const sessionTurnEndEventSchema = z.object({
   durationMs: z.number().optional(),
   numTurns: z.number().optional(),
   usage: sessionTurnUsageSchema.optional(),
+  // B-980: ids the CLI put in the request-id header of this turn's model
+  // requests (only when the instance tags this account's gateway). Old readers
+  // strip it; feedback on the turn carries them so it joins gateway logs.
+  modelRequestIds: z.array(z.string()).optional(),
 });
 
 export const sessionStopEventSchema = z.object({

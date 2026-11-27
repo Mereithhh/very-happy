@@ -75,6 +75,7 @@ model Account {
     SessionShareLinks     SessionShareLink[]
     AttentionItems        AttentionItem[]
     Feedback              Feedback[]
+    ModelFeedback         ModelFeedback[]
     Issues                Issue[]
     IssueSequences        IssueSequence[]
     IssueWorkers          IssueWorker[]
@@ -1173,6 +1174,38 @@ model Feedback {
 
     @@index([createdAt(sort: Desc)])
     @@index([accountId, createdAt])
+}
+
+/// B-980 rating of one model answer (one row per account × session × turn; a resend replaces it).
+/// `sessionId` has no FK on purpose: feedback outlives a deleted session.
+model ModelFeedback {
+    id                String    @id @default(cuid())
+    accountId         String
+    account           Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    sessionId         String
+    turnId            String
+    /// 1 = down, 2 = up
+    rating            Int       @db.SmallInt
+    comment           String?
+    requestIds        Json
+    model             String?
+    reportedModel     String?
+    agent             String?
+    accountProfile    Json?
+    messageSeq        Int?
+    answeredAt        DateTime?
+    /// `pending` | `sent` | `failed` | `off` (no forward target configured when written)
+    forwardStatus     String    @default("off")
+    forwardAttempts   Int       @default(0)
+    forwardedAt       DateTime?
+    forwardError      String?
+    createdAt         DateTime  @default(now())
+    updatedAt         DateTime  @default(now()) @updatedAt
+
+    @@unique([accountId, sessionId, turnId])
+    @@index([updatedAt(sort: Desc)])
+    @@index([forwardStatus, updatedAt])
+    @@index([sessionId])
 }
 
 //

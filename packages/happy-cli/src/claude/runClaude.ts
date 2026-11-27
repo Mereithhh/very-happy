@@ -54,6 +54,7 @@ import { TranscriptPathHints } from './utils/transcriptCursor';
 import { planClaudeStartup } from './startupPlan';
 import { takeReconnectEnv } from '@/utils/reconnectEnv';
 import { issueSessionMetadata } from '@/issues/sessionMetadata';
+import { startClaudeRequestTagging } from '@/modelTagging/claudeTagging';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -689,6 +690,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             ? { profile: { id: spawnAccountId, label: spawnAccountId, kind: 'unknown', status: 'unavailable', reason: 'error' }, settings: {}, unavailable: true, notices: [`Account "${spawnAccountId}" could not be loaded: ${reason}`], cleanup: () => {} }
             : { profile: null, settings: {}, unavailable: false, notices: [], cleanup: () => {} };
     }
+    // B-980: tag this session's model requests when the instance config asks for its gateway.
+    await startModelRequestTagging({ session, credentials, account });
     const providerPinnedModel: string | undefined = account.pinnedModel;
     if (providerPinnedModel) options = { ...options, model: providerPinnedModel };
     logger.debug(`[START] B-850a account: ${account.profile ? `${account.profile.id} ${account.profile.kind} ${account.profile.status}` : 'machine login'}`);
@@ -1619,4 +1622,28 @@ async function prepareMainAgentForSession(api: ApiClient, session: ApiSessionCli
     }
     logger.debug(`[START] Main agent gates on: ${runtime.denylist.patterns.length} deny patterns, ${runtime.extraDirectories.length} skill root(s), safety ${runtime.safety.safety.preset}${runtime.safety.failedClosed ? " (fail-closed)" : ""}`);
     return runtime;
+}
+
+/** B-980: start the tagging forwarder (never fails the session: on any problem the session runs untagged). */
+async function startModelRequestTagging(input: { session: ApiSessionClient; credentials: Credentials; account: WrapperAccount }): Promise<void> {
+    try {
+        const tagging = await startClaudeRequestTagging({
+            env: process.env,
+            sessionId: input.session.sessionId,
+            serverUrl: configuration.serverUrl,
+            token: input.credentials.token,
+            happyHome: configuration.happyHomeDir,
+            accountUsable: !input.account.unavailable,
+            log: (message) => logger.debug(`[B-980] ${message}`),
+        });
+        if (!tagging) return;
+        input.session.setModelRequestIdSource(tagging.takeRequestIds);
+        const previous = input.account.cleanup;
+        input.account.cleanup = () => {
+            previous();
+            void tagging.close();
+        };
+    } catch (error) {
+        logger.debug(`[B-980] tagging not started: ${error instanceof Error ? error.message : String(error)}`);
+    }
 }

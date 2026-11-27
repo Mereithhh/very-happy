@@ -45,6 +45,9 @@ const agentEventSchema = z.discriminatedUnion('type', [z.object({
             cacheCreation: z.number().optional(),
             cacheRead: z.number().optional(),
         }).optional(),
+        // B-980: the session-protocol turn id and the request ids the CLI tagged this turn's model requests with.
+        turnId: z.string().optional(),
+        modelRequestIds: z.array(z.string()).optional(),
     }).optional(),
 }), z.object({
     type: z.literal('subagent'),
@@ -161,6 +164,8 @@ const sessionTurnEndEventSchema = z.object({
     durationMs: z.number().optional(),
     numTurns: z.number().optional(),
     usage: sessionTurnUsageSchema.optional(),
+    // B-980: ids the CLI tagged this turn's model requests with.
+    modelRequestIds: z.array(z.string().max(128)).max(200).optional().catch(undefined),
 });
 
 const sessionStopEventSchema = z.object({
@@ -758,8 +763,11 @@ function normalizeSessionEnvelope(
         const hasMeta = typeof ev.costUsd === 'number'
             || typeof ev.durationMs === 'number'
             || typeof ev.numTurns === 'number'
-            || ev.usage !== undefined;
+            || ev.usage !== undefined
+            || (ev.modelRequestIds?.length ?? 0) > 0;
         const turnMeta = hasMeta ? {
+            ...(envelope.turn ? { turnId: envelope.turn } : {}),
+            ...(ev.modelRequestIds?.length ? { modelRequestIds: ev.modelRequestIds } : {}),
             ...(typeof ev.costUsd === 'number' ? { costUsd: ev.costUsd } : {}),
             ...(typeof ev.durationMs === 'number' ? { totalDurationMs: ev.durationMs } : {}),
             ...(typeof ev.numTurns === 'number' ? { numTurns: ev.numTurns } : {}),

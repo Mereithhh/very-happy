@@ -410,6 +410,15 @@ describe('closeClaudeTurnWithStatus', () => {
         const result = closeClaudeTurnWithStatus({ currentTurnId: 'turn-1' }, 'failed', { error: 'upstream failed' });
         expect(result.envelopes[0].ev).toEqual({ t: 'turn-end', status: 'failed', error: 'upstream failed' });
     });
+
+    it('B-980: carries the tagged request ids of the turn, and drains them once', () => {
+        let pending = ['req-1', 'req-2'];
+        const take = () => { const t = pending; pending = []; return t; };
+        const result = closeClaudeTurnWithStatus({ currentTurnId: 'turn-1', takeModelRequestIds: take }, 'completed');
+        expect(result.envelopes[0].ev).toEqual({ t: 'turn-end', status: 'completed', modelRequestIds: ['req-1', 'req-2'] });
+        const next = closeClaudeTurnWithStatus({ currentTurnId: 'turn-2', takeModelRequestIds: take }, 'completed');
+        expect(next.envelopes[0].ev).toEqual({ t: 'turn-end', status: 'completed' });
+    });
 });
 
 describe('Claude SDK failure mapping', () => {

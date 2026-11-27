@@ -4,6 +4,7 @@ import { awaitShutdown, onShutdown } from "@/utils/shutdown";
 import { closeDatabase, db } from './storage/db';
 import { startTimeout } from "./app/presence/timeout";
 import { startShareLinkAccessRetention } from "@/app/session/shareLinks";
+import { startModelFeedbackForwarder } from "@/app/modelFeedback/modelFeedbackStore";
 import { startMetricsServer } from "@/app/monitoring/metrics";
 import { activityCache } from "@/app/presence/sessionCache";
 import { auth } from "./app/auth/auth";
@@ -41,6 +42,8 @@ async function main() {
         startDatabaseMetricsUpdater();
         startTimeout();
         startShareLinkAccessRetention();
+        const stopModelFeedbackForwarder = startModelFeedbackForwarder();
+        onShutdown('model-feedback-forwarder', async () => stopModelFeedbackForwarder());
     } catch (startupError) {
         try {
             await closeDatabase();

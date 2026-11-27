@@ -37,6 +37,7 @@ export * from './wrapup';
 export * from './issues';
 
 export * from './syncProtocol';
+export * from './modelFeedback';
 
 export * from './turnFailure';
 export * from './codexGoal';

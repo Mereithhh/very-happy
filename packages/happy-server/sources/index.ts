@@ -11,6 +11,7 @@ import { startMetricsServer } from "./app/monitoring/metrics";
 import { startDatabaseMetricsUpdater } from "./app/monitoring/metrics2";
 import { startTimeout } from "./app/presence/timeout";
 import { startShareLinkAccessRetention } from "./app/session/shareLinks";
+import { startModelFeedbackForwarder } from "@/app/modelFeedback/modelFeedbackStore";
 import { onShutdown } from "./utils/shutdown";
 
 export { runMigrations } from "./standalone";
@@ -49,6 +50,8 @@ export async function startServer(opts: StartServerOptions): Promise<{ port: num
         startDatabaseMetricsUpdater();
         startTimeout();
         startShareLinkAccessRetention();
+        const stopModelFeedbackForwarder = startModelFeedbackForwarder();
+        onShutdown('model-feedback-forwarder', async () => stopModelFeedbackForwarder());
 
         return { port, host };
     } catch (startupError) {

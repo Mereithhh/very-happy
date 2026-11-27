@@ -19,6 +19,8 @@ import { toolResultPayload } from '@/sessionProtocol/toolResultPayload';
 
 export type ClaudeSessionProtocolState = {
     currentTurnId: string | null;
+    /** B-980: drains the request ids the tagging forwarder sent during this turn (absent = not tagging). */
+    takeModelRequestIds?: () => string[];
     pendingAssistantError?: string;
     uuidToProviderSubagent?: Map<string, string>;
     taskPromptToSubagents?: Map<string, string[]>;
@@ -511,6 +513,12 @@ type TurnEndMeta = {
     };
 };
 
+/** B-980: the turn's tagged request ids, or nothing when the session is not tagged / sent none. */
+function modelRequestIdsField(state: ClaudeSessionProtocolState): { modelRequestIds?: string[] } {
+    const ids = state.takeModelRequestIds?.() ?? [];
+    return ids.length > 0 ? { modelRequestIds: ids } : {};
+}
+
 function closeTurn(
     state: ClaudeSessionProtocolState,
     status: SessionTurnEndStatus,
@@ -529,6 +537,7 @@ function closeTurn(
         ...(typeof meta?.durationMs === 'number' ? { durationMs: meta.durationMs } : {}),
         ...(typeof meta?.numTurns === 'number' ? { numTurns: meta.numTurns } : {}),
         ...(meta?.usage ? { usage: meta.usage } : {}),
+        ...modelRequestIdsField(state),
     }, { turn: state.currentTurnId }));
     state.currentTurnId = null;
     state.pendingAssistantError = undefined;
