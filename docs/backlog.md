@@ -24,9 +24,9 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-982 | 全局通知：运营方在实例配置里写通知，发给全部或指定账号，Web 通知卡、已读跨设备同步 | feat | Owner 11-27（C-75） | doing | 依赖 B-980 实例配置 |
-| B-981 | 全局模型渠道：运营方配置一次，所有账号的模型/账号列表自动出现，可开关；关掉后手动添加链路照常 | feat | Owner 11-27（C-75） | doing | 依赖 B-980 实例配置与打标 |
-| B-980 | 模型回答 👍/👎 反馈（存本库 + 可转发 + 管理员导出）与模型请求打标（会话 id / 请求 id header，名字与网关 host 来自实例配置 `VH_INSTANCE_CONFIG_FILE`） | feat | Owner 11-27（C-75） | doing | [spec](../specs/2026-11-model-feedback.md) |
+| B-982 | 全局通知：运营方在实例配置里写通知，发给全部或指定账号，Web 通知卡、已读跨设备同步 | feat | Owner 11-27 | doing | 依赖 B-980 实例配置 |
+| B-981 | 全局模型渠道：运营方配置一次，所有账号的模型/账号列表自动出现，可开关；关掉后手动添加链路照常 | feat | Owner 11-27 | doing | 依赖 B-980 实例配置与打标 |
+| B-980 | 模型回答 👍/👎 反馈（存本库 + 可转发 + 管理员导出）与模型请求打标（会话 id / 请求 id header，名字与网关 host 来自实例配置 `VH_INSTANCE_CONFIG_FILE`） | feat | Owner 11-27 | doing | [spec](../specs/2026-11-model-feedback.md) |
 | B-793 | dev-sg 装了两份 very-happy（`~/.npm-global` 和 `/usr`），PATH 先后不同导致命令和 daemon 可能跑不同版本 → 删掉 `/usr` 那份并统一 npm prefix（Owner 待办，关联 B-744） | debt | 第五版收尾（10-23） | todo | **P2**；Owner 待办 |
 | B-792 | 侧栏行空间不够时 P0 等 tag 跟其他 chip 一起被隐藏（B-773 的取舍）→ 优先级类 tag 保底显示或改为图标 | ux | 第五版收尾（10-23） | todo | **P3** |
 | B-791 | 中文界面英文残留：「已结束」等标题、change_title 的「Title changed to …」事件行、负责人/成员会话自动标题（QA4 O5）；新建团队没有名字字段，团队名和项目名直接用目标全文，侧栏和 /projects 里很长（QA4 O7，关联 B-748） | ux | 第五版收尾（10-23） | todo | **P2** |
