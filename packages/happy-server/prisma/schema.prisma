@@ -1199,12 +1199,16 @@ model ModelFeedback {
     forwardAttempts   Int       @default(0)
     forwardedAt       DateTime?
     forwardError      String?
+    /// Earliest time the forwarder may try again (null = now).
+    nextForwardAt     DateTime?
+    /// Set when the rater took the rating back while a forward target is configured; the row stays until the withdrawal is forwarded.
+    deletedAt         DateTime?
     createdAt         DateTime  @default(now())
     updatedAt         DateTime  @default(now()) @updatedAt
 
     @@unique([accountId, sessionId, turnId])
     @@index([updatedAt(sort: Desc)])
-    @@index([forwardStatus, updatedAt])
+    @@index([forwardStatus, nextForwardAt])
     @@index([sessionId])
 }
 

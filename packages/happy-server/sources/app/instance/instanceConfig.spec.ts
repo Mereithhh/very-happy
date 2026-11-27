@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createInstanceConfigSource, parseInstanceConfig } from './instanceConfig';
 
 describe('parseInstanceConfig', () => {
@@ -28,6 +31,23 @@ describe('parseInstanceConfig', () => {
 });
 
 describe('createInstanceConfigSource', () => {
+    it('keeps the last good config when the file stops parsing, and switches off when it is removed', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'vh-instance-'));
+        const file = join(dir, 'c.json');
+        let t = 0;
+        const source = createInstanceConfigSource({ file, now: () => t, env: {}, warn: () => undefined });
+        writeFileSync(file, JSON.stringify({ modelFeedback: { enabled: true } }));
+        expect(source().modelFeedback?.enabled).toBe(true);
+        writeFileSync(file, '{ "modelFeedback": { "enabled": true }, }');
+        utimesSync(file, new Date(), new Date(Date.now() + 5000));
+        t += 20_000;
+        expect(source().modelFeedback?.enabled).toBe(true);
+        rmSync(file);
+        t += 20_000;
+        expect(source().modelFeedback).toBeNull();
+        rmSync(dir, { recursive: true, force: true });
+    });
+
     it('serves the empty config without a file and on a missing file', () => {
         expect(createInstanceConfigSource({})().modelFeedback).toBeNull();
         const warnings: string[] = [];

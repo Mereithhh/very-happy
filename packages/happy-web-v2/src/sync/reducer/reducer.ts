@@ -1087,6 +1087,7 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
                         event: null,
                         meta: msg.meta,
                         usage: msgUsage,
+                        ...(msg.turn ? { turnId: msg.turn } : {}),
                     });
                     changed.add(mid);
                 }
@@ -1585,8 +1586,11 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
             if (typeof turnMeta.totalDurationMs === 'number') target.totalDurationMs = turnMeta.totalDurationMs;
             if (typeof turnMeta.numTurns === 'number') target.numTurns = turnMeta.numTurns;
             if (turnMeta.usage) target.usage = turnMeta.usage;
-            if (turnMeta.turnId) target.turnId = turnMeta.turnId;
-            if (turnMeta.modelRequestIds?.length) target.modelRequestIds = turnMeta.modelRequestIds;
+            // B-980: request ids belong to the answer of the SAME turn. A turn without text of its own
+            // would otherwise pin its ids on the previous turn's answer.
+            const sameTurn = !turnMeta.turnId || !target.turnId || target.turnId === turnMeta.turnId;
+            if (sameTurn && turnMeta.turnId) target.turnId = turnMeta.turnId;
+            if (sameTurn && turnMeta.modelRequestIds?.length) target.modelRequestIds = turnMeta.modelRequestIds;
             changed.add(target.id);
         }
     }

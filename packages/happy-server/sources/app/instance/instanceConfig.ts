@@ -175,15 +175,15 @@ function section<T>(schema: z.ZodType<T>, value: unknown, name: string, problems
 }
 
 /** Pure: JSON text → config + human-readable problems (never throws). */
-export function parseInstanceConfig(text: string, env: Record<string, string | undefined> = process.env): { config: InstanceConfig; problems: string[] } {
+export function parseInstanceConfig(text: string, env: Record<string, string | undefined> = process.env): { config: InstanceConfig; problems: string[]; unreadable?: true } {
     const problems: string[] = [];
     let json: unknown;
     try {
         json = JSON.parse(text);
     } catch (error) {
-        return { config: EMPTY_INSTANCE_CONFIG, problems: [`not JSON: ${error instanceof Error ? error.message : String(error)}`] };
+        return { config: EMPTY_INSTANCE_CONFIG, problems: [`not JSON: ${error instanceof Error ? error.message : String(error)}`], unreadable: true };
     }
-    if (!json || typeof json !== 'object' || Array.isArray(json)) return { config: EMPTY_INSTANCE_CONFIG, problems: ['top level must be an object'] };
+    if (!json || typeof json !== 'object' || Array.isArray(json)) return { config: EMPTY_INSTANCE_CONFIG, problems: ['top level must be an object'], unreadable: true };
     const missing = new Set<string>();
     const raw = expandEnvRefs(json, env, missing) as Record<string, unknown>;
     if (missing.size > 0) problems.push(`unset environment variables: ${[...missing].sort().join(', ')}`);
@@ -211,19 +211,33 @@ export function createInstanceConfigSource(opts: {
     return function get(): InstanceConfig {
         if (!file || now() - checkedAt < RECHECK_MS) return cached;
         checkedAt = now();
+        let mtime: number;
         try {
-            const mtime = statSync(file).mtimeMs;
-            if (mtime === loadedMtime) return cached;
-            loadedMtime = mtime;
-            const { config, problems } = parseInstanceConfig(readFileSync(file, 'utf8'), opts.env ?? process.env);
-            // Problems name keys and variables, never values.
-            if (problems.length > 0) warn(`[instance-config] ${file}: ${problems.join(' | ')}`);
-            cached = config;
+            mtime = statSync(file).mtimeMs;
         } catch (error) {
+            // A removed file is how an operator switches everything off.
             if (loadedMtime !== -1) warn(`[instance-config] cannot read ${file} (${error instanceof Error ? error.message : String(error)}); features it configures are off`);
             loadedMtime = -1;
             cached = EMPTY_INSTANCE_CONFIG;
+            return cached;
         }
+        if (mtime === loadedMtime) return cached;
+        loadedMtime = mtime;
+        let parsed: ReturnType<typeof parseInstanceConfig>;
+        try {
+            parsed = parseInstanceConfig(readFileSync(file, 'utf8'), opts.env ?? process.env);
+        } catch (error) {
+            parsed = { config: EMPTY_INSTANCE_CONFIG, problems: [`read failed: ${error instanceof Error ? error.message : String(error)}`], unreadable: true };
+        }
+        // Problems name keys and variables, never values.
+        if (parsed.problems.length > 0) warn(`[instance-config] ${file}: ${parsed.problems.join(' | ')}`);
+        // A half-saved edit or a JSON typo must not switch every feature off (and make every
+        // daemon drop its global channels): keep serving the last good config until it is fixed.
+        if (parsed.unreadable) {
+            if (cached !== EMPTY_INSTANCE_CONFIG) warn(`[instance-config] ${file}: keeping the last good config until the file parses`);
+            return cached;
+        }
+        cached = parsed.config;
         return cached;
     };
 }

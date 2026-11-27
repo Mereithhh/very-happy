@@ -149,9 +149,12 @@ describe('model feedback REST through startApi (pglite)', () => {
         await sleep(50);
         const row = await db.modelFeedback.findFirstOrThrow({ where: { turnId: 'turn-2' } });
         expect(row).toMatchObject({ forwardStatus: 'pending', forwardAttempts: 1, forwardError: 'http 503' });
+        expect(row.nextForwardAt!.getTime()).toBeGreaterThan(Date.now() + 20_000);
         forwardStatus = 200;
         const { forwardPendingModelFeedback } = await import('./modelFeedbackStore');
-        await forwardPendingModelFeedback(Date.now() + 10 * 60_000);
+        // Still in backoff: the sweep leaves it alone.
+        expect(await forwardPendingModelFeedback(Date.now())).toBe(0);
+        expect(await forwardPendingModelFeedback(Date.now() + 10 * 60_000)).toBe(1);
         expect((await db.modelFeedback.findFirstOrThrow({ where: { turnId: 'turn-2' } })).forwardStatus).toBe('sent');
     });
 
@@ -175,8 +178,14 @@ describe('model feedback REST through startApi (pglite)', () => {
         expect(rows[1]).toContain('req-a req-b');
     });
 
-    it('lets the rater take a rating back', async () => {
+    it('lets the rater take a rating back, and tells the collector before forgetting it', async () => {
+        forwarded.length = 0;
         expect((await call('DELETE', `/v1/model-feedback?sessionId=${sessionId}&turnId=turn-2`)).body).toEqual({ deleted: true });
+        expect((await call('GET', `/v1/model-feedback?sessionId=${sessionId}`)).body.items.map((i: any) => i.turnId)).toEqual(['turn-1']);
+        for (let i = 0; i < 40 && (await db.modelFeedback.count({ where: { turnId: 'turn-2' } })) > 0; i++) await sleep(25);
         expect(await db.modelFeedback.count({ where: { turnId: 'turn-2' } })).toBe(0);
+        expect(forwarded.map(f => f.body.type)).toEqual(['model-feedback-deleted']);
+        expect(forwarded[0].body).toMatchObject({ sessionId, turnId: 'turn-2' });
+        expect((await call('DELETE', `/v1/model-feedback?sessionId=${sessionId}&turnId=turn-2`)).body).toEqual({ deleted: false });
     });
 });

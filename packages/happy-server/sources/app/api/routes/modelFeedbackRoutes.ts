@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { INSTANCE_CONFIG_PATH, ModelFeedbackRatingSchema, ModelFeedbackSubmitSchema } from '@slopus/happy-wire';
-import type { Fastify } from '../types';
+import type { Fastify } from '@/app/api/types';
 import { isAccountResourceLimitError } from '@/app/api/resourceLimits';
 import { clientInstanceConfig, instanceConfig } from '@/app/instance/instanceConfig';
 import {

@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
 import type { AddressInfo } from 'node:net';
+import { pipeline } from 'node:stream';
 import { hostMatchesTagging, type ModelRequestTagging } from '@slopus/happy-wire';
 
 /** Hop-by-hop headers (RFC 7230 §6.1) are never forwarded. */
@@ -23,9 +24,19 @@ const HOP_BY_HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'p
 
 const MAX_IDS_PER_TURN = 200;
 
+/** Loopback path prefixes: requests under TRACKED count toward the turn; under OTHER they are tagged only. */
+export const TRACKED_PREFIX = '/t';
+export const OTHER_PREFIX = '/o';
+
 export interface RequestTagger {
-    /** Base URL to give the agent instead of the upstream one. */
+    /**
+     * Base URL for everything else in the session (title one-shots, /btw, a
+     * `claude` run from the Bash tool): tagged with the session id and a request
+     * id, but not counted as a request of the rated answer.
+     */
     baseUrl: string;
+    /** Base URL for the session's own conversation query: these requests are the turn's `modelRequestIds`. */
+    conversationBaseUrl: string;
     /** Ids sent since the last call (one turn), oldest first. */
     takeRequestIds(): string[];
     close(): Promise<void>;
@@ -44,14 +55,32 @@ export function shouldTagUpstream(upstream: string | undefined, config: ModelReq
     return always || hostMatchesTagging(url.hostname, config.hosts);
 }
 
-/** Pure: upstream URL for an incoming path (the agent sees the loopback base with the same path prefix). */
+/** Pure: upstream URL for an incoming path (the upstream's own path prefix goes back in front). */
 export function upstreamUrl(upstream: URL, incomingPath: string): URL {
     const base = upstream.pathname.replace(/\/+$/, '');
-    const [path, query] = incomingPath.split('?', 2) as [string, string | undefined];
+    const q = incomingPath.indexOf('?');
+    const path = q === -1 ? incomingPath : incomingPath.slice(0, q);
+    const query = q === -1 ? '' : incomingPath.slice(q + 1);
     const out = new URL(upstream.origin);
     out.pathname = `${base}${path.startsWith('/') ? '' : '/'}${path}`;
     out.search = query ? `?${query}` : '';
     return out;
+}
+
+/** Pure: split the loopback path into (tracked?, path the upstream sees). Anything without a known prefix is untracked. */
+export function splitLoopbackPath(incoming: string): { tracked: boolean; path: string } {
+    for (const [prefix, tracked] of [[TRACKED_PREFIX, true], [OTHER_PREFIX, false]] as const) {
+        if (incoming === prefix || incoming.startsWith(`${prefix}/`) || incoming.startsWith(`${prefix}?`)) {
+            const rest = incoming.slice(prefix.length);
+            return { tracked, path: rest.startsWith('/') ? rest : `/${rest}` };
+        }
+    }
+    return { tracked: false, path: incoming };
+}
+
+/** Pure: a model call of the conversation (not a probe or a token count). */
+export function countsAsTurnRequest(method: string | undefined, path: string): boolean {
+    return method === 'POST' && !/\/count_tokens(?:\?|$)/.test(path);
 }
 
 /** Pure: headers to send upstream (hop-by-hop dropped, host rewritten, tag headers set last so a client cannot spoof them). */
@@ -84,16 +113,24 @@ export async function startRequestTagger(opts: {
 
     const server = http.createServer((req, res) => {
         const requestId = newId();
-        // Every request is tagged; only model calls (POST) count toward the turn — not reachability probes (HEAD/GET).
-        if (req.method === 'POST' && ids.length < MAX_IDS_PER_TURN) ids.push(requestId);
-        const target = upstreamUrl(upstream, req.url ?? '/');
+        const { tracked, path } = splitLoopbackPath(req.url ?? '/');
+        // Every request is tagged; only the conversation's own model calls count toward the turn.
+        if (tracked && countsAsTurnRequest(req.method, path) && ids.length < MAX_IDS_PER_TURN) ids.push(requestId);
+        const target = upstreamUrl(upstream, path);
         const headers = forwardHeaders(req.headers, upstream, {
             [opts.config.sessionHeader]: opts.sessionId,
             [opts.config.requestHeader]: requestId,
         });
         const out = client.request(target, { method: req.method, headers, agent }, (up) => {
             res.writeHead(up.statusCode ?? 502, up.statusMessage, up.headers);
-            up.pipe(res);
+            // pipeline tears `res` down when the upstream aborts mid-stream, so the agent
+            // sees a broken response (and retries) instead of waiting on a body that never ends.
+            pipeline(up, res, (error) => {
+                if (error) {
+                    opts.onError?.(`upstream stream ${error.message}`);
+                    res.destroy(error);
+                }
+            });
         });
         out.on('error', (error) => {
             opts.onError?.(`upstream ${error.message}`);
@@ -123,8 +160,9 @@ export async function startRequestTagger(opts: {
     const { port } = server.address() as AddressInfo;
 
     return {
-        // No path: `upstreamUrl` puts the upstream's own prefix back on every request.
-        baseUrl: `http://127.0.0.1:${port}`,
+        // `upstreamUrl` puts the upstream's own path prefix back on every request.
+        baseUrl: `http://127.0.0.1:${port}${OTHER_PREFIX}`,
+        conversationBaseUrl: `http://127.0.0.1:${port}${TRACKED_PREFIX}`,
         takeRequestIds() {
             const taken = ids;
             ids = [];

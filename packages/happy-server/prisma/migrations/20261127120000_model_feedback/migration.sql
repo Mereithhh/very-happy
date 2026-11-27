@@ -22,10 +22,12 @@ CREATE TABLE "ModelFeedback" (
   "forwardAttempts" INTEGER NOT NULL DEFAULT 0,
   "forwardedAt" TIMESTAMP(3),
   "forwardError" TEXT,
+  "nextForwardAt" TIMESTAMP(3),
+  "deletedAt" TIMESTAMP(3),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX "ModelFeedback_accountId_sessionId_turnId_key" ON "ModelFeedback"("accountId", "sessionId", "turnId");
 CREATE INDEX "ModelFeedback_updatedAt_idx" ON "ModelFeedback"("updatedAt" DESC);
-CREATE INDEX "ModelFeedback_forwardStatus_updatedAt_idx" ON "ModelFeedback"("forwardStatus", "updatedAt");
+CREATE INDEX "ModelFeedback_forwardStatus_nextForwardAt_idx" ON "ModelFeedback"("forwardStatus", "nextForwardAt");
 CREATE INDEX "ModelFeedback_sessionId_idx" ON "ModelFeedback"("sessionId");

@@ -5,8 +5,10 @@
  * host, the wrapper env is pointed at the loopback forwarder so every Claude
  * child of this session (SDK, prewarm, /btw, title one-shots) goes through it.
  */
+import { ensureLocalProxyBypass } from '@/claude/utils/proxyBypass';
 import { loadInstanceClientConfig } from './instanceClientConfig';
 import { shouldTagUpstream, startRequestTagger, type RequestTagger } from './requestTagger';
+import { setConversationBaseUrl } from './conversationBaseUrl';
 
 export async function startClaudeRequestTagging(opts: {
     env: NodeJS.ProcessEnv;
@@ -28,6 +30,15 @@ export async function startClaudeRequestTagging(opts: {
     if (!shouldTagUpstream(upstream, tagging, opts.alwaysTag)) return null;
     const tagger = await startRequestTagger({ upstream, sessionId: opts.sessionId, config: tagging!, onError: opts.log });
     opts.env.ANTHROPIC_BASE_URL = tagger.baseUrl;
-    opts.log?.(`tagging model requests via ${tagger.baseUrl}`);
-    return tagger;
+    // An HTTP(S)_PROXY in the environment must not swallow loopback traffic.
+    ensureLocalProxyBypass(opts.env);
+    setConversationBaseUrl(tagger.conversationBaseUrl);
+    opts.log?.(`tagging model requests via ${tagger.conversationBaseUrl}`);
+    return {
+        ...tagger,
+        close: async () => {
+            setConversationBaseUrl(null);
+            await tagger.close();
+        },
+    };
 }

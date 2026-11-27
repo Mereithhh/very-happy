@@ -112,6 +112,8 @@ export async function submitModelFeedback(accountId: string, input: ModelFeedbac
         forwardStatus: forward ? 'pending' : 'off',
         forwardAttempts: 0,
         forwardError: null,
+        nextForwardAt: null,
+        deletedAt: null,
     };
     const row = await db.modelFeedback.upsert({
         where: { accountId_sessionId_turnId: { accountId, sessionId: input.sessionId, turnId: input.turnId } },
@@ -122,14 +124,34 @@ export async function submitModelFeedback(accountId: string, input: ModelFeedbac
     return { feedback: view(row) };
 }
 
+/**
+ * Take a rating back. Without a forward target the row is simply removed. With
+ * one, the row is kept as a withdrawal (`deletedAt`) until the collector has
+ * been told (`{type:'model-feedback-deleted'}`), so it can drop the rating too;
+ * the forwarder then removes it.
+ */
 export async function deleteModelFeedback(accountId: string, sessionId: string, turnId: string): Promise<{ deleted: boolean }> {
-    const result = await db.modelFeedback.deleteMany({ where: { accountId, sessionId, turnId } });
-    return { deleted: result.count > 0 };
+    if (!modelFeedbackEnabled()) throw new ModelFeedbackError('model_feedback_disabled', 404);
+    const forward = instanceConfig().modelFeedback?.forward ?? null;
+    const row = await db.modelFeedback.findUnique({ where: { accountId_sessionId_turnId: { accountId, sessionId, turnId } } });
+    if (!row || row.deletedAt) return { deleted: false };
+    // Never told the collector about it (forwarding off then, or not sent yet and not configured now): nothing to withdraw there.
+    if (!forward || row.forwardStatus === 'off') {
+        await db.modelFeedback.deleteMany({ where: { id: row.id } });
+        return { deleted: true };
+    }
+    const updated = await db.modelFeedback.update({
+        where: { id: row.id },
+        data: { deletedAt: new Date(), forwardStatus: 'pending', forwardAttempts: 0, forwardError: null, nextForwardAt: null },
+    });
+    void forwardOne(updated, forward);
+    return { deleted: true };
 }
 
 /** The caller's own ratings in one session (so the buttons show what was chosen, on any device). */
 export async function listSessionModelFeedback(accountId: string, sessionId: string): Promise<{ items: ModelFeedbackView[] }> {
-    const rows = await db.modelFeedback.findMany({ where: { accountId, sessionId }, orderBy: { updatedAt: 'desc' }, take: 1000 });
+    if (!modelFeedbackEnabled()) throw new ModelFeedbackError('model_feedback_disabled', 404);
+    const rows = await db.modelFeedback.findMany({ where: { accountId, sessionId, deletedAt: null }, orderBy: { updatedAt: 'desc' }, take: 1000 });
     return { items: rows.map(view) };
 }
 
@@ -147,22 +169,30 @@ export function setModelFeedbackForwardFetch(fn: ForwardFetch | null): void {
     forwardFetch = fn ?? ((url, init) => fetch(url, init));
 }
 
-async function forwardOne(row: ModelFeedback, target: ModelFeedbackForward): Promise<void> {
-    // Claim: only the writer that bumps `forwardAttempts` from the value it read sends, so two replicas never double-send one version.
+/** Pure: the forwarded body — a rating, or the withdrawal of one (receivers upsert / delete by `id`). */
+export function forwardPayload(row: ModelFeedback, account?: ModelFeedbackRecord['account']): unknown {
+    return row.deletedAt
+        ? { type: 'model-feedback-deleted', id: row.id, sessionId: row.sessionId, turnId: row.turnId, deletedAt: row.deletedAt.toISOString() }
+        : { type: 'model-feedback', record: modelFeedbackRecord(row, account) };
+}
+
+async function forwardOne(row: ModelFeedback, target: ModelFeedbackForward, now = Date.now()): Promise<void> {
+    const attempts = row.forwardAttempts + 1;
+    // Claim: only the writer that bumps `forwardAttempts` from the value it read sends, so two replicas
+    // never double-send one version. `nextForwardAt` moves out now, so a crash mid-send still backs off.
+    // `updatedAt` is pinned: it identifies the rating version, and Prisma would otherwise bump it.
     const claimed = await db.modelFeedback.updateMany({
         where: { id: row.id, forwardStatus: 'pending', forwardAttempts: row.forwardAttempts, updatedAt: row.updatedAt },
-        // `updatedAt` pinned: it identifies the rating version, and Prisma would otherwise bump it.
-        data: { forwardAttempts: row.forwardAttempts + 1, updatedAt: row.updatedAt },
+        data: { forwardAttempts: attempts, nextForwardAt: new Date(now + forwardBackoffMs(attempts)), updatedAt: row.updatedAt },
     }).catch(() => ({ count: 0 }));
     if (claimed.count !== 1) return;
-    const attempts = row.forwardAttempts + 1;
     let error: string | null = null;
     try {
-        const record = modelFeedbackRecord(row, await accountSummary(row.accountId));
+        const body = forwardPayload(row, row.deletedAt ? undefined : await accountSummary(row.accountId));
         const res = await forwardFetch(target.url, {
             method: 'POST',
             headers: { 'content-type': 'application/json', ...target.headers },
-            body: JSON.stringify({ type: 'model-feedback', record }),
+            body: JSON.stringify(body),
             redirect: 'error',
             signal: AbortSignal.timeout(target.timeoutMs),
         });
@@ -171,39 +201,39 @@ async function forwardOne(row: ModelFeedback, target: ModelFeedbackForward): Pro
     } catch (e) {
         error = e instanceof Error ? e.name === 'TimeoutError' ? 'timeout' : e.message.slice(0, 200) : 'error';
     }
-    // `updatedAt` is pinned so a newer rating written meanwhile keeps its own `pending` state.
-    await db.modelFeedback.updateMany({
-        where: { id: row.id, updatedAt: row.updatedAt },
-        data: error
-            ? { forwardStatus: attempts >= MAX_FORWARD_ATTEMPTS ? 'failed' : 'pending', forwardError: error, updatedAt: row.updatedAt }
-            : { forwardStatus: 'sent', forwardedAt: new Date(), forwardError: null, updatedAt: row.updatedAt },
-    }).catch(e => log({ module: 'model-feedback', level: 'warn', error: e }, 'forward state update failed'));
+    // Pinned to this version: a newer rating written meanwhile keeps its own `pending` state.
+    const version = { id: row.id, updatedAt: row.updatedAt, forwardAttempts: attempts };
+    try {
+        if (!error && row.deletedAt) {
+            await db.modelFeedback.deleteMany({ where: version });
+        } else {
+            await db.modelFeedback.updateMany({
+                where: version,
+                data: error
+                    ? { forwardStatus: attempts >= MAX_FORWARD_ATTEMPTS ? 'failed' : 'pending', forwardError: error, updatedAt: row.updatedAt }
+                    : { forwardStatus: 'sent', forwardedAt: new Date(), forwardError: null, nextForwardAt: null, updatedAt: row.updatedAt },
+            });
+        }
+    } catch (e) {
+        log({ module: 'model-feedback', level: 'warn', error: e }, 'forward state update failed');
+    }
     if (error) log({ module: 'model-feedback', level: 'warn' }, `forward failed (attempt ${attempts}): ${error}`);
 }
 
-/**
- * Retry sweep: rows still `pending` whose backoff has passed. `updatedAt` is
- * kept equal to the rating's write time, so the backoff is measured from the
- * last attempt via `forwardAttempts` and the sweep's own clock.
- */
-const lastAttemptAt = new Map<string, number>();
+/** Retry sweep: `pending` rows whose `nextForwardAt` has passed, earliest first (a backlog in backoff never blocks newer rows). */
 export async function forwardPendingModelFeedback(now = Date.now()): Promise<number> {
     const target = instanceConfig().modelFeedback?.forward;
     if (!target) return 0;
-    const rows = await db.modelFeedback.findMany({ where: { forwardStatus: 'pending' }, orderBy: { updatedAt: 'asc' }, take: 50 });
-    let sent = 0;
-    for (const row of rows) {
-        const last = lastAttemptAt.get(row.id);
-        if (row.forwardAttempts > 0 && last !== undefined && now - last < forwardBackoffMs(row.forwardAttempts)) continue;
-        lastAttemptAt.set(row.id, now);
-        await forwardOne(row, target);
-        sent++;
-    }
-    if (lastAttemptAt.size > 5000) lastAttemptAt.clear();
-    return sent;
+    const rows = await db.modelFeedback.findMany({
+        where: { forwardStatus: 'pending', OR: [{ nextForwardAt: null }, { nextForwardAt: { lte: new Date(now) } }] },
+        orderBy: [{ nextForwardAt: { sort: 'asc', nulls: 'first' } }, { updatedAt: 'asc' }],
+        take: 50,
+    });
+    for (const row of rows) await forwardOne(row, target, now);
+    return rows.length;
 }
 
-/** Pending rows written before forwarding was configured stay `off`; a newly configured target picks up only new writes. */
+/** Rows written while no forward target was configured stay `off`; a newly configured target picks up only new writes. */
 export function startModelFeedbackForwarder(intervalMs = 30_000): () => void {
     const timer = setInterval(() => {
         forwardPendingModelFeedback().catch(error => log({ module: 'model-feedback', level: 'warn', error }, 'forward sweep failed'));
@@ -226,6 +256,7 @@ export async function exportModelFeedback(accountId: string, query: ModelFeedbac
     if (!isModelFeedbackAdmin(accountId)) throw new ModelFeedbackError('not_found', 404);
     const rows = await db.modelFeedback.findMany({
         where: {
+            deletedAt: null,
             ...(query.since || query.until ? { updatedAt: { ...(query.since ? { gte: new Date(query.since) } : {}), ...(query.until ? { lt: new Date(query.until) } : {}) } } : {}),
             ...(query.model ? { OR: [{ model: query.model }, { reportedModel: query.model }] } : {}),
             ...(query.rating ? { rating: ratingScore[query.rating] } : {}),

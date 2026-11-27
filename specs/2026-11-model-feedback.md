@@ -41,7 +41,7 @@
 ### 请求打标（CLI `src/modelTagging/`）
 
 - wrapper 启动时（账号解析之后）读实例配置（3 s 超时；失败用 `$HAPPY_HOME_DIR/instance-config.json` 上次的结果；404 = 旧 server = 关）。
-- `ANTHROPIC_BASE_URL` 的 host 命中 `hosts`（或全局渠道 `alwaysTag`）→ 起 `127.0.0.1` 转发，把 env 指向它。转发逐请求加 `sessionHeader: <VH 会话 id>`、`requestHeader: <uuid>`，同名入站 header 先删（不可伪造）；hop-by-hop header 丢弃；请求/响应体双向流式透传，不读、不记；上游连不上回 502（Anthropic 错误形状）；客户端断开即断上游。
+- `ANTHROPIC_BASE_URL` 的 host 命中 `hosts`（或全局渠道 `alwaysTag`）→ 起 `127.0.0.1` 转发。两个入口：会话主对话 query（含其子 agent）走 `/t`，只有它的 POST（不含 `count_tokens`）计入本轮 `modelRequestIds`；进程 env 指向 `/o`（标题生成、/btw、Bash 里跑的 `claude`），照样打标但不计入。上游中途断流时立即断开下游，不挂起。转发逐请求加 `sessionHeader: <VH 会话 id>`、`requestHeader: <uuid>`，同名入站 header 先删（不可伪造）；hop-by-hop header 丢弃；请求/响应体双向流式透传，不读、不记；上游连不上回 502（Anthropic 错误形状）；客户端断开即断上游。
 - 选择本机转发而非静态 header：只有转发能做到「每个请求一个 VH 知道的 id」。只对命中的会话启用，官方端点与未配置网关不经过它。
 - 账号不可用（bound but unavailable）时不打标（保持 fail-closed）。
 - turn-end 新增可选字段 `modelRequestIds: string[]`（本轮转发过的请求 id，最多 200）。
@@ -49,7 +49,8 @@
 ### 反馈存储与转发（server `sources/app/modelFeedback/`）
 
 - 表 `ModelFeedback`，唯一键 (accountId, sessionId, turnId)：`PUT /v1/model-feedback` upsert（幂等），`DELETE` 撤回，`GET ?sessionId=` 取自己的评分。能读该会话的人（所有者/被分享者）可评。
-- 转发：写入即 `pending`，异步 POST `{type:'model-feedback', record}`；用 `forwardAttempts`+`updatedAt` 做 claim，多副本不重发同一版本；失败按 30 s 起指数退避，8 次后 `failed`；每 30 s 扫一次。接收方按 `record.id` upsert。
+- 转发：写入即 `pending`，异步 POST `{type:'model-feedback', record}`；用 `forwardAttempts`+`updatedAt` 做 claim，多副本不重发同一版本；`nextForwardAt` 落库，30 s 起指数退避，8 次后 `failed`；每 30 s 扫一次到期行（按 `nextForwardAt` 升序，积压不挡新行）。接收方按 `record.id` upsert。撤回：有转发目标时行保留为 `deletedAt`，转发 `{type:'model-feedback-deleted', id}` 成功后删除。
+- 配置文件解析失败（JSON 错误）保留上一次的好配置；文件被删 = 全部关闭。
 - 导出 `GET /v1/model-feedback/export?format=jsonl|csv|json&since&until&model&rating`，仅管理员（`VH_FEEDBACK_ADMIN_ACCOUNT_IDS` ∪ 配置 `admins`），非管理员 404。CSV 防公式注入。
 
 ### Web

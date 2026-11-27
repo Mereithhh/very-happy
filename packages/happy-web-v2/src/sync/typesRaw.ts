@@ -667,6 +667,8 @@ export type NormalizedMessage = ({
     codexItemId?: string,
     /** B-309: the live draft this message replaces (see envelope schema). */
     streamKey?: string,
+    /** B-980: session-protocol turn of an agent text (what model feedback rates). */
+    turn?: string,
 };
 
 function normalizeSessionEnvelope(
@@ -860,6 +862,7 @@ function normalizeSessionEnvelope(
             claudeUuid: envelope.claudeUuid,
             codexItemId: envelope.codexItemId,
             streamKey: envelope.streamKey,
+            ...(envelope.turn ? { turn: envelope.turn } : {}),
         } satisfies NormalizedMessage;
     }
 

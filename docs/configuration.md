@@ -231,7 +231,10 @@ sections keep working. Spec: [model feedback](../specs/2026-11-model-feedback.md
   session × turn; tapping again changes or removes it). With `forward`, each
   rating is also POSTed as `{"type":"model-feedback","record":{…}}` to `url`
   with the given headers; failures are retried with backoff (8 attempts) and
-  never block the user. Admins export from **Settings → Send feedback → Model
+  never block the user; taking a rating back sends
+  `{"type":"model-feedback-deleted","id":…}` the same way. A JSON mistake in
+  the file keeps the last good config (logged); removing the file switches
+  everything off. Admins export from **Settings → Send feedback → Model
   answer feedback**, or with a token:
   `curl -H "Authorization: Bearer <token>" "$SERVER/v1/model-feedback/export?format=jsonl&since=<ms>"`
   (`format` `jsonl` | `csv` | `json`; filters `since`, `until` in epoch ms,

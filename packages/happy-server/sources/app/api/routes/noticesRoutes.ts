@@ -1,5 +1,5 @@
 import { NOTICES_PATH, type NoticesResponse } from '@slopus/happy-wire';
-import type { Fastify } from '../types';
+import type { Fastify } from '@/app/api/types';
 import { instanceConfig } from '@/app/instance/instanceConfig';
 import { noticesNeedUsername, visibleNotices } from '@/app/notices/notices';
 import { db } from '@/storage/db';

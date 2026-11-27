@@ -2499,7 +2499,7 @@ export async function startDaemon(): Promise<void> {
       home: configuration.happyHomeDir,
       serverUrl: configuration.serverUrl,
       token: () => credentials.token,
-      onChanged: (result) => { void accountService.globalChannelsChanged(result.removed); },
+      onChanged: (result) => { accountService.globalChannelsChanged(result.removed).catch((error) => logger.debug(`[B-981] applying removed global channels failed: ${error instanceof Error ? error.message : String(error)}`)); },
       log: (message) => logger.debug(message),
     });
 

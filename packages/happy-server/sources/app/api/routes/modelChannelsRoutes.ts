@@ -1,5 +1,5 @@
 import { MODEL_CHANNELS_PATH } from '@slopus/happy-wire';
-import type { Fastify } from '../types';
+import type { Fastify } from '@/app/api/types';
 import { instanceConfig } from '@/app/instance/instanceConfig';
 import { requestTokenKind } from '@/app/auth/tokenKind';
 import { visibleModelChannels } from '@/app/modelChannels/modelChannels';

@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { forwardHeaders, shouldTagUpstream, startRequestTagger, upstreamUrl, type RequestTagger } from './requestTagger';
+import { countsAsTurnRequest, forwardHeaders, shouldTagUpstream, splitLoopbackPath, startRequestTagger, upstreamUrl, type RequestTagger } from './requestTagger';
 import { startClaudeRequestTagging } from './claudeTagging';
 
 const config = { sessionHeader: 'X-Test-Session', requestHeader: 'X-Test-Request', hosts: ['gateway.example.com', '*.models.example.org'] };
@@ -23,6 +23,18 @@ describe('shouldTagUpstream', () => {
 });
 
 describe('upstreamUrl / forwardHeaders', () => {
+    it('keeps a query with a second ? intact', () => {
+        expect(upstreamUrl(new URL('https://g.example.com'), '/v1/messages?a=1&b=x?y').search).toBe('?a=1&b=x?y');
+    });
+    it('splits the loopback prefix: /t counts, /o and anything else do not', () => {
+        expect(splitLoopbackPath('/t/v1/messages?beta=true')).toEqual({ tracked: true, path: '/v1/messages?beta=true' });
+        expect(splitLoopbackPath('/o/v1/messages')).toEqual({ tracked: false, path: '/v1/messages' });
+        expect(splitLoopbackPath('/v1/messages')).toEqual({ tracked: false, path: '/v1/messages' });
+        expect(splitLoopbackPath('/tx/v1')).toEqual({ tracked: false, path: '/tx/v1' });
+        expect(countsAsTurnRequest('POST', '/v1/messages?beta=true')).toBe(true);
+        expect(countsAsTurnRequest('POST', '/v1/messages/count_tokens?beta=true')).toBe(false);
+        expect(countsAsTurnRequest('HEAD', '/api/hello')).toBe(false);
+    });
     it('keeps the base path prefix and query', () => {
         expect(upstreamUrl(new URL('https://g.example.com/anthropic/'), '/v1/messages?beta=true').toString()).toBe('https://g.example.com/anthropic/v1/messages?beta=true');
         expect(upstreamUrl(new URL('https://g.example.com'), '/v1/messages').toString()).toBe('https://g.example.com/v1/messages');
@@ -62,9 +74,10 @@ describe('startRequestTagger (real loopback upstream)', () => {
         });
         let n = 0;
         tagger = await startRequestTagger({ upstream: base, sessionId: 'sess-1', config, newRequestId: () => `req-${++n}` });
-        expect(tagger.baseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+        expect(tagger.conversationBaseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/t$/);
+        expect(tagger.baseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/o$/);
         for (const i of [1, 2]) {
-            const res = await fetch(`${tagger.baseUrl}/v1/messages?beta=true`, { method: 'POST', headers: { 'x-api-key': 'secret', 'content-type': 'application/json' }, body: JSON.stringify({ i }) });
+            const res = await fetch(`${tagger.conversationBaseUrl}/v1/messages?beta=true`, { method: 'POST', headers: { 'x-api-key': 'secret', 'content-type': 'application/json' }, body: JSON.stringify({ i }) });
             expect(res.status).toBe(200);
             expect(res.headers.get('request-id')).toBe('up-1');
             expect(await res.text()).toBe('event: a\ndata: 1\n\nevent: b\ndata: 2\n\n');
@@ -74,17 +87,32 @@ describe('startRequestTagger (real loopback upstream)', () => {
             ['/prefix/v1/messages?beta=true', 'sess-1', 'req-2', 'secret', '{"i":2}'],
         ]);
         expect(tagger.takeRequestIds()).toEqual(['req-1', 'req-2']);
-        // A HEAD probe is tagged upstream but is not a model call of the turn.
-        await fetch(`${tagger.baseUrl}/api/hello`, { method: 'HEAD' });
+        // A HEAD probe, and a side process's call on the untracked URL, are tagged upstream but are not the turn's.
+        await fetch(`${tagger.conversationBaseUrl}/api/hello`, { method: 'HEAD' });
         expect(seen.at(-1)?.headers['x-test-request']).toBe('req-3');
+        await (await fetch(`${tagger.baseUrl}/v1/messages`, { method: 'POST', body: '{}' })).text();
+        expect(seen.at(-1)).toMatchObject({ url: '/prefix/v1/messages', headers: { 'x-test-session': 'sess-1', 'x-test-request': 'req-4' } });
         expect(tagger.takeRequestIds()).toEqual([]);
+        expect(tagger.takeRequestIds()).toEqual([]);
+    });
+
+    it('breaks the response when the upstream drops the stream mid-way (no hang)', async () => {
+        const base = await startUpstream((req, res) => {
+            res.writeHead(200, { 'content-type': 'text/event-stream' });
+            res.write('event: a\ndata: 1\n\n');
+            setTimeout(() => req.socket.destroy(), 30);
+        });
+        tagger = await startRequestTagger({ upstream: base, sessionId: 's', config });
+        const res = await fetch(`${tagger.conversationBaseUrl}/v1/messages`, { method: 'POST', body: '{}' });
+        expect(res.status).toBe(200);
+        await expect(Promise.race([res.text(), new Promise((_, reject) => setTimeout(() => reject(new Error('hung')), 3000))])).rejects.not.toThrow('hung');
     });
 
     it('answers 502 in the provider error shape when the upstream is down', async () => {
         const base = await startUpstream(() => undefined);
         await new Promise(r => upstream!.close(r)); upstream = null;
         tagger = await startRequestTagger({ upstream: base, sessionId: 's', config });
-        const res = await fetch(`${tagger.baseUrl}/v1/messages`, { method: 'POST', body: '{}' });
+        const res = await fetch(`${tagger.conversationBaseUrl}/v1/messages`, { method: 'POST', body: '{}' });
         expect(res.status).toBe(502);
         expect((await res.json()).type).toBe('error');
     });

@@ -219,7 +219,8 @@ describe('B-981 daemon wiring (source assertions, verified with scripts/dev/muta
     it('the daemon syncs channels with its machine token and republishes through the account service', () => {
         const run = read('daemon/run.ts');
         expect(run).toContain('const globalChannelSync = startGlobalChannelSync({');
-        expect(run).toContain('onChanged: (result) => { void accountService.globalChannelsChanged(result.removed); },');
+        // A failure there must be caught: an unhandled rejection shuts the daemon down.
+        expect(run).toContain('onChanged: (result) => { accountService.globalChannelsChanged(result.removed).catch((error) =>');
         expect(run).toContain('token: () => credentials.token,');
         expect(read('agentProfiles/daemonAccounts.ts')).toContain('const paths = [accountsPath(home), providersPath(home), globalAccountsPath(home)];');
     });
