@@ -1,4 +1,4 @@
-# 模型回答反馈与模型请求打标（实例配置驱动）
+# 模型回答反馈、请求打标、全局模型渠道与全局通知（实例配置驱动）
 
 > 状态：Final
 > 日期：2026-11-27 ｜ 关联 backlog：B-980（本文）、B-981 全局模型渠道、B-982 全局通知 ｜ 出处：Owner 11-27「反馈做成 Very Happy 通用能力：记录存在 VH，同时可转发到外部接口；VH 发往模型网关的请求要带会话 id header 和 request id；所有接入只通过配置给出」
@@ -58,6 +58,20 @@
 - `MessageActions` 在最终回答上显示 `ModelFeedbackButtons`：配置开启且（`scope=all` 或本轮有请求 id）。再点同一个 = 撤回；👎 后出一行可选说明。
 - 设置 → 发送反馈：管理员可见「模型回答反馈」导出 JSONL / CSV。
 
+## B-981 全局模型渠道
+
+- 配置节 `globalModelChannels`：`{id, enabled, label, agent: claude|codex, baseUrl, apiKey(${ENV}), models, contextWindows?, wireApi?, audience}`，逐条解析，坏条目按 id 丢弃（日志不含值）。
+- `GET /v1/model-channels`：返回调用方可见的渠道 + `revision`；**只有 machine token 拿得到 key**，Web 登录 token 永远拿不到。
+- daemon 启动及每 5 分钟拉取（失败保留上次；404 = 旧 server = 无渠道），落成只读账号 `global-<id>`：`global-accounts.json`（0600，无密钥）+ `global-accounts/<id>/secret`（0600，目录 0700），`readAccounts` 合并、写入方剔除；改名/删除拒绝（`global-readonly`），可测试、可设为本机默认。渠道被关/删：文件删除，绑定会话原地重启后为 `unavailable`，不回落本机登录；指向它的默认值清掉。
+- `AgentProfileSummary` 新增可选 `scope: 'global'`，Web 显示「全局」chip、不给改名/删除。
+- 打标：全局 Claude 渠道 `alwaysTag`（不看 `hosts`）；Codex 会话不打标。
+- 安全：key 下发到每台成员机器，能读该用户文件的人就能读到；用可轮换的专用 key，按人计量请让用户自己添加账号。
+
+## B-982 全局通知
+
+- 配置节 `notices`（≤50）：`{id, title, body, level: info|warning, audience: all | {accounts: [id|username]}, startsAt?, endsAt?, dismissible}`；`GET /v1/notices` 按受众和时间窗过滤。
+- Web 首屏后拉取、每 10 分钟、`sync.onResume` 时再拉；`notice` 级浮层卡片，一次只显示最新一条；「知道了」写入同步设置 `dismissedNoticeIds`（保留最近 100，跨设备），不可关闭的只关到刷新。无 migration。
+
 ## 兼容矩阵与发布顺序
 
 | | 旧 server | 新 server |
@@ -67,6 +81,8 @@
 | 旧 Web | — | 不显示按钮；turn-end 新字段被 zod 剥掉 |
 | 新 Web | 404 → 功能关 | 全功能 |
 
+- B-981：旧 CLI 不调 `/v1/model-channels`；新 CLI 遇旧 server 404 = 无渠道；旧 Web 忽略 `scope`（只是没有 chip，且全局账号的改名/删除会被 daemon 拒绝）。
+- B-982：旧 server 404 = 无通知；旧 Web 不显示；`dismissedNoticeIds` 是新增同步设置字段，无 `.default()`，旧端忽略。
 - migration：新增一张表（expand only），旧镜像不读它；回滚只回镜像。
 - 发布：server/Web → CLI。
 
