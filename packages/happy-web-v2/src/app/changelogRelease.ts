@@ -158,6 +158,14 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-27-team-parallel-slots',
+    date: '2026-11-27',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov27c.title',
+    summaryKey: 'changelog.releases.nov27c.summary',
+    itemKeys: ['changelog.releases.nov27c.slots'],
+  },
+  {
     id: '2026-11-27-model-answer-feedback',
     cliVersion: '0.2.233',
     date: '2026-11-27',

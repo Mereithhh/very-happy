@@ -90,15 +90,21 @@ function scopedTeamView(state: TeamState, actor: TeamActor): TeamState {
 }
 /** Work slots describe active leaves, not retained OS processes. A parent waits
  * for its unfinished children; accepted work can retain its worktree safely
- * without blocking unrelated work. Uncertain effects always reserve a slot. */
+ * without blocking unrelated work. Uncertain effects always reserve a slot.
+ * B-984: a `failed` launch is definite (nothing started). Once its task closed or
+ * its attempt was superseded it can never run again (the daemon re-checks the task
+ * before every relaunch; retry-operation needs the current queued attempt), so it
+ * no longer reserves a slot — those leaked slots kept teams at the limit forever. */
 export function occupiedTeamWorkSlots(state: TeamState, includePending = false): Set<string> {
     const active = state.tasks.filter(task => !['done', 'cancelled'].includes(task.status));
+    const liveAttempts = new Set(active.map(task => task.currentAttemptId));
     const waitingParents = new Set(active.flatMap(task => task.parentTaskId ? [task.parentTaskId] : []));
     const leaves = new Set(active.filter(task => !waitingParents.has(task.id)).map(task => task.assigneeBotId));
     const roots = new Set(state.bots.filter(bot => bot.root).map(bot => bot.id));
     const occupied = new Set(state.bots.filter(bot => !bot.root && bot.sessionId && leaves.has(bot.id)).map(bot => bot.id));
     for (const operation of state.operations) {
         if (operation.type !== 'spawn' || roots.has(operation.botId) || operation.error === 'task_closed_before_spawn') continue;
+        if (operation.status === 'failed' && !liveAttempts.has(operation.attemptId)) continue;
         if (['claimed', 'unknown', 'failed'].includes(operation.status)
             || (includePending && operation.status === 'pending' && leaves.has(operation.botId))) occupied.add(operation.botId);
     }

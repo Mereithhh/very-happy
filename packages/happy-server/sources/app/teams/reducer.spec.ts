@@ -405,6 +405,41 @@ describe('leaf task work slots', () => {
         expect(() => startTask(f, other.taskId!)).toThrow('team_parallel_limit');
         expect(occupiedTeamWorkSlots(f.state).size).toBe(1);
     });
+    it('B-984: a failed launch stops reserving a slot once its task is cancelled or handed off; unknown ones still do', () => {
+        const f = fixture();
+        f.act({ type: 'set-defaults', defaults: { maxParallel: 2 } });
+        const failLaunch = (taskId: string, unknown = false) => {
+            const operation = f.state.operations.find(op => op.taskId === taskId && op.type === 'spawn' && op.status === 'pending')!;
+            f.act({ type: 'claim-operation', teamLaunchVersion: 1, operationId: operation.id, machineId: 'machine' });
+            f.act({ type: 'fail-operation', operationId: operation.id, machineId: 'machine', claimId: f.state.operations.find(op => op.id === operation.id)!.claimId!, error: 'Command failed: git -C /repo worktree add', ...(unknown ? { unknown: true } : {}) });
+        };
+        const task = (taskId: string) => f.state.tasks.find(t => t.id === taskId)!;
+        const cancel = (taskId: string) => f.act({ type: 'cancel', taskId, attemptId: task(taskId).currentAttemptId, goalVersion: 1, reason: 'stuck' });
+        // Still queued: the computer relaunches it, so the slot stays reserved.
+        const a = f.act({ type: 'delegate', goal: 'a', acceptance: ['done'] }).taskId!;
+        const b = f.act({ type: 'delegate', goal: 'b', acceptance: ['done'] }).taskId!;
+        failLaunch(a); failLaunch(b);
+        expect(occupiedTeamWorkSlots(f.state).size).toBe(2);
+        const c = f.act({ type: 'delegate', goal: 'c', acceptance: ['done'] }).taskId!;
+        expect(() => startTask(f, c)).toThrow('team_parallel_limit');
+        // Cancelled: nothing runs and nothing ever will — the slot is free (production: 9 of 16 slots held this way).
+        cancel(a);
+        expect(occupiedTeamWorkSlots(f.state).size).toBe(1);
+        startTask(f, c);
+        expect(task(c).status).toBe('running');
+        // Handed off: the superseded attempt's failed launch no longer counts; the new assignee does.
+        const helper = f.act({ type: 'delegate', goal: 'helper', acceptance: ['done'] }).taskId!;
+        cancel(helper);
+        const helperBot = task(helper).assigneeBotId;
+        f.act({ type: 'handoff', taskId: b, attemptId: task(b).currentAttemptId, goalVersion: 1, assigneeBotId: helperBot });
+        expect([...occupiedTeamWorkSlots(f.state, true)].sort()).toEqual([task(c).assigneeBotId, helperBot].sort());
+        // Unknown outcome of a cancelled task may still be a live process: keep reserving.
+        cancel(b); cancel(c);
+        const d = f.act({ type: 'delegate', goal: 'd', acceptance: ['done'] }).taskId!;
+        failLaunch(d, true);
+        cancel(d);
+        expect([...occupiedTeamWorkSlots(f.state)]).toEqual([task(d).assigneeBotId]);
+    });
     it('releases accepted work slots while safely preserving unmerged resources', () => {
         const f = fixture();
         f.act({ type: 'set-defaults', defaults: { maxParallel: 1 } });
