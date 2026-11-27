@@ -84,7 +84,8 @@ export async function startRequestTagger(opts: {
 
     const server = http.createServer((req, res) => {
         const requestId = newId();
-        if (ids.length < MAX_IDS_PER_TURN) ids.push(requestId);
+        // Every request is tagged; only model calls (POST) count toward the turn — not reachability probes (HEAD/GET).
+        if (req.method === 'POST' && ids.length < MAX_IDS_PER_TURN) ids.push(requestId);
         const target = upstreamUrl(upstream, req.url ?? '/');
         const headers = forwardHeaders(req.headers, upstream, {
             [opts.config.sessionHeader]: opts.sessionId,

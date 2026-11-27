@@ -3756,6 +3756,13 @@ export const en = {
                 models: 'Both need an Anthropic-compatible gateway, such as an API account with a custom Base URL. They are not shown for a Claude subscription or an API account on Anthropic’s own endpoint; where the account is not known they are listed with that note. Defaults are unchanged.',
                 tools: 'deepseek-v4.1-flash works in sessions with the full tool set.',
             },
+            nov27a: {
+                title: 'Rate a model\'s answers, matched to the gateway\'s request log',
+                summary: 'When your server\'s operator turns it on, each answer in a chat gets 👍 and 👎. Ratings are kept on your Very Happy server and can also go to a service the operator chooses.',
+                rate: 'The buttons sit in the actions row under a turn\'s final answer. 👎 lets you add one line on what went wrong; tapping your choice again takes it back. Your rating shows on every device.',
+                match: 'For model gateways the operator lists, each request the session sends carries the session id and its own request id, so a rating points at the exact requests behind that answer. Needs CLI 0.2.233; sessions started before the upgrade are not tagged until they restart.',
+                export: 'Feedback admins export the ratings as JSONL or CSV from Settings → Send feedback.',
+            },
             nov26b: {
                 title: 'Codex sessions can use the model\'s full context window',
                 summary: 'Codex sizes a new thread from its own conservative default — 258,400 tokens for most gpt-6 / gpt-5.6 models, 475,000 for the sol family — well under the model\'s maximum. New Codex sessions now start on the extended window (about 828,400) where the model supports it. The model menu has a Context row: Standard keeps Codex\'s default, Extended asks for the maximum this model really accepts (about 828,400), and either way Codex compacts at 90% of the window.',

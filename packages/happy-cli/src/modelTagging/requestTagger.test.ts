@@ -74,6 +74,9 @@ describe('startRequestTagger (real loopback upstream)', () => {
             ['/prefix/v1/messages?beta=true', 'sess-1', 'req-2', 'secret', '{"i":2}'],
         ]);
         expect(tagger.takeRequestIds()).toEqual(['req-1', 'req-2']);
+        // A HEAD probe is tagged upstream but is not a model call of the turn.
+        await fetch(`${tagger.baseUrl}/api/hello`, { method: 'HEAD' });
+        expect(seen.at(-1)?.headers['x-test-request']).toBe('req-3');
         expect(tagger.takeRequestIds()).toEqual([]);
     });
 

@@ -82,6 +82,7 @@ state. Never commit production values.
 | `VH_PLUGIN_HOST` | Parent host of the plugin panel origins (e.g. `p.example.com`; wildcard DNS and TLS for `*.p.example.com`). Also `VH_PLUGIN_HOST_SCHEME` (`http`, local development only) and `VH_PLUGIN_WEB_ORIGINS` | Unset (no panels) |
 | `VH_PLUGINS_DISABLED` / `VH_PLUGIN_DENYLIST` | Operator kill switch: every plugin / the listed plugin ids or manifest sha256 hashes | Unset |
 | `VH_FEEDBACK_ADMIN_ACCOUNT_IDS` | Who can read in-app feedback (B-836, [spec](../specs/2026-10-feedback.md)): comma- or space-separated account ids. Those accounts see **Settings → Send feedback → Feedback received** and get a Web Push for new feedback (at most one per 5 minutes, the rest counted into the next). Everyone can send feedback; with the variable unset nobody can read it and `/v1/feedback/admin*` answers 404. Feedback rows live only in this server's database — nothing is sent to veryhappy.dev or any other service. Limits: `MAX_FEEDBACK_PER_ACCOUNT_PER_HOUR` (default 5) and `MAX_FEEDBACK_PER_ACCOUNT_PER_DAY` (default 20); a resend of the same text within 10 minutes is free. Find an account id with `SELECT id, username FROM "Account"` | unset (nobody); set the owner's account id on the owner's deployment |
+| `VH_INSTANCE_CONFIG_FILE` | Path to the operator's [instance config file](#instance-config-file-b-980) (JSON, re-read within 10 s of a change, `${NAME}` values expand from the server environment). It switches model-answer feedback, model-request tagging and related operator features; unset = all of them off | unset |
 | `MAX_AUTOMATIONS_PER_ACCOUNT` | Automations one account may hold, active and paused together; a create beyond it fails with 429 `automation_count_quota_exceeded` | `100`; `0` disables the cap |
 
 `SIGNUP_CLOSED` remains a legacy fallback only. Prefer explicit `SIGNUP_MODE`.
@@ -181,6 +182,63 @@ agent」) lets the daemon update an outdated Codex CLI by itself while no Codex
 turn runs (B-894; `HAPPY_AGENT_AUTO_UPDATE_TICK_MS` shortens the 5-minute
 re-check for tests). Claude needs no setting: Web sessions use the SDK bundled
 with the CLI.
+
+## Instance config file (B-980)
+
+One JSON file, named by `VH_INSTANCE_CONFIG_FILE`, holds what an operator
+turns on for every account of this server. The server re-reads it within 10 s
+of a change, so editing it needs no release or restart. Any string may contain
+`${NAME}`: it is replaced by that server environment variable, which keeps
+credentials out of the file (an unset variable is logged by name and becomes
+empty). A section with a mistake is switched off and logged by key; the other
+sections keep working. Spec: [model feedback](../specs/2026-11-model-feedback.md).
+
+```json
+{
+  "admins": ["<account id>"],
+  "modelRequestTagging": {
+    "sessionHeader": "X-Example-Session-Id",
+    "requestHeader": "X-Example-Request-Id",
+    "hosts": ["gateway.example.com", "*.models.example.org"]
+  },
+  "modelFeedback": {
+    "enabled": true,
+    "scope": "tagged",
+    "forward": {
+      "url": "https://collector.example.com/v1/feedback",
+      "headers": { "Authorization": "Bearer ${FEEDBACK_FORWARD_TOKEN}" }
+    }
+  }
+}
+```
+
+- **`admins`**: account ids that may export model feedback (in addition to
+  `VH_FEEDBACK_ADMIN_ACCOUNT_IDS`).
+- **`modelRequestTagging`**: when a Claude session's API base URL
+  (`ANTHROPIC_BASE_URL`, from a per-session account or the daemon environment)
+  is on one of `hosts` (exact name or `*.suffix`), the session's wrapper sends
+  its model requests through a loopback forwarder that adds two headers:
+  `sessionHeader` = the Very Happy session id, `requestHeader` = a new id per
+  request. The ids sent during a turn go out with the turn's end, so feedback
+  on that answer carries them. Bodies and credentials pass through untouched
+  and are never logged. Needs CLI ≥ the release that ships B-980; the wrapper
+  reads the config at session start (a running session keeps its setting until
+  restarted) and caches the last good answer in `$HAPPY_HOME_DIR/instance-config.json`.
+- **`modelFeedback`**: 👍/👎 under each turn's final answer in the Web. `scope`
+  `tagged` (default) shows them only on turns whose requests were tagged, so
+  every rating joins the gateway's request log; `all` shows them on every
+  answer. Ratings are stored in this server's database (one per account ×
+  session × turn; tapping again changes or removes it). With `forward`, each
+  rating is also POSTed as `{"type":"model-feedback","record":{…}}` to `url`
+  with the given headers; failures are retried with backoff (8 attempts) and
+  never block the user. Admins export from **Settings → Send feedback → Model
+  answer feedback**, or with a token:
+  `curl -H "Authorization: Bearer <token>" "$SERVER/v1/model-feedback/export?format=jsonl&since=<ms>"`
+  (`format` `jsonl` | `csv` | `json`; filters `since`, `until` in epoch ms,
+  `model`, `rating`). Each record has `sessionId`, `turnId`, `requestIds`,
+  `model`, `reportedModel`, `agent`, `accountProfile`, `rating`, `comment`,
+  the rater's account and timestamps — never the text of the conversation.
+  Rate limit: `MAX_MODEL_FEEDBACK_PER_ACCOUNT_PER_MINUTE` (default 30).
 
 ## Google login
 

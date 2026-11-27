@@ -158,6 +158,15 @@ export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: '
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-11-27-model-answer-feedback',
+    cliVersion: '0.2.233',
+    date: '2026-11-27',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.nov27a.title',
+    summaryKey: 'changelog.releases.nov27a.summary',
+    itemKeys: ['changelog.releases.nov27a.rate', 'changelog.releases.nov27a.match', 'changelog.releases.nov27a.export'],
+  },
+  {
     id: '2026-11-26-codex-extended-context',
     cliVersion: '0.2.232',
     date: '2026-11-26',

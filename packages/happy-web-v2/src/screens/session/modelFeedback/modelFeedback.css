@@ -1,6 +1,8 @@
 /* B-980 model-answer feedback: thumbs in the message action row; the chosen one stays visible. */
 .mf-thumb[aria-pressed="true"] { color: var(--text); background: var(--bg-2); }
-.mf-note { display: flex; align-items: center; gap: var(--chat-space); flex: 1 1 100%; min-width: 0; padding-block: var(--chat-space); }
+.mf-note { order: 1; display: flex; align-items: center; gap: var(--chat-space); flex: 1 1 100%; min-width: 0; padding-block: var(--chat-space); }
 .mf-note-input { flex: 1 1 auto; min-width: 0; min-height: 32px; padding: 0 calc(var(--chat-space) * 2); border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--bg-2); color: var(--text); font: var(--chat-fs-control)/1.4 var(--font-sans); }
 .mf-note-input:focus-visible { outline: none; border-color: var(--text-faint); }
 @media (pointer: coarse) { .mf-note-input { min-height: 44px; } }
+/* The note gets its own line under the action buttons (after retry/delete), not wedged between them. */
+.msg-actions-items:has(> .mf-note) { flex: 1 1 100%; }
