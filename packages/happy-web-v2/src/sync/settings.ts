@@ -88,6 +88,7 @@ export const settingsDefaults: Settings = {
     feedbackPromptShownAt: null,
     feedbackPromptOptOut: false,
     feedbackLastSubmittedAt: null,
+    dismissedNoticeIds: [],
 };
 Object.freeze(settingsDefaults);
 

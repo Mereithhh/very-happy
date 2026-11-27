@@ -1,0 +1,77 @@
+/* B-982 operator notice card. Same corner and material as the feedback
+   prompt (feedback.css .fb-prompt); both are `notice` overlays, so only one
+   shows at a time. warning = the warn ring, like permission cards
+   (design-language §2.1). */
+.gn-card {
+  position: fixed;
+  right: max(var(--sp-4), var(--sa-r));
+  bottom: max(var(--sp-4), var(--sa-b));
+  z-index: 1000;
+  width: min(360px, calc(100vw - 2 * var(--sp-4) - var(--sa-l) - var(--sa-r)));
+  max-height: min(60dvh, 420px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+  color: var(--text);
+  box-shadow: var(--shadow-modal);
+  animation: gn-enter 200ms cubic-bezier(.2, .8, .2, 1) both;
+}
+.gn-card[data-level="warning"] { border-color: var(--warn); }
+.gn-head { display: flex; align-items: flex-start; gap: var(--sp-2); }
+.gn-card:has(.gn-close) .gn-head { padding-right: var(--sp-8); }
+.gn-icon { flex: none; margin-top: 2px; color: var(--text-dim); }
+.gn-card[data-level="warning"] .gn-icon { color: var(--warn); }
+.gn-card h2 { margin: 0; color: var(--text); font-size: var(--fs-14); font-weight: 600; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.gn-body { margin: 0; color: var(--text-dim); font-size: var(--fs-13); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.gn-body a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+.gn-close {
+  position: absolute;
+  top: var(--sp-1);
+  right: var(--sp-1);
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  color: var(--text-faint);
+}
+@media (hover: hover) and (pointer: fine) { .gn-close:hover { color: var(--text); background: var(--bg-2); } }
+.gn-actions { display: flex; justify-content: flex-end; }
+.gn-dismiss {
+  min-height: 32px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--text);
+  color: var(--bg-0);
+  font-size: var(--fs-12);
+  font-weight: 600;
+}
+
+/* The onboarding invitations share this corner; they wait while a notice is up (hidden, not dismissed). */
+body:has(.gn-card) :is(.pwa-install, .notif-optin, .signin-nudge) { display: none; }
+
+/* Input pages: the bottom corner is the composer — move to the top like the other floating cards. */
+body:has(.sd-foot, .term-screen, .mri) .gn-card { top: calc(var(--sa-t) + 56px); bottom: auto; }
+
+@keyframes gn-enter {
+  from { opacity: 0; transform: translate3d(0, 16px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@media (max-width: 520px), (pointer: coarse) {
+  .gn-dismiss { min-height: 44px; min-width: 88px; }
+  .gn-close { width: 44px; height: 44px; top: 0; right: 0; }
+  body:has(.sd-foot, .term-screen, .mri) .gn-card { top: calc(var(--sa-t) + 68px); }
+}
+@media (max-width: 520px) {
+  .gn-card { left: max(var(--sp-4), var(--sa-l)); width: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gn-card { animation: none; }
+}

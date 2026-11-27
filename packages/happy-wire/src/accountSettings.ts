@@ -201,6 +201,10 @@ export const AccountSettingsSchema = z.object({
     feedbackPromptShownAt: z.number().nullable().describe('Epoch ms the feedback prompt card last showed'),
     feedbackPromptOptOut: z.boolean().describe('Never show the feedback prompt card again (the form stays in Settings)'),
     feedbackLastSubmittedAt: z.number().nullable().describe('Epoch ms of the last feedback submission'),
+    // B-982 global notices the person dismissed (「知道了」), synced so a notice
+    // dismissed on one device stays gone on the others. Newest last, capped at
+    // 100 by the writer (app/notices/noticePolicy.ts). NO zod .default().
+    dismissedNoticeIds: z.array(z.string()).describe('Ids of operator notices this account dismissed (newest last, at most 100)'),
 });
 
 export type AccountSettings = z.infer<typeof AccountSettingsSchema>;

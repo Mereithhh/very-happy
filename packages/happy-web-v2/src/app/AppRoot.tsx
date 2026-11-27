@@ -100,6 +100,7 @@ const TermsScreen = lazy(() => import('@/screens/legal/PublicLegalScreen').then(
 const ChangelogNotice = lazy(() => import('./ChangelogNotice').then((m) => ({ default: m.ChangelogNotice })));
 const PwaInstallPrompt = lazy(() => import('./PwaInstallPrompt').then((m) => ({ default: m.PwaInstallPrompt })));
 const FeedbackPrompt = lazy(() => import('./feedback/FeedbackPrompt').then((m) => ({ default: m.FeedbackPrompt })));
+const GlobalNotice = lazy(() => import('./notices/GlobalNotice').then((m) => ({ default: m.GlobalNotice })));
 const VhDiagOverlay = lazy(() => import('@/diag/VhDiagOverlay').then((m) => ({ default: m.VhDiagOverlay })));
 
 function Lazy({ children, fullViewport = true, centered = false }: { children: ReactNode; fullViewport?: boolean; centered?: boolean }) {
@@ -119,7 +120,7 @@ function RequireAuth() {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
-  return <><Outlet /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><DeferredFeedbackPrompt /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
+  return <><Outlet /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><DeferredFeedbackPrompt /><DeferredGlobalNotice /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
 }
 
 /** Global back lives HERE, once, as the common parent of `/` (RootGate) and
@@ -138,7 +139,7 @@ function RootGate() {
   const { isAuthenticated } = useAuth();
   // B-624: a white-labelled relay has no marketing page — straight to login.
   if (!isAuthenticated) return BRAND.landingEnabled ? <Lazy><LandingScreen /></Lazy> : <Navigate to="/login" replace />;
-  return <><AppLayout /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><DeferredFeedbackPrompt /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
+  return <><AppLayout /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><DeferredChangelogNotice /><DeferredFeedbackPrompt /><DeferredGlobalNotice /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
 }
 
 function DeferredChangelogNotice() {
@@ -150,6 +151,12 @@ function DeferredChangelogNotice() {
 function DeferredFeedbackPrompt() {
   if (!useAfterFirstScreen()) return null;
   return <Suspense fallback={null}><FeedbackPrompt /></Suspense>;
+}
+
+/** B-982: operator notices from the instance config (notice level, after the first screen). */
+function DeferredGlobalNotice() {
+  if (!useAfterFirstScreen()) return null;
+  return <Suspense fallback={null}><GlobalNotice /></Suspense>;
 }
 
 function DeferredPwaInstallPrompt() {
