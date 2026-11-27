@@ -1,6 +1,6 @@
 # 模型回答反馈、请求打标、全局模型渠道与全局通知（实例配置驱动）
 
-> 状态：Final
+> 状态：Shipped（commit `e8bffae2`，CLI 0.2.233）
 > 日期：2026-11-27 ｜ 关联 backlog：B-980（本文）、B-981 全局模型渠道、B-982 全局通知 ｜ 出处：Owner 11-27「反馈做成 Very Happy 通用能力：记录存在 VH，同时可转发到外部接口；VH 发往模型网关的请求要带会话 id header 和 request id；所有接入只通过配置给出」
 
 ## 背景
@@ -98,4 +98,4 @@
 - [x] server：配置解析单测；pglite 集成（关→404、开→广播不含转发地址、upsert、转发带 `${ENV}` 凭据、失败重试、权限、导出 JSONL/CSV、撤回）。
 - [x] CLI：转发器单测（header、流式、多请求 id、502、hop-by-hop/防伪造）、配置缓存与 404、turn-end 带 id。
 - [x] Web：turn-end → turnMeta、reducer 贴到最终回答、显示规则、提交体不含原文。
-- [ ] 端到端：standalone server + 隔离 daemon + 模拟网关，真实会话一轮后网关收到两个 header，Web 点 👎 后导出记录的 requestIds 与网关收到的一致（结果见 PR）。
+- [x] 端到端：standalone server + 隔离 daemon + 模拟网关，真实会话一轮后网关收到两个 header，Web 点 👎 后导出记录的 requestIds 与网关收到的一致（PR #1027）。
