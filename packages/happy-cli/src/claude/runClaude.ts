@@ -1634,6 +1634,8 @@ async function startModelRequestTagging(input: { session: ApiSessionClient; cred
             token: input.credentials.token,
             happyHome: configuration.happyHomeDir,
             accountUsable: !input.account.unavailable,
+            // B-981: a global model channel is always tagged when tagging is configured.
+            alwaysTag: input.account.global === true,
             log: (message) => logger.debug(`[B-980] ${message}`),
         });
         if (!tagging) return;

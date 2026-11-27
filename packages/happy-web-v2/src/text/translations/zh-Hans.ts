@@ -3081,6 +3081,8 @@ export const zhHans: TranslationStructure = {
         statusUnreachable: '地址不对或连不上',
         statusMissingSecret: '缺 key',
         legacy: '来自 providers.json，请在该文件里修改或删除',
+        globalBadge: '全局',
+        globalHint: '管理员在服务器上为所有人配置，这里不能改名或删除',
         defaultBadge: '默认',
         defaultRow: '这台机器的新会话默认用',
         setDefault: '设为默认',

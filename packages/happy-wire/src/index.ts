@@ -38,6 +38,7 @@ export * from './issues';
 
 export * from './syncProtocol';
 export * from './modelFeedback';
+export * from './modelChannels';
 
 export * from './turnFailure';
 export * from './codexGoal';

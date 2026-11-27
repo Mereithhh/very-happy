@@ -180,6 +180,7 @@ export function formatAccountLine(a: AgentProfileSummary, isDefault: boolean, no
     if (a.keySource === 'file' || a.keySource === 'env') extra.push(`key: ${a.keySource} ${a.keyRef ?? ''}`.trim());
     if (a.expiresAt) extra.push(`expires ${new Date(a.expiresAt).toISOString().slice(0, 10)}${a.expiresAt - now < 30 * 86_400_000 && a.expiresAt > now ? ' (soon)' : ''}`);
     if (a.legacy) extra.push('from providers.json (read-only)');
+    if (a.scope === 'global') extra.push('global channel from the server (read-only)');
     if (a.statusDetail) extra.push(a.statusReason === 'unreachable' ? `wrong Base URL or unreachable: ${a.statusDetail}` : a.statusDetail);
     return `${isDefault ? '*' : ' '} ${a.id}  ${a.label}  [${kind}]  ${a.status}${extra.length ? `  — ${extra.join(' · ')}` : ''}`;
 }

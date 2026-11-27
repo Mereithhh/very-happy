@@ -2948,6 +2948,8 @@ export const en = {
         statusUnreachable: 'Wrong address or unreachable',
         statusMissingSecret: 'Key missing',
         legacy: 'From providers.json — edit or remove it in that file',
+        globalBadge: 'Global',
+        globalHint: 'Set up for everyone by the server admin; it cannot be renamed or deleted here',
         defaultBadge: 'Default',
         defaultRow: 'New sessions on this machine use',
         setDefault: 'Set as default',

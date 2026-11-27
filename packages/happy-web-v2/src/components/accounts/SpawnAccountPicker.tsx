@@ -24,7 +24,7 @@ import {
 } from '@/sync/agentProfiles';
 import type { ProjectAgentProfile } from '@slopus/happy-wire';
 import { projectAccountElsewhere } from '@/sync/accountChoice';
-import { accountKindText, accountStatusText } from './accountText';
+import { accountStatusText, accountTagText } from './accountText';
 import './accounts.css';
 
 const DEFAULT_KEY = '__default__';
@@ -112,7 +112,7 @@ export function SpawnAccountPicker({ machine, machineName, agent, value, onChang
             return {
                 value: account.id,
                 label: account.label,
-                meta: status === 'ok' ? accountKindText(account.kind, t) : `${accountKindText(account.kind, t)} · ${accountStatusText(status, account, t, now)}`,
+                meta: status === 'ok' ? accountTagText(account, t) : `${accountTagText(account, t)} · ${accountStatusText(status, account, t, now)}`,
                 ...(accountUsable(status) ? {} : { disabled: true }),
             };
         }),
