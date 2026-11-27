@@ -164,7 +164,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.nov27a.title',
     summaryKey: 'changelog.releases.nov27a.summary',
-    itemKeys: ['changelog.releases.nov27a.rate', 'changelog.releases.nov27a.match', 'changelog.releases.nov27a.export'],
+    itemKeys: ['changelog.releases.nov27a.rate', 'changelog.releases.nov27a.match', 'changelog.releases.nov27a.export', 'changelog.releases.nov27a.channels', 'changelog.releases.nov27a.notices'],
   },
   {
     id: '2026-11-26-codex-extended-context',

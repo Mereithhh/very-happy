@@ -3764,6 +3764,8 @@ export const en = {
                 rate: 'The buttons sit in the actions row under a turn\'s final answer. 👎 lets you add one line on what went wrong; tapping your choice again takes it back. Your rating shows on every device.',
                 match: 'For model gateways the operator lists, each request the session sends carries the session id and its own request id, so a rating points at the exact requests behind that answer. Needs CLI 0.2.233; sessions started before the upgrade are not tagged until they restart.',
                 export: 'Feedback admins export the ratings as JSONL or CSV from Settings → Send feedback.',
+                channels: 'Model gateways the operator sets up once now appear in everyone\'s account pickers with a Global chip — pick one and start; no key to paste. You can test one or make it your default, not rename or delete it. Adding your own API account works as before. Needs CLI 0.2.233 on the machine.',
+                notices: 'Operators can post notices to everyone or to chosen accounts; they show as a small card, and Got it hides one on all your devices.',
             },
             nov26b: {
                 title: 'Codex sessions can use the model\'s full context window',
