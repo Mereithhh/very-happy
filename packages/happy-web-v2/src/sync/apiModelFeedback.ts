@@ -141,7 +141,7 @@ function ensureConfig(now = Date.now()): void {
 
 export function useInstanceConfig(): InstanceConfig | null {
     useEffect(() => ensureConfig(), []);
-    return useSyncExternalStore(subscribe, () => state.config);
+    return useSyncExternalStore(subscribe, () => state.config, () => null);
 }
 
 function setRating(sessionId: string, turnId: string, view: ModelFeedbackView | null) {
@@ -174,7 +174,7 @@ export function useModelFeedbackRating(sessionId: string, turnId: string | undef
         const forSession = state.ratings.get(sessionId);
         if (!forSession) return undefined;
         return turnId ? forSession.get(turnId) ?? null : null;
-    });
+    }, () => undefined);
 }
 
 export async function rateModelAnswer(input: ModelFeedbackSubmit): Promise<ModelFeedbackView> {
